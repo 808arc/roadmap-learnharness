@@ -12,6 +12,18 @@ Most self-directed learning fails in one of two ways:
 
 The Learning Path Framework solves both problems by separating **macro-curriculum architecture** (the Path) from **first-principles instruction and practice** (child LearnHarness sessions), connected by a lightweight diagnostic loop of progression states, error watchpoints, and multi-level interleaving.
 
+**The governing idea: the learner generates the understanding; the path supplies the structure.**
+
+The path decides what to study, in what order, anchored to which sources. It prompts, scaffolds and gives feedback. It doesn't do the learner's thinking for them: connections, explanations, compressions and predictions are produced by the learner first, and the system's contribution comes after, as feedback.
+
+The system may know a lot about the learner, for example from their knowledge graph. It uses that knowledge to ask better questions, not to supply answers.
+
+**Why:**
+> Learner-produced material is remembered and transferred better than material that is merely read or shown (the generation effect). Learning activities that ask learners to construct or interact, rather than just receive, tend to produce deeper understanding. Attempting before being taught, even when the attempt is wrong, improves later learning.
+
+**Limit on the idea:**
+> Unguided discovery fails novices, who lack the knowledge to generate anything useful. So the principle is guided generation: more scaffolding early (examples, hints, narrower prompts), fading as the learner gains expertise, because guidance that helps novices can hinder experts. Principles 4 (light pre-reading) and 6 (generative artifacts) are applications of this idea.
+
 ---
 
 ## 2. Framework Principles & Design Justifications
