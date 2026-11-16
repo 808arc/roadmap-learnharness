@@ -27,7 +27,7 @@ export const MANIFEST: PluginManifest = {
   apiVersion: 1,
   id: "roadmap",
   name: "Roadmap",
-  version: "0.1.0",
+  version: "0.2.0",
   minAppVersion: "0.6.0",
   main: "main.js",
   backend: "backend.cjs",
