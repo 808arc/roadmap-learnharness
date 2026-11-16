@@ -29,34 +29,22 @@ test("the advisory banner offers accept, discuss and dismiss for a pending pivot
     banner.render(path, node);
     await fixture.flush();
 
-    const card = fixture.root.querySelector<HTMLElement>(".lp-pivot-card")!;
+    const card = fixture.root.querySelector<HTMLElement>(".rm-pivot")!;
     assert.ok(card, "a pending pivot renders an advisory card");
     assert.equal(card.dataset.pivotId, "pivot-skill");
     assert.equal(card.dataset.proposalType, "skill");
-    assert.match(card.textContent ?? "", /Advisory skill proposal/);
+    assert.match(card.textContent ?? "", /Suggested skill node/);
     assert.match(card.textContent ?? "", /Add a sign-tracking drill/);
     assert.match(card.textContent ?? "", /Mechanics keep slipping while the idea is understood/);
     assert.match(card.textContent ?? "", /Nothing changes until you decide/);
 
-    const labels = fixture
-      .all("mountButton")
-      .filter((record) => record.container.closest(".lp-pivot-card") !== null)
-      .map((record) => record.props.label);
-    assert.deepEqual(labels, ["Accept & Insert Node", "Discuss with Architect", "Dismiss"]);
+    const buttons = [...card.querySelectorAll<HTMLButtonElement>("button")];
+    assert.deepEqual(buttons.map((button) => button.textContent), ["Accept", "Discuss", "Dismiss"]);
+    const click = (label: string) => buttons.find((button) => button.textContent === label)!.click();
 
-    const click = async (label: string) => {
-      const record = fixture.findLast(
-        "mountButton",
-        (candidate) =>
-          candidate.props.label === label &&
-          candidate.container.closest(".lp-pivot-card") !== null,
-      );
-      await record.props.onClick();
-    };
-
-    await click("Accept & Insert Node");
-    await click("Dismiss");
-    await click("Discuss with Architect");
+    click("Accept");
+    click("Dismiss");
+    click("Discuss");
     assert.deepEqual(decisions, [
       { pivotId: "pivot-skill", decision: "accept" },
       { pivotId: "pivot-skill", decision: "dismiss" },
@@ -77,12 +65,12 @@ test("the advisory banner offers accept, discuss and dismiss for a pending pivot
     };
     banner.render(path, settled);
     await fixture.flush();
-    assert.equal(fixture.root.querySelector(".lp-pivot-card"), null);
+    assert.equal(fixture.root.querySelector(".rm-pivot"), null);
 
     const clean = path.modules[0]!.nodes.find((candidate) => candidate.id === "n-concept")!;
     banner.render(path, clean);
     await fixture.flush();
-    assert.equal(fixture.root.querySelector(".lp-pivot-card"), null);
+    assert.equal(fixture.root.querySelector(".rm-pivot"), null);
 
     banner.dispose();
     assert.equal(fixture.root.querySelector(".lp-pivot-banner"), null);

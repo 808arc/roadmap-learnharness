@@ -1,10 +1,10 @@
 {
-  "name": "learnharness-learning-path",
+  "name": "roadmap-learnharness",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
-  "description": "Learning Path community plugin for LearnHarness: build, follow and adapt a pedagogical path.",
+  "description": "Roadmap community plugin for LearnHarness: learning roadmaps drawn like roadmap.sh, built by an Architect from real sources.",
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "node scripts/check-sdk.mjs && tsc --noEmit",

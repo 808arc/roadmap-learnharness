@@ -85,7 +85,7 @@ test("instructions exist, and native tools are injected only for linked chats of
   try {
     assert.equal(host.instructions.length, 1);
     assert.deepEqual(host.instructions[0]!.agents, ["prober", "teacher", "practice"]);
-    assert.match(host.instructions[0]!.text, /If learning_path_get_brief is not in your current tool set, ignore this entire section/);
+    assert.match(host.instructions[0]!.text, /If roadmap_get_brief is not in your current tool set, ignore this entire section/);
     assert.equal(host.instructions[0]!.text, NATIVE_BRIDGE_INSTRUCTIONS);
 
     const linked = await host.call<{ path: { id: string } }>("sessions.link", {
@@ -123,7 +123,7 @@ test("deleted native chats stop injection even while the plugin link remains", a
     const tools = host.nativeTools("chat-1", "teacher");
     assert.equal(host.removeChat("chat-1"), true);
     assert.deepEqual(host.nativeTools("chat-1", "teacher"), []);
-    const result = await runTool(tools, "learning_path_update_progress", {
+    const result = await runTool(tools, "roadmap_update_progress", {
       progression: "in_progress",
     });
     assert.equal(result.isError, true);
@@ -143,7 +143,7 @@ test("linked sessions receive the node brief with source anchor, artifacts and u
       kind: "teaching",
     });
     const tools = host.nativeTools("chat-contrast", "teacher");
-    const result = await runTool(tools, "learning_path_get_brief", {});
+    const result = await runTool(tools, "roadmap_get_brief", {});
     assert.equal(result.isError, false);
 
     assert.equal(result.details.nodeId, "n-contrast");
@@ -160,7 +160,7 @@ test("linked sessions receive the node brief with source anchor, artifacts and u
     );
     assert.match(watchpoints[0]!.summary, /Drops a sign/);
     assert.equal((result.details.artifact as { type: string }).type, "retrieval_cue");
-    assert.match(result.text, /# Learning Path child session brief/);
+    assert.match(result.text, /# Roadmap child session brief/);
     assert.match(result.text, /Anchor: OSTEP — chapter 26, section 27\.1, pages 301-320/);
     assert.match(result.text, /Drops a sign while expanding\./);
     assert.match(result.text, /Retrieval cue/);
@@ -175,7 +175,7 @@ test("progress, errors and advisory pivots persist without restructuring the pat
   try {
     const tools = host.nativeTools("chat-1", "teacher");
 
-    const progress = await runTool(tools, "learning_path_update_progress", {
+    const progress = await runTool(tools, "roadmap_update_progress", {
       progression: "consolidated",
       artifactNote: "Wrote the smallest failing interpreter.",
     });
@@ -186,7 +186,7 @@ test("progress, errors and advisory pivots persist without restructuring the pat
     assert.equal(node.progression, "consolidated");
     assert.equal(node.artifactNote, "Wrote the smallest failing interpreter.");
 
-    const logged = await runTool(tools, "learning_path_log_error", {
+    const logged = await runTool(tools, "roadmap_log_error", {
       category: "misconception",
       summary: "Treats the diagram as the proof.",
     });
@@ -199,7 +199,7 @@ test("progress, errors and advisory pivots persist without restructuring the pat
     assert.equal(entry.resolved, false);
     assert.equal(entry.sessionChatId, "chat-1");
 
-    const upstream = await runTool(tools, "learning_path_log_error", {
+    const upstream = await runTool(tools, "roadmap_log_error", {
       category: "cue_failure",
       summary: "Did not recognise the holistic map when unlabelled.",
       upstreamNodeId: "n-holistic",
@@ -209,7 +209,7 @@ test("progress, errors and advisory pivots persist without restructuring the pat
     const holistic = saved.modules[0]!.nodes.find((entry) => entry.id === "n-holistic")!;
     assert.equal(holistic.errors.at(-1)!.category, "cue_failure");
 
-    const badUpstream = await runTool(tools, "learning_path_log_error", {
+    const badUpstream = await runTool(tools, "roadmap_log_error", {
       category: "cue_failure",
       summary: "Not interleaved with this node.",
       upstreamNodeId: "n-checkpoint",
@@ -222,7 +222,7 @@ test("progress, errors and advisory pivots persist without restructuring the pat
       id: module.id,
       nodes: module.nodes.map((candidate) => candidate.id),
     }));
-    const pivot = await runTool(tools, "learning_path_suggest_pivot", {
+    const pivot = await runTool(tools, "roadmap_suggest_pivot", {
       proposalType: "skill",
       title: "Add a sign-tracking drill",
       rationale: "Mechanics keep slipping while the idea is understood.",
@@ -246,7 +246,7 @@ test("progress, errors and advisory pivots persist without restructuring the pat
     assert.equal(suggestion.proposalType, "skill");
     assert.equal(suggestion.insertedNodeId, undefined);
 
-    const holisticPivot = await runTool(tools, "learning_path_suggest_pivot", {
+    const holisticPivot = await runTool(tools, "roadmap_suggest_pivot", {
       proposalType: "holistic",
       title: "Rebuild the map",
       rationale: "Out of scope for a child-session pivot.",

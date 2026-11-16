@@ -10,6 +10,7 @@
  * - `ctx.ui.mountButton` for the PDF/UTF-8 upload trigger.
  * All handles are scoped to the per-mount `AbortSignal` and disposed on unmount.
  */
+import { t } from "../i18n.ts";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ArchitectProgress } from "../topics.ts";
 import type {
@@ -56,7 +57,7 @@ function requestId(): string {
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
-  return typeof error === "string" && error.trim() ? error : "Unexpected error.";
+  return typeof error === "string" && error.trim() ? error : t("e.unexpected");
 }
 
 function messageText(message: unknown): string | null {
@@ -94,10 +95,10 @@ export function createArchitectPane(
 ): ArchitectPane {
   const document = container.ownerDocument;
   const root = element(document, "section", "lp-architect");
-  root.setAttribute("aria-label", "Path Architect");
+  root.setAttribute("aria-label", t("a.title"));
 
   const headingRow = element(document, "div", "lp-pane-heading");
-  headingRow.append(element(document, "h2", "lp-pane-title", "Path Architect"));
+  headingRow.append(element(document, "h2", "lp-pane-title", t("a.title")));
   const status = element(document, "p", "lp-architect-status");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
@@ -105,13 +106,13 @@ export function createArchitectPane(
   root.append(headingRow);
 
   const log = element(document, "div", "lp-chat-log");
-  log.setAttribute("aria-label", "Architect conversation");
+  log.setAttribute("aria-label", t("a.log"));
   // Committed history is re-rendered only when it changes; the streamed partial
   // lives in its own section so progress ticks never remount the whole log.
   const history = element(document, "div", "lp-chat-history");
   const live = element(document, "div", "lp-chat-live");
   const emptyChat = element(document, "p", "lp-empty-chat",
-    "Describe your goal and background. A source is optional; you can also upload a PDF or text. The Architect will propose a path.");
+    t("a.empty"));
   log.append(history, live, emptyChat);
   root.append(log);
 
@@ -126,7 +127,7 @@ export function createArchitectPane(
   fileInput.type = "file";
   fileInput.accept = ".pdf,.md,.markdown,.txt,.text,application/pdf,text/plain,text/markdown";
   fileInput.hidden = true;
-  fileInput.setAttribute("aria-label", "Upload a PDF or UTF-8 text source");
+  fileInput.setAttribute("aria-label", t("a.uploadAria"));
   uploadRow.append(fileInput);
   root.append(uploadRow);
 
@@ -155,7 +156,7 @@ export function createArchitectPane(
   const uploadButton = ctx.ui.mountButton(
     uploadHost,
     {
-      label: "Upload PDF or text",
+      label: t("a.upload"),
       variant: "outline",
       size: "sm",
       onClick: () => {
@@ -184,8 +185,8 @@ export function createArchitectPane(
       busy: busy(),
       canSend: draft.trim().length > 0,
       placeholder: conversation
-        ? "Refine the path, or ask what to study next…"
-        : "Describe your goal and background (source optional)…",
+        ? t("a.phRefine")
+        : t("a.phNew"),
     },
     model: {
       value: model,
@@ -222,10 +223,10 @@ export function createArchitectPane(
   function updateComposer(): void {
     if (disposed || signal.aborted) return;
     modelHint.textContent = conversation
-      ? "All Architect conversations share one model. Choosing a different model in Create a Path switches it for every conversation's later messages."
+      ? t("a.sharedModel")
       : model
-        ? `New Architect conversation: ${model.provider}:${model.id}${thinking ? ` · ${thinking} thinking` : ""}.`
-        : "Choose an Architect model below, or use the configured default (host strong slot or plugin override). The choice applies when you send your first message.";
+        ? t("a.newModel", { model: `${model.provider}:${model.id}`, thinking: thinking ? t("a.thinkingSuffix", { level: thinking }) : "" })
+        : t("a.chooseModel");
     composerHandle?.update(composerProps());
   }
 
@@ -238,26 +239,26 @@ export function createArchitectPane(
       return;
     }
     if (creating || sending || conversation?.status === "running") {
-      status.textContent = creating ? "Starting Architect…" : "Architect is thinking…";
+      status.textContent = creating ? t("a.starting") : t("a.thinking");
       status.classList.add("lp-status-busy");
       return;
     }
     if (conversation?.status === "error") {
-      status.textContent = conversation.error ?? "The Architect stopped with an error.";
+      status.textContent = conversation.error ?? t("a.failed");
       status.classList.add("lp-status-error");
       return;
     }
     if (conversation?.status === "waiting") {
-      status.textContent = "The Architect is waiting for your input.";
+      status.textContent = t("a.waiting");
       return;
     }
     if (conversation?.status === "interrupted") {
-      status.textContent = "Stopped. Continue when you are ready.";
+      status.textContent = t("a.stopped");
       return;
     }
     status.textContent = conversation
-      ? "Ready. Ask for a new path or refine the current one."
-      : "Start a conversation to create a path.";
+      ? t("a.ready")
+      : t("a.start");
   }
 
   function disposeHandles(handles: PluginWidgetHandle<unknown>[]): void {
@@ -289,7 +290,7 @@ export function createArchitectPane(
     );
     article.dataset.role = role;
     article.append(
-      element(document, "span", "lp-chat-role", role === "user" ? "You" : "Architect"),
+      element(document, "span", "lp-chat-role", role === "user" ? t("a.you") : t("a.title")),
     );
     if (role === "assistant") {
       const host = element(document, "div", "lp-chat-markdown");
@@ -312,19 +313,19 @@ export function createArchitectPane(
       if (part?.type === "thinking" && typeof part.thinking === "string" && part.thinking.trim()) {
         if (streaming) {
           const block = element(document, "div", "lp-chat-reasoning");
-          block.append(element(document, "span", "lp-chat-role", "Architect reasoning"));
+          block.append(element(document, "span", "lp-chat-role", t("a.reasoning")));
           block.append(element(document, "p", "lp-chat-text", part.thinking));
           target.append(block);
         } else {
           const block = element(document, "details", "lp-chat-reasoning");
-          block.append(element(document, "summary", "lp-chat-role", "Architect reasoning"));
+          block.append(element(document, "summary", "lp-chat-role", t("a.reasoning")));
           block.append(element(document, "p", "lp-chat-text", part.thinking));
           target.append(block);
         }
         count++;
       } else if (part?.type === "toolCall" && typeof part.name === "string") {
         target.append(
-          element(document, "p", "lp-chat-activity", streaming ? `Using ${part.name}…` : `Used ${part.name}`),
+          element(document, "p", "lp-chat-activity", streaming ? t("a.using", { name: String(part.name) }) : t("a.used", { name: String(part.name) })),
         );
         count++;
       }
@@ -389,7 +390,7 @@ export function createArchitectPane(
   function startNew(): void {
     if (signal.aborted || disposed) return;
     if (busy()) {
-      error = "Stop the current Architect run before starting a new path.";
+      error = t("a.stopFirst");
       renderStatus();
       return;
     }
@@ -428,7 +429,7 @@ export function createArchitectPane(
       return result.conversation.id;
     } catch (problem) {
       if (signal.aborted || disposed) return null;
-      error = `Could not start the Architect: ${errorMessage(problem)}`;
+      error = t("a.startFailed", { message: errorMessage(problem) });
       renderStatus();
       return null;
     } finally {
@@ -452,7 +453,7 @@ export function createArchitectPane(
       setConversation(result.conversation);
     } catch (problem) {
       if (signal.aborted || disposed || version !== loadVersion) return;
-      error = `Could not load the Architect conversation: ${errorMessage(problem)}`;
+      error = t("a.loadFailed", { message: errorMessage(problem) });
       renderStatus();
     }
   }
@@ -485,7 +486,7 @@ export function createArchitectPane(
       });
     } catch (problem) {
       if (signal.aborted || disposed || version !== loadVersion) return;
-      error = `Could not load the Architect conversation: ${errorMessage(problem)}`;
+      error = t("a.loadFailed", { message: errorMessage(problem) });
       renderStatus();
     }
   }
@@ -514,7 +515,7 @@ export function createArchitectPane(
       setConversation(result.conversation);
     } catch (problem) {
       if (signal.aborted || disposed) return;
-      error = `Could not send the message: ${errorMessage(problem)}`;
+      error = t("a.sendFailed", { message: errorMessage(problem) });
       renderStatus();
     } finally {
       sending = false;
@@ -546,7 +547,7 @@ export function createArchitectPane(
       setConversation(result.conversation);
     } catch (problem) {
       if (signal.aborted || disposed) return;
-      error = `Could not stop the Architect: ${errorMessage(problem)}`;
+      error = t("a.stopFailed", { message: errorMessage(problem) });
       renderStatus();
     }
   }
@@ -554,10 +555,10 @@ export function createArchitectPane(
   async function uploadFile(file: File): Promise<void> {
     if (signal.aborted || disposed || uploading) return;
     uploading = true;
-    uploadButton.update({ label: "Upload PDF or text", disabled: true });
+    uploadButton.update({ label: t("a.upload"), disabled: true });
     uploadStatus.className = "lp-upload-status";
     delete uploadStatus.dataset.state;
-    uploadStatus.textContent = `Converting ${file.name}…`;
+    uploadStatus.textContent = t("a.converting", { name: file.name });
     try {
       const converted = await ctx.documents.toMarkdown(file, { signal });
       if (signal.aborted || disposed) return;
@@ -568,12 +569,12 @@ export function createArchitectPane(
       if (signal.aborted || disposed) return;
       const notices = converted.notices.length > 0 ? ` ${converted.notices.join(" ")}` : "";
       uploadStatus.textContent = saved.deduplicated
-        ? `${saved.reference.name} was already in your sources.${notices}`
-        : `Added ${saved.reference.name} to your sources.${notices}`;
+        ? t("a.already", { name: saved.reference.name, notices })
+        : t("a.added", { name: saved.reference.name, notices });
       uploadStatus.dataset.state = "success";
     } catch (problem) {
       if (signal.aborted || disposed) return;
-      uploadStatus.textContent = `Could not use ${file.name}: ${errorMessage(problem)}`;
+      uploadStatus.textContent = t("a.useFailed", { name: file.name, message: errorMessage(problem) });
       uploadStatus.dataset.state = "error";
     } finally {
       uploading = false;

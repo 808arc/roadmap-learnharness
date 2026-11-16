@@ -12,6 +12,7 @@
  * Session…". If linking fails after staging, the staged prompt is cleared so a
  * later click cannot auto-send a brief into an unlinked session.
  */
+import { locale } from "./i18n.ts";
 import type { PluginFrontendContext } from "learnharness-plugin-api";
 import type { ChildSessionKind } from "./domain.ts";
 import { LAUNCH_FAILURE, createBrowserSessionHost } from "./native-session-host.ts";
@@ -65,6 +66,7 @@ export function createSessionLauncher(
   return {
     async start(input) {
       const prepared = await ctx.call<PreparedLaunch>("sessions.prepare", {
+        locale: locale(),
         pathId: input.pathId,
         nodeId: input.nodeId,
         kind: input.kind,

@@ -69,7 +69,7 @@ test("Architect definition is reconstructed on activation and released on cleanu
     (definition.tools ?? []).map((tool) => tool.name),
     ["list_uploaded_sources", "read_uploaded_source_chunk", "get_learning_path", "save_learning_path", "save_learning_path_json"],
   );
-  assert.match(definition.instructions, /Learning Path Architect/);
+  assert.match(definition.instructions, /Roadmap Architect/);
   assert.deepEqual(definition.model, {
     provider: "test",
     id: "architect-model",
@@ -658,4 +658,54 @@ test("paths.updateNode records progression and per-node artifacts without rewrit
     h.call("paths.updateNode", { pathId: "path-missing", nodeId: "n-concept", progression: "in_progress" }),
     /Unknown path/,
   );
+});
+
+test("the Architect saves roadmap marks, outcomes and resources, and refinement keeps them", async (t) => {
+  const h = host(t);
+  await createConversation(h);
+  const draft = {
+    title: "C for microcontrollers", goal: "Write and read C programs for microcontrollers",
+    sourceSpine: { mode: "canonical", references: [{ title: "K&R", kind: "textbook" }] },
+    modules: [{ title: "Basics", nodes: [
+      { type: "skill", title: "Compiler: GCC", goal: "Build with GCC", alternativeGroup: "compiler",
+        sourceAnchor: { reference: "K&R", chapter: "1" } },
+      { type: "skill", title: "Compiler: Clang", goal: "Build with Clang", alternativeGroup: "compiler",
+        sourceAnchor: { reference: "K&R", chapter: "1" } },
+      { type: "concept", title: "Pointers", goal: "Explain what a pointer stores",
+        outcomes: ["Explain what a pointer stores", "Read int *p"],
+        resources: [{ title: "cppreference: pointers", kind: "article", url: "https://en.cppreference.com/w/c/language/pointer", free: true }],
+        sourceAnchor: { reference: "K&R", chapter: "5" } },
+      { type: "bridge", title: "Valgrind", goal: "Find leaks", optional: true,
+        sourceAnchor: { reference: "K&R", chapter: "7" } },
+    ] }],
+  };
+  const schema = h.definitions.get(ARCHITECT_DEFINITION_ID)!.tools!.find((tool) => tool.name === "save_learning_path")!;
+  assert.doesNotThrow(() => validateToolArguments(schema as never, { type: "toolCall", id: "c", name: schema.name, arguments: draft } as never));
+
+  const saved = await h.runTool<ToolResult>("save_learning_path", draft);
+  assert.equal(saved.isError, undefined);
+  const path = (await h.call<{ path: any }>("paths.get", { id: saved.details.pathId })).path;
+  const [gcc, clang, pointers, valgrind] = path.modules[0].nodes;
+  assert.equal(gcc.alternativeGroup, "compiler");
+  assert.equal(clang.alternativeGroup, "compiler");
+  assert.deepEqual(pointers.outcomes, ["Explain what a pointer stores", "Read int *p"]);
+  assert.equal(pointers.resources[0].kind, "article");
+  assert.equal(valgrind.optional, true);
+
+  // The outline the Architect reads back carries the marks it must echo.
+  const outline = await h.runTool<ToolResult>("get_learning_path", { id: path.id });
+  assert.match(JSON.stringify(outline.details ?? outline.content), /alternativeGroup/);
+
+  // A refinement that only renames keeps the learner-facing marks.
+  const refined = await h.runTool<ToolResult>("save_learning_path", {
+    id: path.id, title: path.title, goal: path.goal, sourceSpine: path.sourceSpine,
+    modules: [{ id: path.modules[0].id, title: "Basics", nodes: path.modules[0].nodes.map(
+      (node: any) => ({ id: node.id, type: node.type, title: `${node.title}!`, goal: node.goal, sourceAnchor: node.sourceAnchor }),
+    ) }],
+  });
+  assert.equal(refined.isError, undefined);
+  const after = (await h.call<{ path: any }>("paths.get", { id: path.id })).path.modules[0].nodes;
+  assert.equal(after[2].title, "Pointers!");
+  assert.deepEqual(after[2].outcomes, pointers.outcomes);
+  assert.equal(after[3].optional, true);
 });

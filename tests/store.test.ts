@@ -172,8 +172,11 @@ test("converted sources use UUID-only private paths and ignore foreign files", (
   store.writeSource(UUID, markdown);
   assert.equal(store.readSource(UUID), markdown);
   assert.deepEqual(store.listSourceIds(), [UUID]);
-  assert.equal(fs.statSync(path.join(dir, SOURCES_DIRECTORY, `${UUID}.md`)).mode & 0o077, 0);
-  assert.equal(fs.statSync(path.join(dir, SOURCES_DIRECTORY)).mode & 0o077, 0);
+  // POSIX permission bits do not exist on Windows; private modes are checked elsewhere.
+  if (process.platform !== "win32") {
+    assert.equal(fs.statSync(path.join(dir, SOURCES_DIRECTORY, `${UUID}.md`)).mode & 0o077, 0);
+    assert.equal(fs.statSync(path.join(dir, SOURCES_DIRECTORY)).mode & 0o077, 0);
+  }
 
   write(dir, path.join(SOURCES_DIRECTORY, "notes.md"), "not a managed source");
   write(dir, path.join(SOURCES_DIRECTORY, "not-a-uuid.md"), "not a managed source");

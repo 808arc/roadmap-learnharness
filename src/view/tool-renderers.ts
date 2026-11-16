@@ -5,6 +5,9 @@
  * session's transcript is not dominated by long briefs. Missing/errored output
  * falls back to readable text rather than model HTML.
  */
+import { t } from "../i18n.ts";
+import type { MessageKey } from "../i18n.ts";
+const PROGRESS_KEYS = ["unstarted", "in_progress", "consolidated", "skipped"] as const;
 import type { PluginFrontendContext, PluginToolRenderer, PluginToolRenderProps } from "learnharness-plugin-api";
 import { LEARNING_PATH_TOOL_NAMES } from "../tool-names.ts";
 import type { ErrorCategory, PivotProposalType } from "../domain.ts";
@@ -33,43 +36,41 @@ function number(value: unknown): number {
 
 function summary(tool: PluginToolRenderProps): { headline: string; detail?: string } {
   const output = record(tool.output);
-  const nodeTitle = text(output.nodeTitle) ?? "this node";
+  const nodeTitle = text(output.nodeTitle) ?? t("tr.thisNode");
   switch (tool.toolName) {
-    case "learning_path_get_brief": {
+    case "roadmap_get_brief": {
       const watchpoints = Array.isArray(output.watchpoints) ? output.watchpoints.length : 0;
       const artifact = record(output.artifact);
       const artifactLabel = text(artifact.label);
       return {
-        headline: `Brief for ${nodeTitle}`,
-        detail: `${watchpoints} watchpoint${watchpoints === 1 ? "" : "s"}${
-          artifactLabel ? ` · ${artifactLabel}` : ""
-        }`,
+        headline: t("tr.brief", { node: nodeTitle }),
+        detail: `${t("tr.watchpoints", { n: watchpoints })}${artifactLabel ? ` · ${artifactLabel}` : ""}`,
       };
     }
-    case "learning_path_update_progress": {
+    case "roadmap_update_progress": {
       const progression = text(output.progression) ?? "updated";
       const artifactNote = text(output.artifactNote);
       return {
-        headline: `${nodeTitle}: ${progression.replace("_", " ")}`,
-        ...(artifactNote ? { detail: `Artifact note: ${artifactNote}` } : {}),
+        headline: t("tr.progress", { node: nodeTitle, state: (PROGRESS_KEYS as readonly string[]).includes(progression) ? t(`status.${progression}` as MessageKey) : progression.replace("_", " ") }),
+        ...(artifactNote ? { detail: t("tr.artifactNote", { text: artifactNote }) } : {}),
       };
     }
-    case "learning_path_log_error": {
+    case "roadmap_log_error": {
       const category = text(output.category) as ErrorCategory | null;
-      const label = category ? (ERROR_CATEGORY_LABELS[category] ?? category) : "error";
+      const label = category ? t(`err.${category}` as MessageKey) : t("legend.error");
       const message = text(output.summary);
       return {
-        headline: `Logged ${label} on ${nodeTitle}`,
+        headline: t("tr.logged", { label, node: nodeTitle }),
         ...(message ? { detail: message } : {}),
       };
     }
-    case "learning_path_suggest_pivot": {
+    case "roadmap_suggest_pivot": {
       const proposal = text(output.proposalType) as PivotProposalType | null;
-      const label = proposal ? (PIVOT_LABELS[proposal] ?? proposal) : "pivot";
+      const label = proposal ? t(`type.${proposal}` as MessageKey) : t("pivot.title");
       const title = text(output.title) ?? "detour";
       return {
-        headline: `Advisory ${label}: ${title}`,
-        detail: "Pending; the path was not changed. The learner decides.",
+        headline: t("tr.pivot", { label, title }),
+        detail: t("tr.pivotDetail"),
       };
     }
     default:
@@ -78,9 +79,9 @@ function summary(tool: PluginToolRenderProps): { headline: string; detail?: stri
 }
 
 function fallbackText(tool: PluginToolRenderProps): string | null {
-  if (tool.state === "output-error") return text(tool.errorText) ?? "The tool failed.";
-  if (tool.state === "input-streaming") return "Preparing…";
-  if (tool.state === "input-available") return "Running…";
+  if (tool.state === "output-error") return text(tool.errorText) ?? t("tr.failed");
+  if (tool.state === "input-streaming") return t("tr.preparing");
+  if (tool.state === "input-available") return t("tr.running");
   const content = tool.result?.content;
   if (Array.isArray(content)) {
     const parts = content
@@ -116,10 +117,10 @@ function rendererFor(toolName: string): PluginToolRenderer {
         if (view.detail) detail.textContent = view.detail;
       } else {
         headline.textContent = {
-          "learning_path_get_brief": "Reading the Learning Path brief",
-          "learning_path_update_progress": "Recording node progress",
-          "learning_path_log_error": "Logging a cognitive error",
-          "learning_path_suggest_pivot": "Recording an advisory pivot",
+          "roadmap_get_brief": t("tr.getBrief"),
+          "roadmap_update_progress": t("tr.updateProgress"),
+          "roadmap_log_error": t("tr.logError"),
+          "roadmap_suggest_pivot": t("tr.suggestPivot"),
         }[toolName] ?? toolName;
         const pending = fallbackText(tool);
         if (pending) detail.textContent = pending;
@@ -129,7 +130,7 @@ function rendererFor(toolName: string): PluginToolRenderer {
         card.dataset.error = "true";
         const error = document.createElement("span");
         error.className = "lp-tool-error";
-        error.textContent = fallbackText(tool) ?? "The tool failed.";
+        error.textContent = fallbackText(tool) ?? t("tr.failed");
         detail.textContent = "";
         line.append(dot, headline);
         card.append(line, error);

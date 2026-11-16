@@ -6,7 +6,6 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { PluginTreeRow } from "learnharness-plugin-api";
 import type { NativeSessionHost } from "../src/native-session-host.ts";
 import {
   clearPathHubTarget,
@@ -14,6 +13,7 @@ import {
 } from "../src/session-navigation.ts";
 import { mountPathHub } from "../src/view/path-hub.ts";
 import { makePath } from "./fixtures.ts";
+import { chooseMenuItem, click, inspector, selectNode } from "./roadmap-dom.ts";
 import { createViewFixture } from "./view-host.ts";
 import type { ViewFixture } from "./view-host.ts";
 
@@ -52,44 +52,22 @@ async function mounted(fixture: ViewFixture, host?: NativeSessionHost): Promise<
   return fixture.root;
 }
 
-function row(fixture: ViewFixture, key: string): PluginTreeRow {
-  const tree = fixture.find("mountTree");
-  const rows: PluginTreeRow[] = [];
-  const visit = (entries: readonly PluginTreeRow[]) => {
-    for (const entry of entries) {
-      rows.push(entry);
-      if (entry.children) visit(entry.children);
-    }
-  };
-  visit(tree.props.rows as readonly PluginTreeRow[]);
-  const found = rows.find((entry) => entry.key === key);
-  assert.ok(found, `Missing row ${key}`);
-  return found;
-}
-
 function button(fixture: ViewFixture, label: string) {
   const found = fixture.all("mountButton").find((record) => record.props.label === label);
   assert.ok(found, `Missing button ${label}`);
   return found;
 }
 
-function inspector(fixture: ViewFixture): HTMLElement {
-  const element = fixture.root.querySelector<HTMLElement>(".lp-inspector");
-  assert.ok(element);
-  return element;
-}
-
-test("Start Teaching Chat creates, links, stages and opens a native session", async () => {
+test("Lesson creates, links, stages and opens a native session", async () => {
   const path = makePath();
   const fixture = createViewFixture({ paths: [path] });
   try {
     const host = fakeHost(fixture);
     await mounted(fixture, host);
-    await row(fixture, "node:n-skill").selection!.onChange(true);
-    await fixture.flush();
+    await selectNode(fixture, "n-skill");
     assert.equal(inspector(fixture).dataset.nodeId, "n-skill");
 
-    await button(fixture, "Start Teaching Chat").props.onClick();
+    click(fixture.root.querySelector(".rm-insp-foot")!, "Lesson");
     await fixture.flush();
     await fixture.flush();
 
@@ -103,7 +81,7 @@ test("Start Teaching Chat creates, links, stages and opens a native session", as
       .find((node) => node.id === "n-skill")!
       .childSessions.find((entry) => entry.chatId === "chat-new");
     assert.ok(linked);
-    assert.match(inspector(fixture).textContent ?? "", /Teaching — Teaching: Node n-skill/);
+    assert.match(inspector(fixture).textContent ?? "", /Lesson · Teaching: Node n-skill/);
   } finally {
     clearPathHubTarget();
     fixture.restore();
@@ -116,27 +94,17 @@ test("a deleted native chat is marked missing and can be unlinked without touchi
   try {
     assert.equal(fixture.nativeChats.delete("chat-1"), true);
     await mounted(fixture);
-    await row(fixture, "node:n-concept").selection!.onChange(true);
-    await fixture.flush();
+    await selectNode(fixture, "n-concept");
 
-    assert.match(inspector(fixture).textContent ?? "", /Missing native chat/);
-    const tree = fixture.find("mountTree");
-    const chatRow = (tree.props.rows as PluginTreeRow[])
-      .flatMap((module) => module.children ?? [])
-      .flatMap((node) => node.children ?? [])
-      .find((entry) => entry.key === "chat:n-concept:chat-1");
-    assert.ok(chatRow);
-    const content = tree.treeContents.find((entry) => entry.key === "chat:n-concept:chat-1");
-    assert.ok(content);
-    assert.match(content.container.textContent ?? "", /\(missing\)/);
+    assert.match(inspector(fixture).textContent ?? "", /chat was deleted/);
+    const row = inspector(fixture).querySelector<HTMLElement>(".rm-session.rm-session-missing")!;
+    assert.ok(row, "the missing chat is marked");
+    assert.equal(row.querySelector<HTMLButtonElement>(".rm-session-open")!.disabled, true);
 
-    await button(fixture, "Actions").props.onClick();
-    const menu = fixture.find("openMenu");
-    assert.equal(menu.props.label, "Session actions for First teaching chat");
-    const unlink = menu.props.items.find((item: { key: string }) => item.key === "unlink");
-    assert.ok(unlink);
-    await unlink.onSelect();
-    await fixture.flush();
+    row.querySelector<HTMLButtonElement>(".rm-icon-btn")!.click();
+    const menu = await chooseMenuItem(fixture, "unlink");
+    assert.equal(menu.label, "More");
+    assert.deepEqual(menu.items.map((item) => item.key), ["unlink"], "a missing chat cannot be opened");
     await fixture.flush();
 
     assert.equal(
@@ -147,14 +115,14 @@ test("a deleted native chat is marked missing and can be unlinked without touchi
         .childSessions.length,
       0,
     );
-    assert.doesNotMatch(inspector(fixture).textContent ?? "", /Missing native chat/);
+    assert.doesNotMatch(inspector(fixture).textContent ?? "", /chat was deleted/);
   } finally {
     clearPathHubTarget();
     fixture.restore();
   }
 });
 
-test("Link Existing Session offers only unlinked chats and attaches the chosen one", async () => {
+test("Link existing offers only unlinked chats and attaches the chosen one", async () => {
   const path = makePath();
   const fixture = createViewFixture({
     paths: [path],
@@ -162,15 +130,14 @@ test("Link Existing Session offers only unlinked chats and attaches the chosen o
   });
   try {
     await mounted(fixture);
-    await row(fixture, "node:n-skill").selection!.onChange(true);
-    await fixture.flush();
+    await selectNode(fixture, "n-skill");
 
-    await button(fixture, "Link Existing Session…").props.onClick();
+    click(inspector(fixture), "Link existing");
     await fixture.flush();
     await fixture.flush();
 
     const dialog = fixture.find("openDialog");
-    assert.equal(dialog.props.title, "Link Existing Session");
+    assert.equal(dialog.props.title, "Link an existing session");
     const rows = dialog.contentContainer!.querySelectorAll(".lp-session-picker-row");
     assert.equal(rows.length, 1, "the already-linked chat-1 is not offered");
     assert.match(rows[0]!.textContent ?? "", /Free practice/);

@@ -111,7 +111,7 @@ interface ArchitectFile {
 
 function asRecord(value: unknown, filename: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: expected a JSON object. No data was changed.`);
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: expected a JSON object. No data was changed.`);
   }
   return value as Record<string, unknown>;
 }
@@ -129,25 +129,25 @@ function readJsonFile(filename: string): unknown | undefined {
   try {
     return JSON.parse(text);
   } catch {
-    throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: invalid JSON. No data was changed.`);
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: invalid JSON. No data was changed.`);
   }
 }
 
 function readSchemaVersion(record: Record<string, unknown>, filename: string): number {
   const version = record.schemaVersion;
   if (!Number.isSafeInteger(version) || (version as number) < 1) {
-    throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: missing schema version. No data was changed.`);
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: missing schema version. No data was changed.`);
   }
   if ((version as number) > STORE_SCHEMA_VERSION) {
     throw new StoreError(
       "newer-schema",
-      `Learning Path data at ${filename} uses newer schema version ${version}; this plugin supports ${STORE_SCHEMA_VERSION}. No data was changed.`,
+      `Roadmap data at ${filename} uses newer schema version ${version}; this plugin supports ${STORE_SCHEMA_VERSION}. No data was changed.`,
     );
   }
   if (version !== STORE_SCHEMA_VERSION) {
     throw new StoreError(
       "unsupported-schema",
-      `Learning Path data at ${filename} uses unsupported schema version ${version}. No data was changed.`,
+      `Roadmap data at ${filename} uses unsupported schema version ${version}. No data was changed.`,
     );
   }
   return version;
@@ -156,7 +156,7 @@ function readSchemaVersion(record: Record<string, unknown>, filename: string): n
 function readRevision(record: Record<string, unknown>, filename: string): number {
   const revision = record.revision;
   if (!Number.isSafeInteger(revision) || (revision as number) < 0) {
-    throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: invalid revision. No data was changed.`);
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: invalid revision. No data was changed.`);
   }
   return revision as number;
 }
@@ -168,7 +168,7 @@ function loadPathsFile(filename: string): { paths: LearningPath[]; revision: num
   readSchemaVersion(record, filename);
   const revision = readRevision(record, filename);
   if (!Array.isArray(record.paths)) {
-    throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: paths must be an array. No data was changed.`);
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: paths must be an array. No data was changed.`);
   }
   const seen = new Set<string>();
   const paths = record.paths.map((value, index) => {
@@ -177,11 +177,11 @@ function loadPathsFile(filename: string): { paths: LearningPath[]; revision: num
       const issue = result.issues[0];
       throw new StoreError(
         "corrupt",
-        `Learning Path data at ${filename} is corrupt: paths[${index}] ${issue?.path ?? ""} ${issue?.message ?? "is invalid"}. No data was changed.`,
+        `Roadmap data at ${filename} is corrupt: paths[${index}] ${issue?.path ?? ""} ${issue?.message ?? "is invalid"}. No data was changed.`,
       );
     }
     if (seen.has(result.value.id)) {
-      throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: duplicate path id "${result.value.id}". No data was changed.`);
+      throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: duplicate path id "${result.value.id}". No data was changed.`);
     }
     seen.add(result.value.id);
     return result.value;
@@ -198,7 +198,7 @@ function loadSettingsFile(filename: string): { settings: PluginSettings; revisio
   try {
     return { settings: parsePluginSettings(record.settings), revision };
   } catch {
-    throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: invalid settings. No data was changed.`);
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: invalid settings. No data was changed.`);
   }
 }
 
@@ -243,7 +243,7 @@ function loadArchitectFile(filename: string): { model: ArchitectModelConfig | nu
   try {
     return { model: parseArchitectModel(record.model), revision };
   } catch {
-    throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: invalid Architect model. No data was changed.`);
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: invalid Architect model. No data was changed.`);
   }
 }
 
@@ -255,7 +255,7 @@ function loadSourceIndex(directory: string): { sources: UploadedSourceReference[
   readSchemaVersion(record, filename);
   const revision = readRevision(record, filename);
   if (!Array.isArray(record.sources)) {
-    throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: sources must be an array. No data was changed.`);
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: sources must be an array. No data was changed.`);
   }
   const seen = new Set<string>();
   const sources = record.sources.map((entry, index) => {
@@ -267,11 +267,11 @@ function loadSourceIndex(directory: string): { sources: UploadedSourceReference[
       const issue = error.issues[0];
       throw new StoreError(
         "corrupt",
-        `Learning Path data at ${filename} is corrupt: sources[${index}] ${issue?.path ?? ""} ${issue?.message ?? "is invalid"}. No data was changed.`,
+        `Roadmap data at ${filename} is corrupt: sources[${index}] ${issue?.path ?? ""} ${issue?.message ?? "is invalid"}. No data was changed.`,
       );
     }
     if (seen.has(parsed.sourceId)) {
-      throw new StoreError("corrupt", `Learning Path data at ${filename} is corrupt: duplicate source id "${parsed.sourceId}". No data was changed.`);
+      throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: duplicate source id "${parsed.sourceId}". No data was changed.`);
     }
     seen.add(parsed.sourceId);
     return parsed;

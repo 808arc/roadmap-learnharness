@@ -10,6 +10,7 @@
  * Registration alone creates no chrome; placement is explicit. The host owns
  * busy/error handling, so `run` rejects honestly instead of hiding failures.
  */
+import { t } from "./i18n.ts";
 import type { PluginActionContext, PluginFrontendContext } from "learnharness-plugin-api";
 import { createSessionLauncher } from "./session-launcher.ts";
 import type { SessionLauncher } from "./session-launcher.ts";
@@ -32,7 +33,7 @@ export function registerSessionActions(
   disposers.push(
     ctx.registerAction({
       id: "lp-open-parent-learning-path",
-      name: "Open Parent Learning Path",
+      name: t("sa.open"),
       run: async (context: PluginActionContext) => {
         if (context.surface !== "session") return;
         let parent: SessionParentResult["link"] = null;
@@ -63,7 +64,7 @@ export function registerSessionActions(
   disposers.push(
     ctx.registerAction({
       id: "lp-attach-session-to-path",
-      name: "Attach Session to Path…",
+      name: t("sa.attach"),
       run: async (context: PluginActionContext) => {
         if (context.surface !== "session") return;
         openAttachSessionDialog(ctx, {

@@ -100,7 +100,7 @@ test("backend enable, disable and re-enable are idempotent and keep stored data"
   assert.equal(host.toolContributions.length, 1);
   assert.equal(host.instructions.length, 1);
   assert.deepEqual(await host.call("paths.status"), {
-    id: "learning-path",
+    id: "roadmap",
     version: "0.1.0",
     active: true,
   });
@@ -139,7 +139,7 @@ test("frontend enable, disable and re-enable register one view and dispose its m
   const viewSignal = new AbortController();
   await view.mount(container, viewSignal.signal);
   await flushAll(fixture);
-  assert.ok(container.querySelector(".lp-hub"), "the view mounts the Path Hub");
+  assert.ok(container.querySelector(".rm-hub"), "the view mounts the Roadmap view");
 
   viewSignal.abort();
   await flushAll(fixture);
@@ -167,7 +167,7 @@ test("frontend enable, disable and re-enable register one view and dispose its m
   const settingsSignal = new AbortController();
   const cleanupSettings = await fixture.settingsMounts[0]!(settingsContainer, settingsSignal.signal);
   await flushAll(fixture);
-  assert.match(settingsContainer.textContent ?? "", /Learning Paths/);
+  assert.match(settingsContainer.textContent ?? "", /Roadmap/);
 
   settingsSignal.abort();
   if (typeof cleanupSettings === "function") cleanupSettings();
@@ -253,14 +253,15 @@ test("dialogs and menus defer Escape and focus to the host and close without sid
 
   mountPathHub(fixture.context, fixture.root, fixture.context.signal);
   await flushAll(fixture);
-  await selectedNode(fixture, "node:n-concept").selection!.onChange(true);
+  fixture.root.querySelector<HTMLButtonElement>('.rm-canvas .rm-node[data-node-id="n-concept"]')!.click();
   await flushAll(fixture);
 
   // A modal dialog: accessible title, content scoped to its own signal.
-  await buttonRecord(fixture, "Link Existing Session…").props.onClick();
+  const linkButton = [...fixture.root.querySelectorAll<HTMLButtonElement>(".rm-insp button")].find((button) => button.textContent === "Link existing")!;
+  linkButton.click();
   await flushAll(fixture);
   const dialog = fixture.find("openDialog");
-  assert.equal(dialog.props.title, "Link Existing Session");
+  assert.equal(dialog.props.title, "Link an existing session");
   assert.ok(dialog.props.title.trim().length > 0);
   assert.equal(dialog.signal, fixture.context.signal);
 
@@ -274,15 +275,16 @@ test("dialogs and menus defer Escape and focus to the host and close without sid
   );
 
   // An anchored menu: accessible label, stable item keys, no plugin keyboard work.
-  await buttonRecord(fixture, "Actions").props.onClick();
-  const menu = fixture.find("openMenu");
+  fixture.root.querySelector<HTMLButtonElement>(".rm-session .rm-icon-btn")!.click();
+  const menu = fixture.findLast("openMenu");
   const props = menu.props as PluginMenuProps;
-  assert.equal(props.label, "Session actions for First teaching chat");
+  assert.equal(props.label, "More");
   assert.deepEqual(
     props.items.map((item) => item.key),
     ["open", "unlink"],
   );
-  assert.equal(menu.signal, fixture.context.signal);
+  // The menu belongs to the current node panel render: it closes with it or with the view.
+  assert.equal(menu.signal.aborted, false);
 
   const callsBeforeMenuClose = fixture.calls.length;
   menu.handle.dispose(); // host-owned Escape/outside-click close
@@ -307,7 +309,7 @@ test("install:local updates dist, preserves data and runs without warnings", (t)
   const workspace = temporaryDirectory(t);
   const pluginsDirectory = path.join(workspace, "plugins");
   fs.mkdirSync(pluginsDirectory);
-  const installed = path.join(pluginsDirectory, "learning-path");
+  const installed = path.join(pluginsDirectory, "roadmap");
   const installedDist = path.join(installed, "dist");
   const installedData = path.join(installed, "data");
 

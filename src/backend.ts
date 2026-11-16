@@ -16,6 +16,8 @@
  * runs, `cleanup` releases handlers, subscriptions, the bridge and the definition,
  * and no tool writes after the signal aborts.
  */
+import { importLegacyData } from "./legacy-import.ts";
+import { sessionMetrics } from "./session-metrics.ts";
 import { randomUUID } from "node:crypto";
 import type {
   ModelCatalogResponse,
@@ -238,6 +240,12 @@ function updateNodeInPath(
 }
 
 export function activate(ctx: PluginBackendContext): void {
+  try {
+    importLegacyData(ctx.dataDirectory);
+  } catch (problem) {
+    // An import failure must never block Roadmap itself; the legacy data stays untouched.
+    console.warn("[roadmap] could not import Learning Paths data:", problem instanceof Error ? problem.message : problem);
+  }
   const store: LearningPathStore = openLearningPathStore(ctx.dataDirectory);
   const disposers: (() => void)[] = [];
   const watchers = new Map<string, () => void>();
@@ -247,7 +255,7 @@ export function activate(ctx: PluginBackendContext): void {
   const latestSnapshots = new Map<string, PluginAgentSnapshot>();
   // Opt-in, metadata-only diagnostics; never log prompts, source text or reasoning.
   const debug = (event: string, detail: Record<string, unknown>): void => {
-    if (process.env.LEARNING_PATH_DEBUG === "1") console.debug("[learning-path]", event, detail);
+    if (process.env.ROADMAP_DEBUG === "1") console.debug("[roadmap]", event, detail);
   };
   const createRequests = new Map<string, string>();
   let architect: ArchitectRegistration | null = null;
@@ -424,9 +432,9 @@ export function activate(ctx: PluginBackendContext): void {
   };
 
   const resolveModel = async (input: unknown): Promise<ArchitectModelConfig> => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const catalog: ModelCatalogResponse = await ctx.inference.catalog();
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
 
     const preferences = store.settings().architect;
     let choice: ArchitectModelConfig;
@@ -496,13 +504,13 @@ export function activate(ctx: PluginBackendContext): void {
   handle("settings.get", () => ({ settings: store.settings() }));
 
   handle("settings.save", async (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     // Validate the whole record before anything is written.
     const requested = parsePluginSettings(input);
     const preference = preferenceModel(requested.architect);
     if (preference) {
       const catalog = await ctx.inference.catalog();
-      if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+      if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
       assertModelAvailable(catalog, preference);
     }
     const saved = store.saveSettings(requested);
@@ -521,7 +529,7 @@ export function activate(ctx: PluginBackendContext): void {
   // Manual inspector edits. The Architect remains the only author of new paths;
   // this narrow write lets the learner record progression and an artifact choice.
   handle("paths.updateNode", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "paths.updateNode");
     const pathId = readText(value.pathId, "pathId", { max: 128 });
     const nodeId = readText(value.nodeId, "nodeId", { max: 128 });
@@ -580,7 +588,7 @@ export function activate(ctx: PluginBackendContext): void {
   // ---- Error Ledger and advisory pivots -----------------------------------
 
   handle("errors.update", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "errors.update");
     const pathId = readText(value.pathId, "pathId", { max: 128 });
     const nodeId = readText(value.nodeId, "nodeId", { max: 128 });
@@ -627,7 +635,7 @@ export function activate(ctx: PluginBackendContext): void {
   });
 
   handle("pivots.resolve", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "pivots.resolve");
     const pathId = readText(value.pathId, "pathId", { max: 128 });
     const nodeId = readText(value.nodeId, "nodeId", { max: 128 });
@@ -666,7 +674,7 @@ export function activate(ctx: PluginBackendContext): void {
   // Path deletion touches only plugin-owned records and orphaned converted
   // uploads. Native chats and Knowledge Graph records stay host-owned.
   handle("paths.delete", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const pathId = readText(object(input, "paths.delete").pathId, "pathId", { max: 128 });
     const path = store.path(pathId);
     if (!path) {
@@ -713,7 +721,7 @@ export function activate(ctx: PluginBackendContext): void {
 
   handle("sources.list", () => ({ sources: store.sources() }));
   handle("sources.save", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "sources.save");
     const name = readText(value.name, "name", { max: 300, trim: true });
     const markdown = readText(value.markdown, "markdown", { max: MAX_SOURCE_BYTES });
@@ -729,7 +737,7 @@ export function activate(ctx: PluginBackendContext): void {
 
   /** Build the opening prompt and title before a native chat is created. */
   handle("sessions.prepare", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "sessions.prepare");
     const pathId = readText(value.pathId, "pathId", { max: 128 });
     const nodeId = readText(value.nodeId, "nodeId", { max: 128 });
@@ -745,7 +753,8 @@ export function activate(ctx: PluginBackendContext): void {
       nodeId: node.id,
       nodeTitle: node.title,
       kind,
-      title: `${kind === "teaching" ? "Teaching" : "Practice"}: ${node.title}`,
+      // The view sends its interface language so the chat title matches the UI.
+      title: `${value.locale === "ru" ? (kind === "teaching" ? "Урок" : "Практика") : kind === "teaching" ? "Lesson" : "Practice"}: ${node.title}`,
       prompt: brief.text,
       watchpoints: brief.watchpoints.length,
     };
@@ -753,7 +762,7 @@ export function activate(ctx: PluginBackendContext): void {
 
   /** Link an existing native chat to one node; never creates or mutates the chat. */
   handle("sessions.link", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "sessions.link");
     const pathId = readText(value.pathId, "pathId", { max: 128 });
     const nodeId = readText(value.nodeId, "nodeId", { max: 128 });
@@ -805,7 +814,7 @@ export function activate(ctx: PluginBackendContext): void {
 
   /** Remove a stale link; the native chat is untouched. */
   handle("sessions.unlink", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "sessions.unlink");
     const pathId = readText(value.pathId, "pathId", { max: 128 });
     const nodeId = readText(value.nodeId, "nodeId", { max: 128 });
@@ -884,12 +893,17 @@ export function activate(ctx: PluginBackendContext): void {
         exists: boolean;
         title: string | null;
         updatedAt: string | null;
+        createdAt: string | null;
+        focusedMs: number;
+        answered: number;
+        correct: number;
       }
     >();
     for (const node of path.modules.flatMap((module) => module.nodes)) {
       for (const link of node.childSessions) {
         if (seen.has(link.chatId)) continue;
         const record = nativeSession(ctx, link.chatId);
+        const metrics = sessionMetrics(Array.isArray(record?.messages) ? record.messages : []);
         seen.set(link.chatId, {
           chatId: link.chatId,
           kind: link.kind,
@@ -897,6 +911,10 @@ export function activate(ctx: PluginBackendContext): void {
           exists: record !== null,
           title: record?.title ?? null,
           updatedAt: record?.updatedAt ?? null,
+          createdAt: record?.createdAt ?? link.createdAt,
+          focusedMs: metrics.focusedMs,
+          answered: metrics.answered,
+          correct: metrics.correct,
         });
       }
     }
@@ -904,7 +922,7 @@ export function activate(ctx: PluginBackendContext): void {
   });
 
   handle("architect.create", async (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = input === undefined ? {} : object(input, "architect.create");
     const requestId =
       value.requestId === undefined ? null : readRequestId(value.requestId);
@@ -920,7 +938,7 @@ export function activate(ctx: PluginBackendContext): void {
     }
     debug("architect.create.request", { requestId });
     const model = await resolveModel(value.model);
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     ensureRegistered(model);
     debug("architect.create.model", { provider: model.provider, id: model.id });
     const conversation = ctx.agents.create(ARCHITECT_DEFINITION_ID);
@@ -968,7 +986,7 @@ export function activate(ctx: PluginBackendContext): void {
   });
 
   handle("architect.send", async (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "architect.send");
     const id = readText(value.id, "id", { max: 128 });
     const text = readText(value.text, "text", { max: MAX_MESSAGE_CHARS });
@@ -988,7 +1006,7 @@ export function activate(ctx: PluginBackendContext): void {
   });
 
   handle("architect.abort", (input) => {
-    if (ctx.signal.aborted) throw new Error("The Learning Path plugin is shutting down.");
+    if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
     const value = object(input, "architect.abort");
     const id = readText(value.id, "id", { max: 128 });
     // Aborting an idle/interrupted run is already a no-op; a retried request ID is accepted.

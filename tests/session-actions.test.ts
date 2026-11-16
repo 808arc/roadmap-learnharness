@@ -49,8 +49,8 @@ test("registers both actions and explicit top-bar placements for teaching and pr
     assert.deepEqual(
       fixture.actions.map((entry) => [entry.id, entry.name]),
       [
-        ["lp-open-parent-learning-path", "Open Parent Learning Path"],
-        ["lp-attach-session-to-path", "Attach Session to Path…"],
+        ["lp-open-parent-learning-path", "Open in roadmap"],
+        ["lp-attach-session-to-path", "Attach to roadmap…"],
       ],
     );
     assert.deepEqual(placement(fixture, "lp-open-parent-learning-path"), {
@@ -111,7 +111,7 @@ test("Attach Session to Path links the current chat after choosing a node", asyn
     await fixture.flush();
 
     const dialog = fixture.find("openDialog");
-    assert.equal(dialog.props.title, "Attach Session to Path");
+    assert.equal(dialog.props.title, "Attach session to a roadmap");
     const content = dialog.contentContainer!;
     const selects = content.querySelectorAll("select");
     assert.equal(selects.length, 2, "path and node selectors");
@@ -128,7 +128,7 @@ test("Attach Session to Path links the current chat after choosing a node", asyn
 
     const attach = fixture
       .all("mountButton")
-      .find((record) => record.props.label === "Attach Session");
+      .find((record) => record.props.label === "Attach");
     assert.ok(attach, "the dialog exposes an explicit Attach Session button");
     await attach.props.onClick();
     await fixture.flush();

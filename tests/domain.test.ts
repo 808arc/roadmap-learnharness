@@ -17,11 +17,21 @@ import {
   validateLearningPath,
   validatePluginSettings,
 } from "../src/domain.ts";
-import type { LearningPath } from "../src/domain.ts";
+import type { LearningPath, PathNode } from "../src/domain.ts";
 import { AT, makePath, rawPath } from "./fixtures.ts";
 
-test("accepts a full path covering all six node types and three progression states", () => {
+test("accepts a full path covering all six node types and four progression states", () => {
   const path = makePath();
+  // The learner-only "skipped" state, plus the Roadmap node marks.
+  const checkpoint = path.modules[1]!.nodes[1]!;
+  (path.modules[1]!.nodes as PathNode[])[1] = {
+    ...checkpoint,
+    progression: "skipped",
+    optional: true,
+    alternativeGroup: "capstone",
+    outcomes: ["Combine the module's tools without a hint"],
+    resources: [{ title: "Problem set", kind: "exercises", url: "https://example.org/set", free: true }],
+  };
   const validated = parseLearningPath(path);
   assert.deepEqual(validated, path);
   const types = validated.modules.flatMap((module) => module.nodes.map((node) => node.type));
@@ -30,7 +40,7 @@ test("accepts a full path covering all six node types and three progression stat
     [...new Set(validated.modules.flatMap((module) => module.nodes.map((node) => node.progression)))].sort(),
     [...PROGRESSION_STATES].sort(),
   );
-  assert.deepEqual(PROGRESSION_STATES, ["unstarted", "in_progress", "consolidated"]);
+  assert.deepEqual(PROGRESSION_STATES, ["unstarted", "in_progress", "consolidated", "skipped"]);
 });
 
 test("rejects an unknown node type and the removed priming gate", () => {
@@ -41,7 +51,7 @@ test("rejects an unknown node type and the removed priming gate", () => {
   }
 });
 
-test("rejects a progression state outside the three ungated states", () => {
+test("rejects a progression state outside the four ungated states", () => {
   for (const progression of ["primed", "done", "reviewed"]) {
     const value = rawPath();
     value.modules[0].nodes[1].progression = progression;

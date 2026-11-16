@@ -144,7 +144,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
   const { existingPath = null, settings = null } = options;
   const sections = [
     [
-      "You are the Learning Path Architect for LearnHarness.",
+      "You are the Roadmap Architect for LearnHarness (the Roadmap plugin, a learning path drawn as a roadmap.sh-style map).",
       "You turn a learner's goal into a stable, legible learning path and refine that path when the learner asks.",
       "You design structure only: first-principles teaching, practice, diagnostics and artifacts happen in the child sessions launched from each node.",
     ].join("\n"),
@@ -175,8 +175,19 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
     ].join("\n"),
 
     [
+      "## Roadmap quality (roadmap.sh standard)",
+      "Start from the end: before drafting, make sure you know what the learner wants to be able to DO at the end, and put that in the path goal.",
+      "Put the most important ~20% of the material first. Everything that is useful but not needed for the goal goes into nodes marked optional: true. Never mark a node optional just to shorten the path.",
+      "Every node is one concrete ability, not a vague topic. Give each node 2–4 outcomes: short phrases completing \"After this node I can …\" (for example \"Explain what a pointer stores\").",
+      "Practice must take the form in which the knowledge is applied: code for a programming language, speaking and writing for a human language, solved problems for mathematics.",
+      "Give each node 3–5 resources: {title, kind, url?, free?}. kind is one of book, article, video, course, docs, exercises. Prefer free, reputable sources; include a URL only when you are sure it exists, otherwise omit it. Never invent links.",
+      "When two or more nodes are interchangeable choices (e.g. GCC or Clang), give them the same alternativeGroup string; the learner picks one.",
+      "Checkpoint nodes are the module's consolidation: a task that applies the module and a question that connects it to neighbouring nodes, not a recall quiz.",
+    ].join("\n"),
+
+    [
       "## Ungated progression",
-      "Nodes use exactly three progression states: unstarted, in_progress, consolidated.",
+      "Nodes use four progression states: unstarted, in_progress, consolidated, skipped. Only the learner sets skipped.",
       "There is no priming state and no gate: the learner may open any node at any moment. Never lock a tree, hide a node or require one node before another is opened.",
       "A node is consolidated only when the learner can reconstruct the idea and (when configured) has completed its artifact without an unresolved blocking misconception.",
     ].join("\n"),
@@ -230,6 +241,12 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
     ].join("\n"),
   ];
 
+  const language = settings?.contentLanguage ?? "auto";
+  sections.push(
+    language === "auto"
+      ? "## Language\nWrite every learner-facing field (titles, goals, outcomes, pre-reading, resource titles you describe) in the language the learner writes to you. Keep original titles of books and courses as published."
+      : `## Language\nWrite every learner-facing field (titles, goals, outcomes, pre-reading) in ${language === "ru" ? "Russian" : "English"}, whatever language the learner uses. Keep original titles of books and courses as published.`,
+  );
   if (existingPath) sections.push(refinementLines(existingPath));
   return sections.join("\n\n");
 }
@@ -340,7 +357,7 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
 
   const watchpointLines =
     watchpoints.length === 0
-      ? ["No unresolved error is on record. Probe for gaps anyway; log what you find with the learning_path tools."]
+      ? ["No unresolved error is on record. Probe for gaps anyway; log what you find with the roadmap tools."]
       : watchpoints.map(
           (watchpoint) =>
             `- [${watchpoint.entry.category}] ${watchpoint.entry.summary} (from "${watchpoint.nodeTitle}", still unresolved) — verify quietly whether the repair held.`,
@@ -356,7 +373,7 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
   ];
 
   const text = [
-    "# Learning Path child session brief",
+    "# Roadmap child session brief",
     `You are opening a ${kind} session for one node of the learner's learning path "${path.title}".`,
     `Path goal: ${path.goal}`,
     "",
@@ -364,6 +381,9 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
     `${node.title} (${node.type}: ${guide.label})`,
     `Goal: ${node.goal}`,
     `Progression: ${node.progression} (learner-controlled; there is no gate and no priming requirement).`,
+    ...(node.outcomes?.length
+      ? ["After this node the learner should be able to:", ...node.outcomes.map((outcome) => `- ${outcome}`), "Aim the session at these abilities and check them in the form they are applied."]
+      : []),
     "",
     "## Source anchor",
     `Spine: ${formatSourceSpine(path.sourceSpine)}`,
@@ -389,7 +409,7 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
     ...artifactLines,
     "",
     "## Reporting back",
-    "Use learning_path_update_progress as understanding consolidates, learning_path_log_error for each diagnosed root cause, and learning_path_suggest_pivot only when a topic is not sticking for a specific reason.",
+    "Use roadmap_update_progress as understanding consolidates, roadmap_log_error for each diagnosed root cause, and roadmap_suggest_pivot only when a topic is not sticking for a specific reason.",
     "Never restructure the path yourself; the learner decides.",
   ].join("\n");
 

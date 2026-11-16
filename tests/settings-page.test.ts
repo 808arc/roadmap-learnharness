@@ -31,11 +31,11 @@ test("settings page edits justified artifact defaults and persists them", async 
     mountSettingsPage(fixture.context, fixture.root, fixture.context.signal);
     await fixture.flush();
 
-    assert.match(fixture.root.textContent ?? "", /Learning Paths/);
-    assert.match(fixture.root.textContent ?? "", /Why the framework recommends each artifact/);
-    assert.match(fixture.root.textContent ?? "", /Eliminates hand-waving/);
-    assert.match(fixture.root.textContent ?? "", /Externalizes mental structure/);
-    assert.match(fixture.root.textContent ?? "", /Harnesses the generation effect/);
+    assert.match(fixture.root.textContent ?? "", /Roadmap/);
+    assert.match(fixture.root.textContent ?? "", /Why each artifact is recommended/);
+    assert.match(fixture.root.textContent ?? "", /a small program, interpreter or test case/);
+    assert.match(fixture.root.textContent ?? "", /labelled nodes and arrows/);
+    assert.match(fixture.root.textContent ?? "", /from a blank page in your own words/);
 
     const artifactRows = fixture.find(
       "mountSettingsRows",
@@ -44,9 +44,9 @@ test("settings page edits justified artifact defaults and persists them", async 
     const concept = artifactRow(artifactRows, "artifact-concept");
     assert.equal(concept.type, "dropdown");
     assert.equal(concept.value, "", "no plugin default is saved yet");
-    assert.match(concept.description, /Recommended: .*Micro-code \/ implementation/);
-    assert.match(concept.description, /Derivation \/ worked trace/);
-    assert.match(concept.description, /Eliminates hand-waving/);
+    assert.match(concept.description, /Recommended: .*Micro-code/);
+    assert.match(concept.description, /Worked trace/);
+    assert.match(concept.description, /a small program, interpreter or test case/);
     assert.deepEqual(
       concept.options.map((option: { value: string }) => option.value),
       ["", "micro_code", "relational_map", "encoding_exercise", "derivation_trace", "retrieval_cue", "none"],
@@ -58,11 +58,11 @@ test("settings page edits justified artifact defaults and persists them", async 
     assert.equal(fixture.settings.artifactDefaults.concept, "derivation_trace");
     assert.deepEqual(
       fixture.calls.filter((call) => call.name === "settings.save").at(-1)?.input,
-      { artifactDefaults: { concept: "derivation_trace" } },
+      { artifactDefaults: { concept: "derivation_trace" }, display: { language: "en", defaultView: "graph", showOptional: true } },
     );
     const updated = artifactRow(liveRows(fixture, "artifact-concept"), "artifact-concept");
     assert.equal(updated.value, "derivation_trace");
-    assert.match(updated.description, /Verifies step-by-step causal continuity/);
+    assert.match(updated.description, /checks every step of the reasoning/);
     assert.match(fixture.root.textContent ?? "", /Settings saved/);
 
     // Clearing the plugin default falls back to the framework recommendation.
@@ -71,7 +71,7 @@ test("settings page edits justified artifact defaults and persists them", async 
     assert.deepEqual(fixture.settings.artifactDefaults, {});
     const cleared = artifactRow(liveRows(fixture, "artifact-concept"), "artifact-concept");
     assert.equal(cleared.value, "");
-    assert.match(cleared.description, /Eliminates hand-waving/);
+    assert.match(cleared.description, /a small program, interpreter or test case/);
   } finally {
     fixture.restore();
   }
@@ -145,20 +145,20 @@ test("path deletion asks for confirmation and never touches native chats", async
     await fixture.flush();
 
     const deleteButton = () =>
-      fixture.findLast("mountButton", (record) => record.props.label === "Delete path…");
+      fixture.findLast("mountButton", (record) => record.props.label === "Delete…");
     await deleteButton().props.onClick();
     await fixture.flush();
 
     const dialog = fixture.find("openDialog");
-    assert.match(dialog.props.title, /Delete the learning path/);
+    assert.match(dialog.props.title, /Delete the roadmap/);
     const content = dialog.contentContainer!;
-    assert.match(content.textContent ?? "", /deletes the plugin's path record/);
-    assert.match(content.textContent ?? "", /Native LearnHarness chats and Knowledge Graph records are never deleted/);
+    assert.match(content.textContent ?? "", /deletes the plugin's roadmap record/);
+    assert.match(content.textContent ?? "", /LearnHarness chats and Knowledge Graph records are never deleted/);
     assert.match(content.textContent ?? "", /6 node\(s\)/);
 
     const keep = fixture.findLast(
       "mountButton",
-      (record) => record.props.label === "Keep path" && record.container.closest(".lp-dialog-content") !== null,
+      (record) => record.props.label === "Keep" && record.container.closest(".lp-dialog-content") !== null,
     );
     await keep.props.onClick();
     await fixture.flush();
@@ -170,7 +170,7 @@ test("path deletion asks for confirmation and never touches native chats", async
     await fixture.flush();
     const confirm = fixture.findLast(
       "mountButton",
-      (record) => record.props.label === "Delete path" && record.container.closest(".lp-dialog-content") !== null,
+      (record) => record.props.label === "Delete" && record.container.closest(".lp-dialog-content") !== null,
     );
     await confirm.props.onClick();
     await fixture.flush();
@@ -181,8 +181,8 @@ test("path deletion asks for confirmation and never touches native chats", async
     );
     assert.equal(fixture.paths.size, 0, "only the plugin path record is removed");
     assert.ok(fixture.nativeChats.has("chat-1"), "the linked native chat still exists");
-    assert.match(fixture.root.textContent ?? "", /native chats and Knowledge Graph records were not touched/);
-    assert.match(fixture.root.textContent ?? "", /No learning paths yet/);
+    assert.match(fixture.root.textContent ?? "", /chats and Knowledge Graph records were not touched/);
+    assert.match(fixture.root.textContent ?? "", /No roadmaps yet/);
   } finally {
     fixture.restore();
   }

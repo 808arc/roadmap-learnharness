@@ -47,13 +47,13 @@ export const NATIVE_AGENTS: readonly PluginAgentKind[] = ["prober", "teacher", "
 export const NATIVE_BRIDGE_INSTRUCTIONS = [
   "# Learning Path child session",
   "These tools are present only when this native session is linked to a node of the learner's Learning Path.",
-  "If learning_path_get_brief is not in your current tool set, ignore this entire section and follow your normal instructions.",
+  "If roadmap_get_brief is not in your current tool set, ignore this entire section and follow your normal instructions.",
   "",
   "When the tools are present:",
-  "- Call learning_path_get_brief before teaching so the node goal, canonical source anchor, micro-priming hook, meso-interleaving callbacks, unresolved watchpoints and artifact configuration shape this session. Stay inside that anchor and notation.",
-  "- Call learning_path_update_progress when the learner's status genuinely changes: in_progress while understanding is forming, consolidated only when they can reconstruct, apply and connect the idea. Include an artifactNote only when the artifact was actually produced.",
-  "- Call learning_path_log_error for each diagnosed cognitive root cause (misconception, discrimination_error, prerequisite_gap, procedural_slip, cue_failure). Use upstreamNodeId only when the failure belongs to an interleaved earlier node.",
-  "- Call learning_path_suggest_pivot only when a topic is not sticking for a specific diagnosed reason. It records an advisory pending proposal (bridge, contrast or skill) and never changes, inserts or reorders path content. The learner decides.",
+  "- Call roadmap_get_brief before teaching so the node goal, canonical source anchor, micro-priming hook, meso-interleaving callbacks, unresolved watchpoints and artifact configuration shape this session. Stay inside that anchor and notation.",
+  "- Call roadmap_update_progress when the learner's status genuinely changes: in_progress while understanding is forming, consolidated only when they can reconstruct, apply and connect the idea. Include an artifactNote only when the artifact was actually produced.",
+  "- Call roadmap_log_error for each diagnosed cognitive root cause (misconception, discrimination_error, prerequisite_gap, procedural_slip, cue_failure). Use upstreamNodeId only when the failure belongs to an interleaved earlier node.",
+  "- Call roadmap_suggest_pivot only when a topic is not sticking for a specific diagnosed reason. It records an advisory pending proposal (bridge, contrast or skill) and never changes, inserts or reorders path content. The learner decides.",
   "",
   "Never invent a node id, never write progress for a different node in this session, and never restructure the path yourself.",
 ].join("\n");
@@ -160,6 +160,8 @@ function nodeSummary(path: LearningPath, node: PathNode): JsonRecord {
     nodeType: node.type,
     nodeGoal: node.goal,
     progression: node.progression,
+    ...(node.outcomes?.length ? { outcomes: node.outcomes } : {}),
+    ...(node.resources?.length ? { resources: node.resources } : {}),
   };
 }
 
@@ -169,7 +171,7 @@ function briefTool(
   chatId: string,
 ): AgentTool {
   return {
-    name: "learning_path_get_brief",
+    name: "roadmap_get_brief",
     label: "Learning Path brief",
     description:
       "Read the current Learning Path node brief: node goal, canonical source anchor, loose micro-priming hook, " +
@@ -230,7 +232,7 @@ function progressTool(
   chatId: string,
 ): AgentTool {
   return {
-    name: "learning_path_update_progress",
+    name: "roadmap_update_progress",
     label: "Update node progress",
     description:
       "Record the learner's progression on this session's node: in_progress or consolidated. " +
@@ -309,7 +311,7 @@ function logErrorTool(
   chatId: string,
 ): AgentTool {
   return {
-    name: "learning_path_log_error",
+    name: "roadmap_log_error",
     label: "Log a cognitive error",
     description:
       "Record one diagnosed cognitive error in this node's Error Ledger by root-cause category. " +
@@ -400,7 +402,7 @@ function suggestPivotTool(
   chatId: string,
 ): AgentTool {
   return {
-    name: "learning_path_suggest_pivot",
+    name: "roadmap_suggest_pivot",
     label: "Suggest an advisory pivot",
     description:
       "Record an advisory pivot suggestion when a topic is not sticking for a specific diagnosed reason. " +

@@ -1,4 +1,4 @@
-/** Dedicated Learning Paths Settings page.
+/** Dedicated Roadmap Settings page.
  *
  * Three sections on one lazily mounted page:
  * - artifact defaults per node type, each showing the framework's justification
@@ -37,7 +37,11 @@ import type {
   ThinkingLevelName,
 } from "./domain.ts";
 import { EVENT_PATHS_CHANGED, EVENT_SETTINGS_CHANGED } from "./topics.ts";
-import { NODE_TYPE_LABELS, artifactLabel } from "./view/labels.ts";
+import { locale, resolveLocale, setLocale, t } from "./i18n.ts";
+import type { MessageKey } from "./i18n.ts";
+import { artifactName } from "./view/node-inspector.ts";
+import { DEFAULT_DISPLAY, LANGUAGE_PREFERENCES, VIEW_MODES } from "./domain.ts";
+import type { DisplaySettings, LanguagePreference, ViewMode } from "./domain.ts";
 
 interface PathSummary {
   readonly id: string;
@@ -94,18 +98,20 @@ export function mountSettingsPage(
   ctx: PluginFrontendContext,
   container: HTMLElement,
   signal: AbortSignal,
+  /** Called when the saved interface language differs from the active one. */
+  onLocaleChange?: () => void,
 ): () => void {
   const document = container.ownerDocument;
   const root = element(document, "div", "lp-settings");
   container.append(root);
 
-  root.append(element(document, "h1", "lp-settings-title", "Learning Paths"));
+  root.append(element(document, "h1", "lp-settings-title", t("s.title")));
   root.append(
     element(
       document,
       "p",
       "lp-muted",
-      "Defaults for generated artifacts, the Architect's model, and safe path deletion. Every change saves immediately.",
+      t("s.intro"),
     ),
   );
   const status = element(document, "p", "lp-settings-status");
@@ -113,11 +119,16 @@ export function mountSettingsPage(
   status.setAttribute("aria-live", "polite");
   root.append(status);
 
+  const displaySection = section(document, root, t("s.display"), t("s.displayIntro"));
+  const displayRowsHost = element(document, "div", "lp-settings-rows");
+  displaySection.append(displayRowsHost);
+  let displayRows: PluginWidgetHandle<PluginSettingsSchema> | null = null;
+
   const artifactsSection = section(
     document,
     root,
-    "Artifact defaults",
-    "Per node type. A node override and then a path default still win; the framework's recommendation is the fallback.",
+    t("s.artifacts"),
+    t("s.artifactsIntro"),
   );
   const artifactRowsHost = element(document, "div", "lp-settings-rows");
   artifactsSection.append(artifactRowsHost);
@@ -125,19 +136,19 @@ export function mountSettingsPage(
   const catalogDetails = element(document, "details", "lp-artifact-catalog");
   catalogDetails.open = true;
   catalogDetails.append(
-    element(document, "summary", undefined, "Why the framework recommends each artifact"),
+    element(document, "summary", undefined, t("s.catalog")),
   );
   for (const entry of ARTIFACT_CATALOG) {
     const card = element(document, "article", "lp-artifact-option");
     card.dataset.artifactType = entry.type;
-    card.append(element(document, "h3", "lp-artifact-option-title", entry.label));
-    card.append(element(document, "p", "lp-artifact-justification", entry.justification));
+    card.append(element(document, "h3", "lp-artifact-option-title", artifactName(entry.type)));
+    card.append(element(document, "p", "lp-artifact-justification", t(`artWhy.${entry.type}` as MessageKey)));
     card.append(
       element(
         document,
         "p",
         "lp-muted",
-        `Best suited for: ${entry.bestFor.map((type) => NODE_TYPE_LABELS[type]).join(", ")}.`,
+        t("s.bestFor", { types: entry.bestFor.map((type) => t(`type.${type}` as MessageKey)).join(", ") }),
       ),
     );
     catalogDetails.append(card);
@@ -147,8 +158,8 @@ export function mountSettingsPage(
   const architectSection = section(
     document,
     root,
-    "Path Architect model",
-    "Follow the host's strong slot, or override the model and thinking level for Architect conversations only.",
+    t("s.architect"),
+    t("s.architectIntro"),
   );
   const architectHost = element(document, "div", "lp-architect-settings");
   architectSection.append(architectHost);
@@ -156,8 +167,8 @@ export function mountSettingsPage(
   const pathsSection = section(
     document,
     root,
-    "Path management",
-    "Deleting a path removes only this plugin's records and orphaned converted source files. Native LearnHarness chats and Knowledge Graph records are never deleted.",
+    t("s.paths"),
+    t("s.pathsIntro"),
   );
   const pathsHost = element(document, "div", "lp-settings-paths");
   pathsSection.append(pathsHost);
@@ -208,24 +219,87 @@ export function mountSettingsPage(
       const fallback = defaultArtifactFor(type);
       const current = artifactCatalogEntry(chosen ?? fallback);
       const recommended = recommendedArtifactsFor(type)
-        .map((artifact) => artifactLabel(artifact))
+        .map((artifact) => artifactName(artifact))
         .join(", ");
       return {
         key: `artifact-${type}`,
         type: "dropdown" as const,
-        label: NODE_TYPE_LABELS[type],
-        description: `Recommended: ${recommended}. Current choice — why: ${current.justification}`,
+        label: t(`type.${type}` as MessageKey),
+        description: t("s.recommended", { list: recommended, why: t(`artWhy.${current.type}` as MessageKey) }),
         value: chosen ?? "",
         options: [
           {
             value: "",
-            label: `Framework default — ${artifactLabel(fallback)}`,
+            label: t("s.frameworkDefault", { label: artifactName(fallback) }),
           },
-          ...ARTIFACT_CATALOG.map((entry) => ({ value: entry.type, label: entry.label })),
+          ...ARTIFACT_CATALOG.map((entry) => ({ value: entry.type, label: artifactName(entry.type) })),
         ],
         onChange: (value: string) => chooseArtifact(type, value),
       };
     });
+  }
+
+  function currentDisplay(): DisplaySettings {
+    return settings.display ?? DEFAULT_DISPLAY;
+  }
+
+  function languageOptions(): { value: string; label: string }[] {
+    return LANGUAGE_PREFERENCES.map((value) => ({ value, label: t(`s.${value}` as MessageKey) }));
+  }
+
+  function renderDisplayRows(): void {
+    if (disposed || signal.aborted) return;
+    const display = currentDisplay();
+    const rows: PluginSettingsRow[] = [
+      {
+        key: "display-language",
+        type: "dropdown" as const,
+        label: t("s.language"),
+        description: t("s.languageDesc"),
+        value: display.language,
+        options: languageOptions(),
+        onChange: (value: string) =>
+          void saveSettings({ ...settings, display: { ...currentDisplay(), language: value as LanguagePreference } }),
+      },
+      {
+        key: "content-language",
+        type: "dropdown" as const,
+        label: t("s.contentLanguage"),
+        description: t("s.contentLanguageDesc"),
+        value: settings.contentLanguage ?? "auto",
+        options: languageOptions(),
+        onChange: (value: string) => void saveSettings({ ...settings, contentLanguage: value as LanguagePreference }),
+      },
+      {
+        key: "display-view",
+        type: "dropdown" as const,
+        label: t("s.defaultView"),
+        description: t("s.defaultViewDesc"),
+        value: display.defaultView,
+        options: VIEW_MODES.map((value) => ({ value, label: t(value === "graph" ? "view.graph" : "view.tree") })),
+        onChange: (value: string) =>
+          void saveSettings({ ...settings, display: { ...currentDisplay(), defaultView: value as ViewMode } }),
+      },
+      {
+        key: "display-optional",
+        type: "toggle" as const,
+        label: t("s.showOptional"),
+        description: t("s.showOptionalDesc"),
+        value: display.showOptional,
+        onChange: (value: boolean) => void saveSettings({ ...settings, display: { ...currentDisplay(), showOptional: value } }),
+      },
+    ];
+    if (displayRows) displayRows.update({ rows });
+    else displayRows = ctx.ui.mountSettingsRows(displayRowsHost, { rows }, { signal });
+  }
+
+  /** True when the page had to be rebuilt in another language. */
+  function followLanguage(): boolean {
+    const wanted = resolveLocale(settings.display?.language);
+    if (wanted === locale() || !onLocaleChange) return false;
+    setLocale(wanted);
+    onLocaleChange();
+    return true;
   }
 
   function renderArtifactRows(): void {
@@ -258,8 +332,8 @@ export function mountSettingsPage(
     renderArchitect();
     setStatus(
       current.model === undefined
-        ? "Choose a model to finish the override."
-        : "Override ready. Choose a model or keep the current one.",
+        ? t("s.chooseModel")
+        : t("s.overrideReady"),
     );
   }
 
@@ -303,9 +377,9 @@ export function mountSettingsPage(
             {
               key: "architect-follow-host",
               type: "toggle" as const,
-              label: "Follow the host's strong model",
+              label: t("s.followHost"),
               description:
-                "On: the Architect uses the host strong slot and its thinking preference. Off: choose an explicit plugin override below.",
+                t("s.followHostDesc"),
               value: current.followHostSlot,
               onChange: (value: boolean) => setFollowHost(value),
             },
@@ -321,7 +395,7 @@ export function mountSettingsPage(
           document,
           "p",
           "lp-muted",
-          "Following the host strong slot. Change it in Settings → Agent → Models if you need another default.",
+          t("s.followingHost"),
         ),
       );
       return;
@@ -329,7 +403,7 @@ export function mountSettingsPage(
 
     const modelHost = element(document, "div", "lp-model-picker-host");
     architectHost.append(
-      element(document, "h3", "lp-settings-subheading", "Architect model override"),
+      element(document, "h3", "lp-settings-subheading", t("s.override")),
       modelHost,
     );
     const modelValue =
@@ -349,7 +423,7 @@ export function mountSettingsPage(
 
     const thinkingHost = element(document, "div", "lp-thinking-picker-host");
     architectHost.append(
-      element(document, "h3", "lp-settings-subheading", "Thinking level"),
+      element(document, "h3", "lp-settings-subheading", t("s.thinking")),
       thinkingHost,
     );
     architectHandles.push(
@@ -372,24 +446,20 @@ export function mountSettingsPage(
       if (disposed || signal.aborted) return;
       let message: string;
       if (!result.deleted) {
-        message = `"${summary.title}" was already gone; nothing was removed.`;
+        message = t("s.alreadyGone", { title: summary.title });
       } else {
         const sources =
           result.removedSources.length === 0
-            ? "No converted source files became orphaned."
-            : `Removed ${result.removedSources.length} orphaned converted source file(s).` +
-              (result.retainedSources.length === 0
-                ? ""
-                : ` ${result.retainedSources.length} source file(s) are still used by another path.`);
-        message =
-          `Deleted "${summary.title}". ${sources} ${result.preservedChats} native chat link(s) released; ` +
-          "native chats and Knowledge Graph records were not touched.";
+            ? t("s.noOrphans")
+            : t("s.removedSources", { n: result.removedSources.length }) +
+              (result.retainedSources.length === 0 ? "" : t("s.retainedSources", { n: result.retainedSources.length }));
+        message = t("s.deleted", { title: summary.title, sources, chats: result.preservedChats });
       }
       await load();
       setStatus(message, "info");
     } catch (problem) {
       if (disposed || signal.aborted) return;
-      setStatus(`Could not delete "${summary.title}": ${errorMessage(problem)}`, "error");
+      setStatus(t("s.deleteFailed", { title: summary.title, message: errorMessage(problem) }), "error");
     }
   }
 
@@ -398,7 +468,7 @@ export function mountSettingsPage(
     let dialog: PluginWidgetHandle<PluginDialogProps> | null = null;
     dialog = ctx.ui.openDialog(
       {
-        title: `Delete the learning path "${summary.title}"?`,
+        title: t("s.deleteTitle", { title: summary.title }),
         content: (content, contentSignal) => {
           content.append(element(document, "h2", "lp-dialog-title", summary.title));
           content.append(
@@ -406,8 +476,7 @@ export function mountSettingsPage(
               document,
               "p",
               "lp-dialog-text",
-              `This deletes the plugin's path record (${summary.moduleCount} module(s), ${summary.nodeCount} node(s)) ` +
-                "and any converted source files that no other path uses.",
+              t("s.deleteText", { modules: summary.moduleCount, nodes: summary.nodeCount }),
             ),
           );
           content.append(
@@ -415,7 +484,7 @@ export function mountSettingsPage(
               document,
               "p",
               "lp-dialog-text lp-dialog-safe",
-              "Native LearnHarness chats and Knowledge Graph records are never deleted by this action.",
+              t("s.deleteSafe"),
             ),
           );
           const actions = element(document, "div", "lp-dialog-actions");
@@ -426,7 +495,7 @@ export function mountSettingsPage(
           ctx.ui.mountButton(
             keepHost,
             {
-              label: "Keep path",
+              label: t("s.keep"),
               variant: "outline",
               size: "sm",
               onClick: () => dialog?.dispose(),
@@ -439,7 +508,7 @@ export function mountSettingsPage(
           ctx.ui.mountButton(
             deleteHost,
             {
-              label: "Delete path",
+              label: t("s.confirmDelete"),
               variant: "destructive",
               size: "sm",
               onClick: () => {
@@ -465,7 +534,7 @@ export function mountSettingsPage(
           document,
           "p",
           "lp-muted",
-          "No learning paths yet. Create one from the Path Hub; native sessions stay untouched here.",
+          t("s.noPaths"),
         ),
       );
       return;
@@ -481,7 +550,7 @@ export function mountSettingsPage(
           document,
           "span",
           "lp-muted",
-          `${summary.moduleCount} module(s) · ${summary.nodeCount} node(s)`,
+          t("s.pathMeta", { modules: summary.moduleCount, nodes: summary.nodeCount }),
         ),
       );
       item.append(text);
@@ -493,7 +562,7 @@ export function mountSettingsPage(
         ctx.ui.mountButton(
           host,
           {
-            label: "Delete path…",
+            label: t("s.delete"),
             variant: "ghost",
             size: "xs",
             onClick: () => openDeleteDialog(summary),
@@ -508,7 +577,7 @@ export function mountSettingsPage(
 
   async function saveSettings(next: PluginSettings): Promise<boolean> {
     if (disposed || signal.aborted) return false;
-    setStatus("Saving…");
+    setStatus(t("s.saving"));
     try {
       const result = await ctx.call<SettingsResult>("settings.save", next);
       if (disposed || signal.aborted) return false;
@@ -517,8 +586,9 @@ export function mountSettingsPage(
       return true;
     } catch (problem) {
       if (disposed || signal.aborted) return false;
-      setStatus(`Could not save settings: ${errorMessage(problem)}`, "error");
+      setStatus(t("s.saveFailed", { message: errorMessage(problem) }), "error");
       // Restore the controlled widgets to the last accepted record.
+      renderDisplayRows();
       renderArtifactRows();
       renderArchitect();
       return false;
@@ -529,9 +599,11 @@ export function mountSettingsPage(
     settings = saved;
     setStatus(
       modelPending
-        ? "Settings saved. The new Architect model applies once the running Architect conversation finishes."
-        : "Settings saved.",
+        ? t("s.savedPending")
+        : t("s.saved"),
     );
+    if (followLanguage()) return;
+    renderDisplayRows();
     renderArtifactRows();
     renderArchitect();
   }
@@ -548,13 +620,15 @@ export function mountSettingsPage(
       settings = settingsResult.settings;
       overrideDraft = null;
       summaries = [...(pathsResult.paths ?? [])];
+      if (followLanguage()) return;
+      renderDisplayRows();
       renderArtifactRows();
       renderArchitect();
       renderPaths();
       setStatus(null);
     } catch (problem) {
       if (!live(token)) return;
-      setStatus(`Could not load Learning Path settings: ${errorMessage(problem)}`, "error");
+      setStatus(t("s.loadFailed", { message: errorMessage(problem) }), "error");
     }
   }
 
@@ -583,6 +657,8 @@ export function mountSettingsPage(
     clearPaths();
     artifactRows?.dispose();
     artifactRows = null;
+    displayRows?.dispose();
+    displayRows = null;
     root.remove();
   };
 }

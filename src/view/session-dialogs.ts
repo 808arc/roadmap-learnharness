@@ -6,6 +6,7 @@
  * Content and every widget belong to the supplied signal, so leaving the view
  * or closing the dialog disposes them.
  */
+import { t } from "../i18n.ts";
 import type { PluginFrontendContext, PluginWidgetHandle } from "learnharness-plugin-api";
 import type { ChildSessionKind, LearningPath, PathNode } from "../domain.ts";
 import type { SessionLauncher } from "../session-launcher.ts";
@@ -72,7 +73,7 @@ function allNodes(path: LearningPath): PathNode[] {
 }
 
 function kindLabel(kind: ChildSessionKind): string {
-  return kind === "teaching" ? "Teaching" : "Practice";
+  return kind === "teaching" ? t("d.teaching") : t("d.practice");
 }
 
 function describeError(error: unknown): string {
@@ -94,12 +95,12 @@ export function openAttachSessionDialog(
 
   dialog = ctx.ui.openDialog(
     {
-      title: "Attach Session to Path",
+      title: t("d.attachTitle"),
       content: async (container: HTMLElement, contentSignal: AbortSignal) => {
         const document = container.ownerDocument;
         const handles: PluginWidgetHandle<unknown>[] = [];
         const root = element(document, "div", "lp-session-dialog");
-        const loading = element(document, "p", "lp-muted", "Loading paths…");
+        const loading = element(document, "p", "lp-muted", t("d.loadingPaths"));
         root.append(loading);
         container.append(root);
 
@@ -129,7 +130,7 @@ export function openAttachSessionDialog(
                 document,
                 "p",
                 "lp-muted",
-                `This session is already linked to "${parent.link.nodeTitle}" in "${parent.link.pathTitle}".`,
+                t("d.alreadyLinked", { node: parent.link.nodeTitle, path: parent.link.pathTitle }),
               ),
             );
             return cleanup;
@@ -141,16 +142,16 @@ export function openAttachSessionDialog(
                 document,
                 "p",
                 "lp-muted",
-                "No learning paths exist yet. Create a path first, then attach this session.",
+                t("d.noPaths"),
               ),
             );
             return cleanup;
           }
 
           const pathLabel = element(document, "label", "lp-field");
-          pathLabel.append(element(document, "span", "lp-field-label", "Learning path"));
+          pathLabel.append(element(document, "span", "lp-field-label", t("d.path")));
           const pathSelect = element(document, "select", "lp-select");
-          pathSelect.setAttribute("aria-label", "Learning path");
+          pathSelect.setAttribute("aria-label", t("d.path"));
           for (const summary of listed.paths) {
             const option = element(document, "option", undefined, summary.title);
             option.value = summary.id;
@@ -159,9 +160,9 @@ export function openAttachSessionDialog(
           pathLabel.append(pathSelect);
 
           const nodeLabel = element(document, "label", "lp-field");
-          nodeLabel.append(element(document, "span", "lp-field-label", "Node"));
+          nodeLabel.append(element(document, "span", "lp-field-label", t("d.node")));
           const nodeSelect = element(document, "select", "lp-select");
-          nodeSelect.setAttribute("aria-label", "Node");
+          nodeSelect.setAttribute("aria-label", t("d.node"));
           nodeLabel.append(nodeSelect);
 
           root.append(pathLabel, nodeLabel, status, error);
@@ -173,7 +174,7 @@ export function openAttachSessionDialog(
           const attachButton = ctx.ui.mountButton(
             buttonHost,
             {
-              label: "Attach Session",
+              label: t("d.attach"),
               variant: "default",
               size: "sm",
               disabled: true,
@@ -181,7 +182,7 @@ export function openAttachSessionDialog(
                 const nodeId = selectedValue(nodeSelect);
                 if (!currentPath || !nodeId || contentSignal.aborted) return;
                 error.hidden = true;
-                attachButton.update({ disabled: true, label: "Attaching…" });
+                attachButton.update({ disabled: true, label: t("d.attaching") });
                 try {
                   const result = await options.launcher.attach({
                     pathId: currentPath.id,
@@ -190,15 +191,15 @@ export function openAttachSessionDialog(
                     kind: options.kind,
                   });
                   if (contentSignal.aborted) return;
-                  status.textContent = `Attached to "${result.link.label}".`;
+                  status.textContent = t("d.attached", { label: result.link.label });
                   status.dataset.state = "success";
                   options.onLinked?.(result);
                   close();
                 } catch (problem) {
                   if (contentSignal.aborted) return;
-                  error.textContent = `Could not attach the session: ${describeError(problem)}`;
+                  error.textContent = t("d.attachFailed", { message: describeError(problem) });
                   error.hidden = false;
-                  attachButton.update({ disabled: false, label: "Attach Session" });
+                  attachButton.update({ disabled: false, label: t("d.attach") });
                 }
               },
             },
@@ -214,7 +215,7 @@ export function openAttachSessionDialog(
               const result = await ctx.call<PathResult>("paths.get", { id: pathId });
               if (contentSignal.aborted) return;
               currentPath = result.path;
-              if (!currentPath) throw new Error("That path no longer exists.");
+              if (!currentPath) throw new Error(t("d.pathGone"));
               for (const node of allNodes(currentPath)) {
                 const option = element(
                   document,
@@ -229,7 +230,7 @@ export function openAttachSessionDialog(
             } catch (problem) {
               if (contentSignal.aborted) return;
               currentPath = null;
-              error.textContent = `Could not load the path: ${describeError(problem)}`;
+              error.textContent = t("d.pathLoadFailed", { message: describeError(problem) });
               error.hidden = false;
             }
           };
@@ -242,7 +243,7 @@ export function openAttachSessionDialog(
         } catch (problem) {
           if (contentSignal.aborted) return;
           loading.remove();
-          error.textContent = `Could not prepare the attach dialog: ${describeError(problem)}`;
+          error.textContent = t("d.prepareFailed", { message: describeError(problem) });
           error.hidden = false;
           root.append(error);
           return cleanup;
@@ -270,12 +271,12 @@ export function openLinkExistingSessionDialog(
 
   dialog = ctx.ui.openDialog(
     {
-      title: "Link Existing Session",
+      title: t("d.linkTitle"),
       content: async (container: HTMLElement, contentSignal: AbortSignal) => {
         const document = container.ownerDocument;
         const handles: PluginWidgetHandle<unknown>[] = [];
         const root = element(document, "div", "lp-session-dialog");
-        const loading = element(document, "p", "lp-muted", "Loading sessions…");
+        const loading = element(document, "p", "lp-muted", t("d.loadingSessions"));
         root.append(loading);
         container.append(root);
 
@@ -300,7 +301,7 @@ export function openLinkExistingSessionDialog(
               document,
               "p",
               "lp-muted",
-              `Choose a native teaching or practice session to link under "${options.nodeTitle}". Only sessions not already linked are offered.`,
+              t("d.chooseSession", { node: options.nodeTitle }),
             ),
           );
 
@@ -313,7 +314,7 @@ export function openLinkExistingSessionDialog(
                 document,
                 "p",
                 "lp-muted",
-                "No unlinked native sessions are available. Start a Teaching or Practice chat first.",
+                t("d.noSessions"),
               ),
             );
             return cleanup;
@@ -334,13 +335,13 @@ export function openLinkExistingSessionDialog(
             const link = ctx.ui.mountButton(
               host,
               {
-                label: "Link",
+                label: t("d.link"),
                 variant: "outline",
                 size: "xs",
                 onClick: async () => {
                   if (contentSignal.aborted) return;
                   error.hidden = true;
-                  link.update({ disabled: true, label: "Linking…" });
+                  link.update({ disabled: true, label: t("d.linking") });
                   try {
                     const result = await options.launcher.attach({
                       pathId: options.pathId,
@@ -350,15 +351,15 @@ export function openLinkExistingSessionDialog(
                       label: session.title,
                     });
                     if (contentSignal.aborted) return;
-                    status.textContent = `Linked "${session.title}".`;
+                    status.textContent = t("d.linked", { title: session.title });
                     status.dataset.state = "success";
                     options.onLinked?.(result);
                     close();
                   } catch (problem) {
                     if (contentSignal.aborted) return;
-                    error.textContent = `Could not link the session: ${describeError(problem)}`;
+                    error.textContent = t("d.linkFailed", { message: describeError(problem) });
                     error.hidden = false;
-                    link.update({ disabled: false, label: "Link" });
+                    link.update({ disabled: false, label: t("d.link") });
                   }
                 },
               },
@@ -371,7 +372,7 @@ export function openLinkExistingSessionDialog(
         } catch (problem) {
           if (contentSignal.aborted) return;
           loading.remove();
-          error.textContent = `Could not list native sessions: ${describeError(problem)}`;
+          error.textContent = t("d.listFailed", { message: describeError(problem) });
           error.hidden = false;
           root.append(error);
           return cleanup;

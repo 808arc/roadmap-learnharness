@@ -214,7 +214,8 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
   for (const chat of options.nativeChats ?? []) nativeChats.set(chat.id, { ...chat });
   const paths = new Map<string, LearningPath>();
   for (const path of options.paths ?? []) paths.set(path.id, structuredClone(path));
-  let settingsState: PluginSettings = options.settings ?? { artifactDefaults: {} };
+  // Tests pin English so assertions do not depend on the machine language.
+  let settingsState: PluginSettings = options.settings ?? { artifactDefaults: {}, display: { language: "en", defaultView: "graph", showOptional: true } };
   // A fixture path normally points at live chats; tests delete one to model a
   // deleted native session instead of every fixture starting "missing".
   for (const path of paths.values()) {

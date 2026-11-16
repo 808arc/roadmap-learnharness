@@ -26,12 +26,14 @@ export const PROGRESSION_LABELS: Readonly<Record<ProgressionState, string>> = {
   unstarted: "Unstarted",
   in_progress: "In progress",
   consolidated: "Consolidated",
+  skipped: "Skipped",
 };
 
 export const PROGRESSION_COLORS: Readonly<Record<ProgressionState, string>> = {
   unstarted: "var(--muted-foreground, #71717a)",
   in_progress: "var(--chart-3, #f59e0b)",
   consolidated: "var(--chart-4, #10b981)",
+  skipped: "var(--muted-foreground, #71717a)",
 };
 
 export const ERROR_CATEGORY_LABELS: Readonly<Record<ErrorCategory, string>> = {

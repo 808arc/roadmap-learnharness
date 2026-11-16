@@ -24,6 +24,11 @@ export interface SessionStatus {
   readonly exists: boolean;
   readonly title: string | null;
   readonly updatedAt: string | null;
+  /** Optional so older payloads and test fixtures stay valid. */
+  readonly createdAt?: string | null;
+  readonly focusedMs?: number;
+  readonly answered?: number;
+  readonly correct?: number;
 }
 
 export interface AvailableSession {

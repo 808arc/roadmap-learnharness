@@ -49,36 +49,36 @@ test("renders brief, progress, error and pivot results as short readable cards",
       expected: RegExp;
     }[] = [
       {
-        toolName: "learning_path_get_brief",
+        toolName: "roadmap_get_brief",
         output: {
           nodeTitle: "Node n-contrast",
           watchpoints: [{}, {}],
           artifact: { label: "Retrieval cue / flashcard seed" },
         },
-        expected: /Brief for Node n-contrast.*2 watchpoints.*Retrieval cue/s,
+        expected: /Brief for Node n-contrast.*2 open errors.*Retrieval cue/s,
       },
       {
-        toolName: "learning_path_update_progress",
+        toolName: "roadmap_update_progress",
         output: { nodeTitle: "Node n-concept", progression: "consolidated" },
         expected: /Node n-concept: consolidated/,
       },
       {
-        toolName: "learning_path_log_error",
+        toolName: "roadmap_log_error",
         output: {
           nodeTitle: "Node n-skill",
           category: "procedural_slip",
           summary: "Drops a sign while expanding.",
         },
-        expected: /Logged Procedural slip on Node n-skill.*Drops a sign/s,
+        expected: /Logged procedural slip on Node n-skill.*Drops a sign/s,
       },
       {
-        toolName: "learning_path_suggest_pivot",
+        toolName: "roadmap_suggest_pivot",
         output: {
           nodeTitle: "Node n-concept",
           proposalType: "bridge",
           title: "Repair prerequisite",
         },
-        expected: /Advisory bridge node: Repair prerequisite.*Pending; the path was not changed/s,
+        expected: /Suggested bridge: Repair prerequisite.*Pending; the roadmap was not changed/s,
       },
     ];
 
@@ -107,14 +107,14 @@ test("shows streaming and error states without model HTML", () => {
     const errored = fixture.root.ownerDocument.createElement("div");
     fixture.root.append(streaming, errored);
 
-    const brief = fixture.toolRenderers.get("learning_path_get_brief")!;
-    brief.mount(streaming, props("learning_path_get_brief", { state: "input-streaming" }));
-    assert.match(streaming.textContent ?? "", /Reading the Learning Path brief.*Preparing/s);
+    const brief = fixture.toolRenderers.get("roadmap_get_brief")!;
+    brief.mount(streaming, props("roadmap_get_brief", { state: "input-streaming" }));
+    assert.match(streaming.textContent ?? "", /Reading the roadmap brief.*Preparing/s);
 
-    const error = fixture.toolRenderers.get("learning_path_log_error")!;
+    const error = fixture.toolRenderers.get("roadmap_log_error")!;
     error.mount(
       errored,
-      props("learning_path_log_error", {
+      props("roadmap_log_error", {
         state: "output-error",
         errorText: "<img src=x onerror=alert(1)> not a node",
       }),

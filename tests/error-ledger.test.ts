@@ -72,6 +72,15 @@ function buttonFor(
   );
 }
 
+/** Click the Learny-styled button with `label` inside the entry for `errorId` (or anywhere). */
+function clickIn(root: HTMLElement, label: string, errorId?: string): void {
+  const scope = errorId ? root.querySelector<HTMLElement>(`[data-error-id="${errorId}"]`) : root;
+  assert.ok(scope, `entry ${errorId} exists`);
+  const button = [...scope.querySelectorAll<HTMLButtonElement>("button")].find((candidate) => candidate.textContent === label);
+  assert.ok(button, `button "${label}" exists${errorId ? ` in ${errorId}` : ""}`);
+  button.click();
+}
+
 test("error ledger groups by root cause and reports resolve and note changes", async () => {
   const path = ledgerPath();
   const fixture = createViewFixture({ paths: [path] });
@@ -90,59 +99,46 @@ test("error ledger groups by root cause and reports resolve and note changes", a
     ledger.render(path, node);
     await fixture.flush();
 
-    const groups = [...fixture.root.querySelectorAll<HTMLElement>(".lp-error-group")];
+    const groups = [...fixture.root.querySelectorAll<HTMLElement>(".rm-sec[data-category]")];
     assert.deepEqual(
       groups.map((group) => group.dataset.category),
       ["misconception", "procedural_slip"],
     );
-    assert.match(groups[0]!.textContent ?? "", /Misconception \(1\)/);
-    assert.match(groups[1]!.textContent ?? "", /Procedural slip \(1\)/);
-    assert.match(
-      groups[0]!.querySelector(".lp-error-entry")!.textContent ?? "",
-      /Treats notation as the mechanism/,
-    );
-    assert.match(
-      groups[0]!.querySelector(".lp-error-note")!.textContent ?? "",
-      /Say the mechanism out loud/,
-    );
+    assert.match(groups[0]!.querySelector(".rm-sec-title")!.textContent ?? "", /misconception1/);
+    assert.match(groups[1]!.querySelector(".rm-sec-title")!.textContent ?? "", /procedural slip1/);
+    assert.match(groups[0]!.querySelector(".rm-err")!.textContent ?? "", /Treats notation as the mechanism/);
+    assert.match(groups[0]!.querySelector(".rm-err-note")!.textContent ?? "", /Say the mechanism out loud/);
 
-    const inherited = fixture.root.querySelector<HTMLElement>(
-      '.lp-watchpoint-inherited[data-source-node-id="n-holistic"]',
-    );
+    const inherited = fixture.root.querySelector<HTMLElement>('.rm-err-inherited[data-source-node-id="n-holistic"]');
     assert.ok(inherited, "the ledger highlights an upstream watchpoint");
-    assert.match(inherited.textContent ?? "", /Prerequisite gap/);
+    assert.match(inherited.textContent ?? "", /prerequisite gap/);
     assert.match(inherited.textContent ?? "", /Missing the base case behind the map/);
-    assert.match(inherited.textContent ?? "", /From Node n-holistic/);
+    assert.match(inherited.textContent ?? "", /from «Node n-holistic»/);
     assert.equal(
-      fixture.root.querySelectorAll(".lp-watchpoint-inherited").length,
+      fixture.root.querySelectorAll(".rm-err-inherited").length,
       1,
       "own errors are grouped separately, not repeated as inherited watchpoints",
     );
 
-    await buttonFor(fixture, "Mark resolved", "err-skill").props.onClick();
+    clickIn(fixture.root, "Mark resolved", "err-skill");
     assert.deepEqual(updates.at(-1), { errorId: "err-skill", change: { resolved: true } });
 
-    await buttonFor(fixture, "Clear note", "err-noted").props.onClick();
+    clickIn(fixture.root, "Clear", "err-noted");
     assert.deepEqual(updates.at(-1), { errorId: "err-noted", change: { notes: null } });
 
-    const textarea = fixture.root.querySelector<HTMLTextAreaElement>(
-      'textarea[aria-label="Reflection note for Drops a sign while expanding."]',
-    )!;
-    assert.ok(textarea, "each entry has its own reflection editor");
+    const editor = fixture.root.querySelector<HTMLElement>('[data-error-id="err-skill"] .rm-err-editor')!;
+    assert.equal(editor.hidden, true, "the note editor opens on demand");
+    clickIn(fixture.root, "Note", "err-skill");
+    assert.equal(editor.hidden, false);
+    const textarea = editor.querySelector<HTMLTextAreaElement>("textarea")!;
     textarea.value = "Re-read the expansion before multiplying.";
-    await buttonFor(fixture, "Save note", "err-skill").props.onClick();
+    clickIn(fixture.root, "Save note", "err-skill");
     assert.deepEqual(updates.at(-1), {
       errorId: "err-skill",
       change: { notes: "Re-read the expansion before multiplying." },
     });
 
-    const sourceLink = fixture.findLast(
-      "mountButton",
-      (record) =>
-        record.props.label === "Node n-holistic" &&
-        record.container.closest(".lp-watchpoint-inherited") !== null,
-    );
-    await sourceLink.props.onClick();
+    clickIn(inherited, "from «Node n-holistic»");
     assert.deepEqual(selected, ["n-holistic"]);
 
     // A resolved entry can be reopened; the label tells the truth.
@@ -155,9 +151,7 @@ test("error ledger groups by root cause and reports resolve and note changes", a
             ? {
                 ...candidate,
                 errors: candidate.errors.map((entry) =>
-                  entry.id === "err-skill"
-                    ? { ...entry, resolved: true, resolvedAt: AT }
-                    : entry,
+                  entry.id === "err-skill" ? { ...entry, resolved: true, resolvedAt: AT } : entry,
                 ),
               }
             : candidate,
@@ -166,13 +160,13 @@ test("error ledger groups by root cause and reports resolve and note changes", a
     };
     ledger.render(resolvedPath, resolvedPath.modules[0]!.nodes[2]!);
     await fixture.flush();
-    await buttonFor(fixture, "Mark unresolved", "err-skill").props.onClick();
+    clickIn(fixture.root, "Reopen", "err-skill");
     assert.deepEqual(updates.at(-1), { errorId: "err-skill", change: { resolved: false } });
 
     ledger.render(null, null);
-    assert.match(fixture.root.textContent ?? "", /Select a node to inspect its errors/);
+    assert.match(fixture.root.textContent ?? "", /Select a node to see its errors/);
     ledger.dispose();
-    assert.equal(fixture.root.querySelector(".lp-error-ledger"), null);
+    assert.equal(fixture.root.querySelector(".rm-ledger"), null);
   } finally {
     fixture.restore();
   }
@@ -189,9 +183,9 @@ test("a node without errors still shows that inherited watchpoints exist", async
     ledger.render(path, node);
     await fixture.flush();
 
-    assert.match(fixture.root.textContent ?? "", /No errors are logged on this node/);
+    assert.match(fixture.root.textContent ?? "", /No errors recorded on this node/);
     assert.match(fixture.root.textContent ?? "", /Missing the base case behind the map/);
-    assert.equal(fixture.root.querySelectorAll(".lp-inherited-watchpoints").length, 1);
+    assert.equal(fixture.root.querySelectorAll(".rm-err-inherited").length, 1);
     ledger.dispose();
   } finally {
     fixture.restore();

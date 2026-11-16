@@ -25,8 +25,8 @@ import { activate } from "../src/backend.ts";
 
 export const MANIFEST: PluginManifest = {
   apiVersion: 1,
-  id: "learning-path",
-  name: "Learning Paths",
+  id: "roadmap",
+  name: "Roadmap",
   version: "0.1.0",
   minAppVersion: "0.6.0",
   main: "main.js",

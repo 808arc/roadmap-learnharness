@@ -105,7 +105,7 @@ test("a child brief carries the anchor, pre-reading, priming, interleaving and w
   assert.equal(brief.node.id, "n-contrast");
   assert.deepEqual(brief.interleavedNodes.map((node) => node.id), ["n-concept", "n-skill"]);
   assert.match(brief.text, /practice session/);
-  assert.match(brief.text, /^# Learning Path child session brief/m);
+  assert.match(brief.text, /^# Roadmap child session brief/m);
   assert.match(brief.text, /Anchor: OSTEP — chapter 26, section 27\.1, pages 301-320/);
   assert.match(brief.text, /Spine: OSTEP \(textbook\)/);
   assert.match(brief.text, /No pre-reading pointer is set for this node/);

@@ -105,4 +105,4 @@ for (const key of Object.keys(ENTRY_EXTENSIONS)) {
 
 if (fs.lstatSync(path.join(output, "data"), { throwIfNoEntry: false })) fail("Build produced dist/data; refusing to ship learner data.");
 
-console.log(`Built Learning Path plugin into ${output}`);
+console.log(`Built Roadmap plugin into ${output}`);

@@ -21,7 +21,7 @@ import type {
   PluginBackendContext,
   PluginModelSpec,
 } from "learnharness-plugin-api";
-import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, parseLearningPath } from "./domain.ts";
+import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, parseLearningPath } from "./domain.ts";
 import type { LearningPath, UploadedSourceReference } from "./domain.ts";
 import { buildArchitectSystemPrompt } from "./framework.ts";
 import { StoreError } from "./store.ts";
@@ -218,6 +218,15 @@ const nodeDraftSchema = objectSchema({
     type: { type: "string", enum: ARTIFACT_TYPES }, instructions: { type: "string" },
   }, ["type"]),
   artifactNote: { type: "string" },
+  optional: { type: "boolean", description: "True for useful but not required nodes (drawn dashed)." },
+  alternativeGroup: { type: "string", description: "Same string on interchangeable nodes, e.g. \"compiler\" on GCC and Clang." },
+  outcomes: { type: "array", items: { type: "string" }, description: "2–4 phrases completing \"After this node I can …\"." },
+  resources: { type: "array", items: objectSchema({
+    title: { type: "string" },
+    kind: { type: "string", enum: RESOURCE_KINDS },
+    url: { type: "string", description: "Only when you are sure the address exists." },
+    free: { type: "boolean" },
+  }, ["title", "kind"]), description: "3–5 study resources." },
   interleavesNodeIds: { type: "array", items: { type: "string" }, description: "Optional; defaults to the two preceding nodes for new nodes." },
   progression: { type: "string", enum: PROGRESSION_STATES, description: SERVER_OWNED },
   childSessions: { type: "array", items: { type: "object", additionalProperties: true }, description: SERVER_OWNED },
@@ -292,6 +301,10 @@ function pathOutline(path: LearningPath): Record<string, unknown> {
         sourceAnchor: node.sourceAnchor,
         ...(node.lightPreReading === undefined ? {} : { lightPreReading: node.lightPreReading }),
         ...(node.artifactConfig ? { artifactConfig: node.artifactConfig } : {}),
+        ...(node.optional ? { optional: true } : {}),
+        ...(node.alternativeGroup ? { alternativeGroup: node.alternativeGroup } : {}),
+        ...(node.outcomes?.length ? { outcomes: node.outcomes } : {}),
+        ...(node.resources?.length ? { resources: node.resources } : {}),
         interleavesNodeIds: node.interleavesNodeIds,
         progression: node.progression,
       })),

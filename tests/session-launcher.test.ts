@@ -69,7 +69,7 @@ test("starting a teaching chat prepares, creates, stages, links and opens it", a
     assert.deepEqual(host.created, [{ title: "Teaching: Node n-skill", kind: "teaching" }]);
     assert.equal(host.staged.length, 1);
     assert.equal(host.staged[0]!.chatId, "chat-new");
-    assert.match(host.staged[0]!.text, /# Learning Path child session brief/);
+    assert.match(host.staged[0]!.text, /# Roadmap child session brief/);
     assert.match(host.staged[0]!.text, /Drops a sign while expanding/);
     assert.deepEqual(
       fixture.calls.filter((call) => call.name.startsWith("sessions.")).map((call) => call.name),
@@ -242,9 +242,17 @@ test("browser session host refuses malformed responses and unavailable storage",
   });
   await assert.rejects(() => notOk.create({ title: "x", kind: "teaching" }), /Could not open the session/);
 
-  const noStorage = createBrowserSessionHost({
-    fetch: (async () => ({ ok: true, json: async () => ({ id: "chat-ok" }) }) as Response) as typeof fetch,
-    storage: null as unknown as Storage,
-  });
-  assert.equal(noStorage.stageOpeningPrompt("chat-ok", "brief"), false);
+  // Node 22+ exposes a global sessionStorage; hide it to model a host without one.
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: undefined });
+  try {
+    const noStorage = createBrowserSessionHost({
+      fetch: (async () => ({ ok: true, json: async () => ({ id: "chat-ok" }) }) as Response) as typeof fetch,
+      storage: null as unknown as Storage,
+    });
+    assert.equal(noStorage.stageOpeningPrompt("chat-ok", "brief"), false);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "sessionStorage", descriptor);
+    else delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+  }
 });

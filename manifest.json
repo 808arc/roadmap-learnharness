@@ -1,10 +1,11 @@
 {
   "apiVersion": 1,
-  "id": "learning-path",
-  "name": "Learning Paths",
+  "id": "roadmap",
+  "name": "Roadmap",
   "version": "0.1.0",
   "minAppVersion": "0.6.0",
-  "description": "Design and follow a pedagogical learning path built on canonical sources, with child teaching and practice sessions for every node.",
+  "description": "Learning roadmaps drawn bottom-up like roadmap.sh: a Path Architect builds the roadmap from a real book or course, and every node opens Teaching and Practice sessions that report progress and errors back.",
+  "author": "Doshhhh",
   "main": "main.js",
   "backend": "backend.cjs",
   "styles": "styles.css"

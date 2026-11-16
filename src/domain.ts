@@ -11,7 +11,7 @@ export const NODE_TYPES = ["holistic", "concept", "contrast", "skill", "checkpoi
 export type NodeType = (typeof NODE_TYPES)[number];
 
 /** Ungated epistemic progression. There is deliberately no `primed` gate. */
-export const PROGRESSION_STATES = ["unstarted", "in_progress", "consolidated"] as const;
+export const PROGRESSION_STATES = ["unstarted", "in_progress", "consolidated", "skipped"] as const;
 export type ProgressionState = (typeof PROGRESSION_STATES)[number];
 
 export const CHILD_SESSION_KINDS = ["teaching", "practice"] as const;
@@ -122,6 +122,31 @@ export function defaultArtifactFor(nodeType: NodeType): ArtifactType {
   return recommendedArtifactsFor(nodeType)[0] ?? "none";
 }
 
+/** Typed study resources attached to a node (roadmap.sh style: 2–5 per node). */
+export const RESOURCE_KINDS = ["book", "article", "video", "course", "docs", "exercises"] as const;
+export type ResourceKind = (typeof RESOURCE_KINDS)[number];
+
+export interface NodeResource {
+  readonly title: string;
+  readonly kind: ResourceKind;
+  readonly url?: string;
+  readonly free?: boolean;
+}
+
+export const VIEW_MODES = ["graph", "tree"] as const;
+export type ViewMode = (typeof VIEW_MODES)[number];
+export const LANGUAGE_PREFERENCES = ["auto", "ru", "en"] as const;
+export type LanguagePreference = (typeof LANGUAGE_PREFERENCES)[number];
+
+export interface DisplaySettings {
+  /** Interface language; `auto` follows the system language. */
+  readonly language: LanguagePreference;
+  readonly defaultView: ViewMode;
+  readonly showOptional: boolean;
+}
+
+export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "graph", showOptional: true };
+
 export interface ArtifactConfig {
   readonly type: ArtifactType;
   /** Optional per-node framing; the catalog justification always accompanies it. */
@@ -215,6 +240,13 @@ export interface PathNode {
   readonly childSessions: readonly ChildSessionLink[];
   readonly errors: readonly ErrorEntry[];
   readonly pivotSuggestions: readonly PivotSuggestion[];
+  /** Not needed for the goal: drawn dashed, never counted against the learner. */
+  readonly optional?: boolean;
+  /** Nodes sharing a group are interchangeable choices ("GCC or Clang"). */
+  readonly alternativeGroup?: string;
+  /** Concrete abilities after the node ("After this node I can …"). */
+  readonly outcomes?: readonly string[];
+  readonly resources?: readonly NodeResource[];
 }
 
 export interface PathModule {
@@ -251,6 +283,10 @@ export interface PluginSettings {
   readonly artifactDefaults: Partial<Record<NodeType, ArtifactType>>;
   /** Absent means follow the host strong slot, the default. */
   readonly architect?: ArchitectPreferences;
+  /** Absent means DEFAULT_DISPLAY. */
+  readonly display?: DisplaySettings;
+  /** Language for Architect-written titles, goals and outcomes; `auto` follows the learner. */
+  readonly contentLanguage?: LanguagePreference;
 }
 
 export interface ValidationIssue {
@@ -600,6 +636,43 @@ function readPathNode(value: unknown, path: string): PathNode {
     pivotSuggestions: readArray(record.pivotSuggestions, `${path}.pivotSuggestions`).map(
       (entry, index) => readPivotSuggestion(entry, `${path}.pivotSuggestions[${index}]`),
     ),
+    ...(record.optional === undefined || record.optional === false
+      ? {}
+      : { optional: readBoolean(record.optional, `${path}.optional`) }),
+    ...(record.alternativeGroup === undefined || record.alternativeGroup === null || record.alternativeGroup === ""
+      ? {}
+      : { alternativeGroup: readString(record.alternativeGroup, `${path}.alternativeGroup`, { max: 100 }) }),
+    ...(record.outcomes === undefined
+      ? {}
+      : {
+          // A repeated outcome is a model slip, not a reason to refuse the whole path.
+          outcomes: [
+            ...new Set(
+              readArray(record.outcomes, `${path}.outcomes`).map((entry, index) =>
+                readString(entry, `${path}.outcomes[${index}]`, { max: 300 }),
+              ),
+            ),
+          ].slice(0, 8),
+        }),
+    ...(record.resources === undefined
+      ? {}
+      : {
+          resources: readArray(record.resources, `${path}.resources`)
+            .map((entry, index) => readNodeResource(entry, `${path}.resources[${index}]`))
+            .slice(0, 8),
+        }),
+  };
+}
+
+function readNodeResource(value: unknown, path: string): NodeResource {
+  const record = readObject(value, path);
+  const url = record.url === undefined || record.url === null || record.url === "" ? undefined : readString(record.url, `${path}.url`, { max: 2000 });
+  if (url !== undefined && !/^https?:\/\//i.test(url)) fail(`${path}.url`, "must be an http(s) address");
+  return {
+    title: readString(record.title, `${path}.title`, { max: 300 }),
+    kind: readEnum(record.kind, RESOURCE_KINDS, `${path}.kind`),
+    ...(url === undefined ? {} : { url }),
+    ...(record.free === undefined || record.free === null ? {} : { free: readBoolean(record.free, `${path}.free`) }),
   };
 }
 
@@ -717,9 +790,25 @@ function readPluginSettingsValue(value: unknown): PluginSettings {
     record.architect === undefined
       ? undefined
       : readArchitectPreferences(record.architect, `${path}.architect`);
+  const display = record.display === undefined ? undefined : readDisplaySettings(record.display, `${path}.display`);
+  const contentLanguage =
+    record.contentLanguage === undefined
+      ? undefined
+      : readEnum(record.contentLanguage, LANGUAGE_PREFERENCES, `${path}.contentLanguage`);
   return {
     artifactDefaults,
     ...(architect === undefined ? {} : { architect }),
+    ...(display === undefined ? {} : { display }),
+    ...(contentLanguage === undefined ? {} : { contentLanguage }),
+  };
+}
+
+function readDisplaySettings(value: unknown, path: string): DisplaySettings {
+  const record = readObject(value, path);
+  return {
+    language: record.language === undefined ? DEFAULT_DISPLAY.language : readEnum(record.language, LANGUAGE_PREFERENCES, `${path}.language`),
+    defaultView: record.defaultView === undefined ? DEFAULT_DISPLAY.defaultView : readEnum(record.defaultView, VIEW_MODES, `${path}.defaultView`),
+    showOptional: record.showOptional === undefined ? DEFAULT_DISPLAY.showOptional : readBoolean(record.showOptional, `${path}.showOptional`),
   };
 }
 

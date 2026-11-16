@@ -1,18 +1,19 @@
-/** Path Hub frontend tests.
+/** Roadmap view tests (formerly the Path Hub).
  *
  * Public-API test double only: the real view is mounted against a recorded host
- * UI and an in-memory JSON backend. These tests prove disposal, tree rendering
- * and navigation, Architect chat state, document-conversion failures and
- * `onResync` recovery without a browser or a model request.
+ * UI and an in-memory JSON backend. These tests prove disposal, the bottom-up
+ * roadmap and tree, node panel edits, Architect chat state, document-conversion
+ * failures and `onResync` recovery without a browser or a model request.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { PluginAgentSnapshot, PluginTreeRow } from "learnharness-plugin-api";
+import type { PluginAgentSnapshot } from "learnharness-plugin-api";
 import { mountPathHub } from "../src/view/path-hub.ts";
 import { effectiveArtifact } from "../src/view/node-inspector.ts";
 import { ARTIFACT_CATALOG } from "../src/domain.ts";
 import type { LearningPath } from "../src/domain.ts";
 import { makePath } from "./fixtures.ts";
+import { canvasNode, chooseMenuItem, click, inspector, selectNode } from "./roadmap-dom.ts";
 import { createViewFixture, fire, makeConversation, setSelect } from "./view-host.ts";
 import type { MountRecord, ViewFixture } from "./view-host.ts";
 
@@ -31,28 +32,11 @@ function snapshot(id: string, overrides: Partial<PluginAgentSnapshot> = {}): Plu
   return makeConversation(id, overrides);
 }
 
-function allRows(tree: MountRecord): PluginTreeRow[] {
-  const rows: PluginTreeRow[] = [];
-  const visit = (entries: readonly PluginTreeRow[]) => {
-    for (const row of entries) {
-      rows.push(row);
-      if (row.children) visit(row.children);
-    }
-  };
-  visit(tree.props.rows as readonly PluginTreeRow[]);
-  return rows;
-}
-
-function row(tree: MountRecord, key: string): PluginTreeRow {
-  const found = allRows(tree).find((entry) => entry.key === key);
-  assert.ok(found, `Missing tree row ${key}; have ${allRows(tree).map((entry) => entry.key).join(", ")}`);
-  return found;
-}
-
 async function mounted(fixture: ViewFixture): Promise<HTMLElement> {
   const container = fixture.root;
   fixture.context.signal.addEventListener("abort", () => container.replaceChildren());
   mountPathHub(fixture.context, container, fixture.context.signal);
+  await fixture.flush();
   await fixture.flush();
   return container;
 }
@@ -61,7 +45,14 @@ function liveButtons(fixture: ViewFixture): MountRecord[] {
   return fixture.all("mountButton");
 }
 
-test("Path Hub mounts every surface and disposes widgets, tree content and listeners on unmount", async () => {
+/** Toolbar buttons are plain Learny buttons; expose them like mount records for the Architect tests. */
+function toolbar(fixture: ViewFixture, label: string): HTMLButtonElement {
+  const found = [...fixture.root.querySelectorAll<HTMLButtonElement>(".rm-top button")].find((button) => button.textContent === label);
+  assert.ok(found, `Missing toolbar button ${label}`);
+  return found;
+}
+
+test("the roadmap view mounts every surface and disposes widgets and listeners on unmount", async () => {
   const path = makePath();
   const fixture = createViewFixture({
     paths: [path],
@@ -70,18 +61,18 @@ test("Path Hub mounts every surface and disposes widgets, tree content and liste
   try {
     const container = await mounted(fixture);
 
-    const tree = fixture.find("mountTree");
-    assert.equal(tree.props.label, "Path hierarchy");
-    assert.equal(tree.props.header, "Path");
-    assert.deepEqual(tree.props.columns, [{ key: "state", header: "State", width: 136 }]);
-    assert.equal(tree.signal, fixture.context.signal);
+    assert.ok(container.querySelector(".rm-top"), "toolbar");
+    assert.ok(container.querySelector(".rm-canvas .rm-stage"), "graph canvas");
+    assert.ok(container.querySelector(".rm-side .rm-tabs"), "side panel tabs");
+    assert.equal(fixture.all("mountTree").length, 0, "the roadmap draws its own map instead of a host tree");
     assert.equal(fixture.all("mountStandardComposer").length, 1);
     assert.equal(fixture.all("mountMarkdown").length, 1, "the stored Architect turn is rendered as Markdown");
-    assert.ok(liveButtons(fixture).some((button) => button.props.label === "Create a Path"));
-    assert.ok(liveButtons(fixture).some((button) => button.props.label === "Refine Path"));
+    toolbar(fixture, "New roadmap");
+    toolbar(fixture, "Refine");
     assert.ok(liveButtons(fixture).some((button) => button.props.label === "Upload PDF or text"));
-    assert.ok(fixture.all("mountBadge").length >= 6, "node type and progression badges mount inside tree content");
-    assert.match(container.textContent ?? "", /1 of 6 nodes consolidated/);
+    assert.equal(container.querySelector(".rm-crumb-path")!.textContent, "Linear algebra from canon");
+    assert.match(container.querySelector(".rm-status-summary")!.textContent ?? "", /consolidated 1 of 6 · in progress 2/);
+    assert.match(container.querySelector(".rm-status-errors")!.textContent ?? "", /1 open error/);
 
     const callsBefore = fixture.calls.length;
     fixture.controller.abort();
@@ -91,7 +82,7 @@ test("Path Hub mounts every surface and disposes widgets, tree content and liste
     assert.ok(fixture.records.length > 0);
     assert.ok(
       fixture.records.every((record) => record.disposed >= 1),
-      "every ctx.ui handle, including tree content, is disposed exactly through its signal",
+      "every ctx.ui handle is disposed through its signal",
     );
 
     fixture.emit("paths-changed", { id: path.id });
@@ -103,110 +94,101 @@ test("Path Hub mounts every surface and disposes widgets, tree content and liste
   }
 });
 
-test("tree renders modules, nodes and child chats with badges and preserves selection across updates", async () => {
+test("the graph lays modules bottom-up, expands the working module and follows selection", async () => {
   const path = makePath();
-  const fixture = createViewFixture({
-    paths: [path],
-    conversations: [snapshot("chat-architect")],
-  });
+  const fixture = createViewFixture({ paths: [path], conversations: [snapshot("chat-architect")] });
   try {
     await mounted(fixture);
-    const tree = fixture.find("mountTree");
-    assert.deepEqual(
-      allRows(tree).map((entry) => entry.key),
-      [
-        "module:module-structure",
-        "node:n-holistic",
-        "node:n-concept",
-        "chat:n-concept:chat-1",
-        "node:n-skill",
-        "module:module-synthesis",
-        "node:n-contrast",
-        "node:n-checkpoint",
-        "node:n-bridge",
-      ],
+    const root = fixture.root;
+    // The first in-progress node opens in the panel; its module is the expanded box.
+    assert.equal(inspector(fixture).dataset.nodeId, "n-concept");
+    const box = root.querySelector<HTMLElement>(".rm-box")!;
+    assert.equal(box.dataset.moduleId, "module-structure");
+    assert.match(box.textContent ?? "", /Structure first.*in progress · 1 \/ 3/s);
+    assert.match(box.textContent ?? "", /In order/);
+    assert.match(box.textContent ?? "", /1 open error: Drops a sign while expanding\./);
+    const synthesis = root.querySelector<HTMLElement>('.rm-main[data-module-id="module-synthesis"]')!;
+    assert.ok(synthesis, "other modules are main-line nodes");
+    assert.ok(
+      parseFloat(synthesis.style.top) < parseFloat(box.style.top),
+      "the later module sits above the earlier one (bottom-up)",
     );
-    assert.equal(row(tree, "module:module-structure").content, "Structure first");
-    assert.equal(row(tree, "module:module-structure").cells?.state, "1/3 consolidated");
-    assert.deepEqual(
-      fixture.all("mountBadge").slice(0, 6).map((badge) => badge.props.text),
-      ["Holistic", "Consolidated", "Concept", "In progress", "Skill", "Unstarted"],
-    );
+    assert.ok(canvasNode(fixture, "n-concept").classList.contains("rm-sel"));
+    assert.ok(canvasNode(fixture, "n-holistic").classList.contains("rm-done"));
+    assert.ok(canvasNode(fixture, "n-skill").querySelector(".rm-node-warn"), "open errors are flagged on the node");
+    assert.ok(root.querySelectorAll(".rm-edges line").length > 0);
+    assert.ok(root.querySelector(".rm-edges .rm-arrow"), "the main line points up");
 
-    const initialArchitectCalls = fixture.calls.filter((call) => call.name.startsWith("architect")).length;
-    await row(tree, "node:n-concept").selection!.onChange(true);
+    const panel = inspector(fixture);
+    assert.match(panel.textContent ?? "", /Understand n-concept from first principles\./);
+    assert.match(panel.textContent ?? "", /OSTEP · ch\. 26 · §27\.1 · pp\. 301-320/);
+    assert.match(panel.textContent ?? "", /Before the lesson: Skim the module overview and the running example\./);
+    assert.match(panel.textContent ?? "", /Why: a small program/);
+    assert.equal(panel.querySelector<HTMLSelectElement>('select[aria-label="Artifact"]')!.value, "micro_code");
+
+    // Interleaved prior nodes are followable.
+    click(panel, "Node n-holistic");
     await fixture.flush();
-    const inspector = fixture.root.querySelector<HTMLElement>(".lp-inspector")!;
-    assert.equal(inspector.dataset.nodeId, "n-concept");
-    assert.match(inspector.textContent ?? "", /Understand n-concept from first principles\./);
-    assert.match(inspector.textContent ?? "", /OSTEP — chapter 26, section 27\.1, pages 301-320/);
-    assert.match(inspector.textContent ?? "", /Skim the module overview and the running example\./);
-    assert.match(inspector.textContent ?? "", /Why the framework recommends this/);
-    assert.match(inspector.textContent ?? "", /Eliminates hand-waving/);
-    assert.equal(
-      inspector.querySelector<HTMLSelectElement>('select[aria-label="Artifact type"]')!.value,
-      "micro_code",
+    assert.equal(inspector(fixture).dataset.nodeId, "n-holistic");
+
+    // Clicking a collapsed module expands it; selecting its node keeps it expanded.
+    synthesis.click();
+    await fixture.flush();
+    assert.equal(root.querySelector<HTMLElement>(".rm-box")!.dataset.moduleId, "module-synthesis");
+    await selectNode(fixture, "n-contrast");
+    assert.equal(inspector(fixture).dataset.nodeId, "n-contrast");
+    assert.equal(root.querySelector<HTMLElement>(".rm-box")!.dataset.moduleId, "module-synthesis");
+
+    // Tree view lists modules and nodes; selection survives switching views.
+    toolbar(fixture, "Tree").click();
+    await fixture.flush();
+    assert.equal(root.querySelector<HTMLElement>(".rm-viewport")!.hidden, true);
+    assert.equal(root.querySelector<HTMLElement>(".rm-tree")!.hidden, false);
+    assert.ok(canvasNode(fixture, "n-contrast").classList.contains("rm-sel"));
+    assert.deepEqual(
+      [...root.querySelectorAll(".rm-tree-module .rm-tree-module-title")].map((node) => node.textContent),
+      ["Structure first", "Synthesis"],
     );
 
-    const interleaved = liveButtons(fixture).find((button) => button.props.label === "Node n-holistic");
-    assert.ok(interleaved, "interleaved prior nodes are followable links");
-    await interleaved.props.onClick();
-    assert.equal(fixture.root.querySelector<HTMLElement>(".lp-inspector")!.dataset.nodeId, "n-holistic");
-
-    await row(tree, "module:module-structure").disclosure!.onChange(false);
-    assert.equal(row(tree, "module:module-structure").disclosure!.expanded, false);
-    assert.equal(row(tree, "node:n-holistic").selection!.checked, true, "selection survives collapse/re-render");
-    assert.equal(
-      fixture.root.querySelector<HTMLElement>(".lp-inspector")!.dataset.nodeId,
-      "n-holistic",
-      "collapsing the tree never clears the inspector selection",
-    );
-    await row(tree, "module:module-structure").disclosure!.onChange(true);
-    assert.equal(row(tree, "module:module-structure").disclosure!.expanded, true);
-
-    const chatButton = liveButtons(fixture).find(
-      (button) => button.props.label === "Open" && button.container.closest(".lp-tree-chat"),
-    );
-    assert.ok(chatButton, "child-chat rows expose a navigation action inside the tree");
-    await chatButton.props.onClick();
+    // Session rows open the native chat.
+    await selectNode(fixture, "n-skill");
+    toolbar(fixture, "Graph").click();
+    await fixture.flush();
+    await selectNode(fixture, "n-concept");
+    const session = inspector(fixture).querySelector<HTMLButtonElement>(".rm-session-open")!;
+    session.click();
     assert.deepEqual(fixture.openedSessions, ["chat-1"]);
-    assert.equal(
-      fixture.calls.filter((call) => call.name.startsWith("architect")).length,
-      initialArchitectCalls,
-      "tree navigation and expansion never refetch or restart the Architect",
-    );
   } finally {
     fixture.restore();
   }
 });
 
-test("node inspector persists progression and artifact choices and refreshes badges and progress", async () => {
+test("node panel persists status and artifact choices and refreshes the map and progress", async () => {
   const path = makePath();
   const fixture = createViewFixture({ paths: [path], conversations: [snapshot("chat-architect")] });
   try {
     await mounted(fixture);
-    const tree = fixture.find("mountTree");
-    await row(tree, "node:n-concept").selection!.onChange(true);
+    await selectNode(fixture, "n-concept");
 
-    const progression = fixture.root.querySelector<HTMLSelectElement>('select[aria-label="Progression"]')!;
-    setSelect(progression, "consolidated");
-    await fixture.flush();
+    inspector(fixture).querySelector<HTMLButtonElement>(".rm-status")!.click();
+    const menu = await chooseMenuItem(fixture, "consolidated");
+    assert.deepEqual(menu.items.map((item) => item.key), ["unstarted", "in_progress", "consolidated", "skipped"]);
     assert.deepEqual(fixture.calls.filter((call) => call.name === "paths.updateNode").at(-1)?.input, {
       pathId: path.id,
       nodeId: "n-concept",
       progression: "consolidated",
     });
-    assert.match(fixture.root.textContent ?? "", /2 of 6 nodes consolidated · 1 in progress/);
-    const conceptRow = row(fixture.find("mountTree"), "node:n-concept");
-    assert.equal(conceptRow.cells?.state, "Consolidated");
-    assert.ok(
-      fixture
-        .all("mountBadge")
-        .some((badge) => badge.props.text === "Consolidated" && badge.container.closest(".lp-tree-node")),
-    );
+    assert.match(fixture.root.querySelector(".rm-status-summary")!.textContent ?? "", /consolidated 2 of 6 · in progress 1/);
+    assert.ok(canvasNode(fixture, "n-concept").classList.contains("rm-done"));
 
-    const artifact = fixture.root.querySelector<HTMLSelectElement>('select[aria-label="Artifact type"]')!;
-    setSelect(artifact, "relational_map");
+    // Skipped counts as done and is drawn struck through.
+    inspector(fixture).querySelector<HTMLButtonElement>(".rm-status")!.click();
+    await chooseMenuItem(fixture, "skipped");
+    assert.ok(canvasNode(fixture, "n-concept").classList.contains("rm-skip"));
+    assert.match(fixture.root.querySelector(".rm-status-summary")!.textContent ?? "", /consolidated 2 of 6/);
+
+    const artifact = () => inspector(fixture).querySelector<HTMLSelectElement>('select[aria-label="Artifact"]')!;
+    setSelect(artifact(), "relational_map");
     await fixture.flush();
     assert.deepEqual(fixture.calls.filter((call) => call.name === "paths.updateNode").at(-1)?.input, {
       pathId: path.id,
@@ -216,23 +198,17 @@ test("node inspector persists progression and artifact choices and refreshes bad
     const updated = fixture.paths.get(path.id)!;
     const node = updated.modules[0]!.nodes.find((candidate) => candidate.id === "n-concept")!;
     assert.equal(effectiveArtifact(updated, node), "relational_map");
-    assert.match(
-      fixture.root.querySelector<HTMLElement>(".lp-artifact-justification")!.textContent ?? "",
-      /Externalizes mental structure/,
-    );
+    assert.match(inspector(fixture).querySelector(".rm-why")!.textContent ?? "", /labelled nodes and arrows/);
 
-    // Clearing the override falls back to the path default and keeps the card justified.
-    setSelect(artifact, "");
+    // Clearing the override falls back to the path default and keeps the reason.
+    setSelect(artifact(), "");
     await fixture.flush();
     const afterClear = fixture.paths.get(path.id)!;
-    assert.equal(
-      afterClear.modules[0]!.nodes.find((candidate) => candidate.id === "n-concept")!.artifactConfig,
-      null,
-    );
+    assert.equal(afterClear.modules[0]!.nodes.find((candidate) => candidate.id === "n-concept")!.artifactConfig, null);
     assert.match(
-      fixture.root.querySelector<HTMLElement>(".lp-artifact-justification")!.textContent ?? "",
-      /Crystallizes atomic hooks/,
-      "the path default (retrieval cue) now supplies the justification",
+      inspector(fixture).querySelector(".rm-why")!.textContent ?? "",
+      /short hooks keep it quick to recall/,
+      "the path default (retrieval cue) now supplies the reason",
     );
     assert.equal(ARTIFACT_CATALOG.length, 6);
   } finally {
@@ -273,7 +249,7 @@ test("Architect chat sends, shows busy state and adopts notification snapshots a
     assert.equal(fixture.find("mountStandardComposer").props.composer.busy, true);
     assert.match(
       fixture.root.querySelector<HTMLElement>(".lp-architect-status")!.textContent ?? "",
-      /Architect is thinking/,
+      /The Architect is thinking/,
     );
 
     const updated = structuredClone(fixture.conversations.get("chat-architect")!);
@@ -289,9 +265,8 @@ test("Architect chat sends, shows busy state and adopts notification snapshots a
     );
     assert.equal(fixture.find("mountStandardComposer").props.composer.value, "");
 
-    // Create a Path starts a fresh Architect conversation and opens the refine surface.
-    const create = liveButtons(fixture).find((button) => button.props.label === "Create a Path")!;
-    await create.props.onClick();
+    // New roadmap starts a fresh Architect conversation and opens the Architect tab.
+    toolbar(fixture, "New roadmap").click();
     await fixture.flush();
     assert.equal(fixture.calls.filter((call) => call.name === "architect.create").length, 0,
       "opening the composer must leave time to select a model before creating a conversation");
@@ -300,11 +275,8 @@ test("Architect chat sends, shows busy state and adopts notification snapshots a
     await fixture.flush();
     assert.equal(fixture.find("mountStandardComposer").props.model.disabled, false,
       "a path refresh must not replace the new model-selection draft with the old chat");
-    assert.ok(
-      liveButtons(fixture).some((button) => button.props.label === "Refine Path · on"),
-      "Create a Path opens the Architect surface",
-    );
-    assert.equal(fixture.root.querySelector<HTMLElement>(".lp-architect-pane")!.hidden, false);
+    assert.ok(toolbar(fixture, "Refine").classList.contains("rm-active"), "New roadmap opens the Architect tab");
+    assert.equal(fixture.root.querySelector<HTMLElement>(".rm-panel-architect")!.hidden, false);
   } finally {
     fixture.restore();
   }
@@ -323,7 +295,7 @@ test("a new path chooses its Architect model before the conversation is created"
     assert.equal(composer.props.thinking.value, undefined, "changing models clears incompatible thinking");
     await composer.props.model.onChange({ provider: "custom", id: "chosen-architect" });
     await composer.props.thinking.onChange("high");
-    await liveButtons(fixture).find((button) => button.props.label === "Create a Path")!.props.onClick();
+    toolbar(fixture, "New roadmap").click();
     assert.deepEqual(composer.props.model.value, { provider: "custom", id: "chosen-architect" },
       "opening an already-empty draft does not discard a model choice");
     await composer.props.composer.onChange("Teach me geometry");
@@ -336,8 +308,7 @@ test("a new path chooses its Architect model before the conversation is created"
     assert.equal(composer.props.model.disabled, true, "the model is fixed for this conversation");
     await composer.props.composer.onStop();
     await fixture.flush();
-    const newPath = liveButtons(fixture).find((button) => button.props.label === "Create a Path")!;
-    await newPath.props.onClick();
+    toolbar(fixture, "New roadmap").click();
     assert.equal(composer.props.model.disabled, false);
     assert.equal(composer.props.model.value, undefined);
     assert.equal(composer.props.thinking.value, undefined);
@@ -372,7 +343,7 @@ test("background refreshes keep the conversation in view and select the path it 
   const fixture = createViewFixture({ paths: [makePath()], conversations: [snapshot("chat-architect")] });
   try {
     await mounted(fixture);
-    await liveButtons(fixture).find((button) => button.props.label === "Create a Path")!.props.onClick();
+    toolbar(fixture, "New roadmap").click();
     const composer = fixture.find("mountStandardComposer");
     await composer.props.composer.onChange("Teach me shaders");
     await composer.props.composer.onSend();
@@ -395,22 +366,21 @@ test("background refreshes keep the conversation in view and select the path it 
     fixture.emit("paths-changed", { id: shaders.id, created: true });
     await fixture.flush();
     assert.equal(loads(), before);
-    assert.equal(fixture.root.querySelector<HTMLSelectElement>("select")?.value, "path-shaders");
+    assert.equal(fixture.root.querySelector(".rm-crumb-path")!.textContent, "Shaders");
   } finally {
     fixture.restore();
   }
 });
 
-test("Refine Path over an unsent draft opens the selected path's conversation", async () => {
+test("Refine over an unsent draft opens the selected roadmap's conversation", async () => {
   const fixture = createViewFixture({ paths: [makePath()], conversations: [snapshot("chat-architect")] });
   try {
     await mounted(fixture);
-    await liveButtons(fixture).find((button) => button.props.label === "Create a Path")!.props.onClick();
+    toolbar(fixture, "New roadmap").click();
     await fixture.flush();
     assert.equal(fixture.find("mountStandardComposer").props.model.disabled, false, "a new draft is open");
-    const refine = () => liveButtons(fixture).find((button) => String(button.props.label).startsWith("Refine Path"))!;
-    await refine().props.onClick(); // close
-    await refine().props.onClick(); // reopen for the selected path
+    toolbar(fixture, "Refine").click(); // back to the node tab
+    toolbar(fixture, "Refine").click(); // reopen for the selected roadmap
     await fixture.flush();
     assert.equal(fixture.find("mountStandardComposer").props.model.disabled, true,
       "the path's existing conversation replaced the draft");
@@ -516,35 +486,26 @@ test("onResync re-reads paths and the Architect conversation after missed notifi
   });
   try {
     await mounted(fixture);
-    assert.match(fixture.root.querySelector<HTMLElement>(".lp-goal")!.textContent ?? "", /Build durable/);
+    const title = () => fixture.root.querySelector<HTMLElement>(".rm-crumb-path")!.textContent ?? "";
+    assert.equal(title(), "Linear algebra from canon");
 
-    const changed: LearningPath = {
-      ...path,
-      goal: "Updated goal after reconnect.",
-      updatedAt: "2026-02-02T00:00:00.000Z",
-    };
+    const changed: LearningPath = { ...path, title: "Renamed after reconnect", updatedAt: "2026-02-02T00:00:00.000Z" };
     fixture.paths.set(path.id, changed);
     const conversation = structuredClone(fixture.conversations.get("chat-architect")!);
     conversation.messages = [...conversation.messages, assistant("Recovered plan after reconnect.")];
     fixture.conversations.set("chat-architect", conversation);
     await fixture.flush();
-    assert.match(
-      fixture.root.querySelector<HTMLElement>(".lp-goal")!.textContent ?? "",
-      /Build durable/,
-      "a missed notification leaves the view stale",
-    );
+    assert.equal(title(), "Linear algebra from canon", "a missed notification leaves the view stale");
 
     const before = fixture.calls.length;
     fixture.resync();
+    await fixture.flush();
     await fixture.flush();
     const names = fixture.calls.slice(before).map((call) => call.name);
     assert.ok(names.includes("paths.list"));
     assert.ok(names.includes("paths.get"));
     assert.ok(names.includes("architect.get"));
-    assert.match(
-      fixture.root.querySelector<HTMLElement>(".lp-goal")!.textContent ?? "",
-      /Updated goal after reconnect\./,
-    );
+    assert.equal(title(), "Renamed after reconnect");
     assert.ok(
       fixture.all("mountMarkdown").some((markdown) => markdown.props.text === "Recovered plan after reconnect."),
       "the Architect transcript recovers from the authoritative snapshot",
@@ -560,19 +521,20 @@ test("onResync re-reads paths and the Architect conversation after missed notifi
   }
 });
 
-test("an empty hub offers Create a Path and does not invent a tree or inspector node", async () => {
+test("an empty view opens the Architect and does not invent a map or a node", async () => {
   const fixture = createViewFixture();
   try {
     await mounted(fixture);
-    assert.equal(fixture.root.querySelector<HTMLElement>(".lp-architect-pane")!.hidden, false);
-    assert.match(fixture.root.textContent ?? "", /No learning paths yet/);
-    assert.match(fixture.root.querySelector<HTMLElement>(".lp-inspector")!.textContent ?? "", /Select a node/);
-    assert.equal(fixture.all("mountTree").length, 0, "no empty tree is mounted without a path");
-    const create = liveButtons(fixture).find((button) => button.props.label === "Create a Path")!;
-    await create.props.onClick();
+    assert.equal(fixture.root.querySelector<HTMLElement>(".rm-panel-architect")!.hidden, false);
+    assert.equal(fixture.root.querySelector<HTMLElement>(".rm-side")!.hidden, false);
+    assert.match(fixture.root.textContent ?? "", /No roadmaps yet/);
+    assert.match(inspector(fixture).textContent ?? "", /Select a node/);
+    assert.equal(fixture.root.querySelectorAll(".rm-node").length, 0, "no nodes without a roadmap");
+    assert.equal(toolbar(fixture, "Refine").disabled, true);
+    toolbar(fixture, "New roadmap").click();
     await fixture.flush();
     assert.equal(fixture.conversations.size, 0, "opening a draft does not lock in the model yet");
-    assert.equal(fixture.paths.size, 0, "the Architect creates paths through save_learning_path, not the header");
+    assert.equal(fixture.paths.size, 0, "the Architect creates roadmaps through save_learning_path, not the toolbar");
     assert.ok(fixture.all("mountMarkdown").length === 0);
   } finally {
     fixture.restore();
