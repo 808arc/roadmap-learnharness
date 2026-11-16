@@ -101,7 +101,7 @@ test("backend enable, disable and re-enable are idempotent and keep stored data"
   assert.equal(host.instructions.length, 1);
   assert.deepEqual(await host.call("paths.status"), {
     id: "roadmap",
-    version: "0.2.0",
+    version: "0.2.1",
     active: true,
   });
   assert.deepEqual(
