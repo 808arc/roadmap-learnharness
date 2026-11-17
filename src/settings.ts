@@ -40,6 +40,7 @@ import { EVENT_PATHS_CHANGED, EVENT_SETTINGS_CHANGED } from "./topics.ts";
 import { locale, resolveLocale, setLocale, t } from "./i18n.ts";
 import type { MessageKey } from "./i18n.ts";
 import { artifactName } from "./view/node-inspector.ts";
+import { mountResearchSettings } from "./research-settings.ts";
 import { DEFAULT_DISPLAY, LANGUAGE_PREFERENCES, VIEW_MODES } from "./domain.ts";
 import type { DisplaySettings, LanguagePreference, ViewMode } from "./domain.ts";
 
@@ -155,6 +156,10 @@ export function mountSettingsPage(
   }
   artifactsSection.append(catalogDetails);
 
+  const researchSection = section(document, root, t("s.research"), t("s.researchIntro"));
+  const researchHost = element(document, "div", "rm-research-settings");
+  researchSection.append(researchHost);
+
   const architectSection = section(
     document,
     root,
@@ -183,6 +188,13 @@ export function mountSettingsPage(
   const dialogs: PluginWidgetHandle<PluginDialogProps>[] = [];
   let loadToken = 0;
   let disposed = false;
+
+  const researchPanel = mountResearchSettings(ctx, researchHost, {
+    signal,
+    settings: () => settings,
+    save: (next) => saveSettings(next),
+    onError: (message) => setStatus(message, "error"),
+  });
 
   const live = (token: number): boolean => !disposed && !signal.aborted && token === loadToken;
 
@@ -625,6 +637,7 @@ export function mountSettingsPage(
       renderArtifactRows();
       renderArchitect();
       renderPaths();
+      void researchPanel.render();
       setStatus(null);
     } catch (problem) {
       if (!live(token)) return;
@@ -659,6 +672,7 @@ export function mountSettingsPage(
     artifactRows = null;
     displayRows?.dispose();
     displayRows = null;
+    researchPanel.dispose();
     root.remove();
   };
 }

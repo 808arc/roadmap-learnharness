@@ -43,9 +43,16 @@ in progress, and a group of alternatives counts once.
 1. **Create a roadmap.** Tell the Architect what you want to be able to do in the
    end and what you already know. It picks one or two reputable sources (or uses
    the PDF/text you upload) and drafts modules and nodes anchored to chapters.
-   It follows roadmap rules: the most important ~20% first, everything else
-   optional; every node is one concrete ability with 2–4 outcomes; practice in the
-   form the knowledge is used; 3–5 resources per node, links only when real.
+   Before drafting it **researches**: it looks up the canonical books and courses
+   of the field and deeper, less popular but strong ones, opens their tables of
+   contents and syllabi, and anchors nodes to real chapters (see *Research* below).
+   It follows the roadmap-author method: start from the end goal, build the
+   dependency graph, lead all the way to the goal, trace the path as a learner
+   before saving; every node is one concrete ability with 2–4 outcomes; 3–8
+   resources per node — canonical first, with which chapters to use and what to
+   skip, marked *essential* and *checked* when it actually looked inside.
+   Drop books and notes (PDF, Markdown, text) onto the Architect panel or attach
+   them with *Book or notes*.
 2. **Study a node.** *Lesson* or *Practice* creates a native LearnHarness session,
    stages a brief (goal, outcomes, source anchor, earlier nodes to weave in, open
    errors, the artifact) and opens it. Linked sessions get `roadmap_*` tools to
@@ -60,6 +67,23 @@ in progress, and a group of alternatives counts once.
 
 There is deliberately **no scheduling and no gamification**: no hours, streaks,
 points or deadlines.
+
+## Research
+
+Settings → Roadmap → Research. Every channel can be switched off; with all of them
+off the Architect works from what the model knows and never invents links.
+
+| Channel | Default | What it does |
+| --- | --- | --- |
+| Research sessions in LearnHarness | On (hybrid) | *Research in a session* opens a teaching chat that researches the topic with the search engine set in LearnHarness and hands the report to the Architect. The search key stays inside LearnHarness. |
+| Open catalogs | On (hybrid) | Open Library, Google Books, OpenAlex, arXiv, Wikipedia and reading public pages. No key. |
+| Deep research via Claude Code | Off | Runs the Claude Code CLI (the one LearnHarness uses for its claude-code provider) with **only** web search and page reading, in an empty temporary folder. Slow (10–30 min) and uses your Claude limits. |
+| My own search key | Off | Web search with your Tavily or Brave key. Plugins cannot use the system password store, so the key is a plain file in `data/secrets/` — use a key with a spending limit. |
+
+*Deep research* in the composer asks for confirmation (it can take long and use
+many tokens) and applies to the next message. Page reading refuses local and
+private network addresses. Reports from research sessions and Claude Code are
+kept as research notes (listed in settings) that the Architect reads.
 
 ## Install
 
@@ -101,13 +125,15 @@ Settings → Roadmap:
 | Show optional nodes | On |
 | Artifact defaults per node type | Framework recommendation |
 | Architect model | Follow the host's strong model, or choose one |
+| Research | Hybrid: research sessions + open catalogs |
 | Roadmaps | Delete a roadmap (sessions and the Knowledge Graph are never touched) |
 
 ## Data
 
 Everything lives in the plugin's own data folder (`<plugins>/roadmap/data/`):
-`learning-paths.json`, `settings.json`, `architect.json`, `sources/` and the
-host-managed `agents/`. Records are versioned and written atomically; corrupt or
+`learning-paths.json`, `settings.json`, `architect.json`, `sources/`, `research/`
+(research notes), `research-chats.json`, `secrets/` (only if you save your own
+search key) and the host-managed `agents/`. Records are versioned and written atomically; corrupt or
 newer files are refused rather than overwritten. Roadmap never deletes native
 chats or Knowledge Graph records.
 

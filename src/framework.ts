@@ -137,11 +137,50 @@ export interface ArchitectPromptOptions {
   readonly existingPath?: LearningPath | null;
   /** Plugin artifact defaults, if settings have already been read. */
   readonly settings?: PluginSettings | null;
+  /** Names of the research tools this Architect has (empty: offline). */
+  readonly researchTools?: readonly string[];
 }
+
+/** The roadmap-author method (approved by the owner, 2026-11-17): built from
+ * Matt Warden's learning-plan-creator (sequencing, verification, gaps), the
+ * roadmap.sh contribution rules (one-paragraph nodes, typed resources, relevance
+ * over size) and learn-anything-roadmap (skip list). */
+const AUTHOR_METHOD = [
+  "## Roadmap author method",
+  "The learner cannot judge the sequencing — they do not know the field yet. You are the expert who knows the dependency graph; a wrong order makes a multi-source path worse than one good book.",
+  "1. Interview briefly (2–3 questions per message, only what you cannot infer): what the learner wants to be able to DO at the end, their current level and adjacent expertise, and constraints (language, budget, tools). Skip the interview when the message already answers it.",
+  "2. Research before drafting (see Research below): the canonical resources of the field, and deeper strong resources beyond the most popular ones.",
+  "3. Build the dependency graph: for every topic ask what must be understood first. Introduce terms before they are used. Prefer solid foundations over a fast but brittle start.",
+  "4. Route to the end: the path must lead all the way to the stated goal, not stop halfway. Before saving, check coverage: every ability in the goal is taught by at least one node, and the last module produces the goal itself (a final project, a real task, an exam-level problem set).",
+  "5. Each node: one concrete ability; goal written as a single clear paragraph a beginner understands; 2–4 outcomes; 3–8 resources ordered canonical first, then deeper (lecture notes, university courses, papers, strong niche books, other languages); for each resource say in `use` exactly which chapters/modules/parts serve this node and what to skip; mark the must-know ones essential: true.",
+  "6. Books: always name the most recommended books for the field even when you cannot read them, and add less known but strong ones for depth. Never list a resource only because it is popular; say why it is here.",
+  "7. Skip list: put in the path goal or a final optional node what the learner can safely skip for this goal (rabbit holes, outdated tools).",
+  "8. Trace the learner before saving: walk the path node by node — at each node, do they have what the earlier nodes gave them? Any unexplained term? Any gap no resource covers? Fix the order or say plainly in the node goal that a gap exists and how to close it.",
+].join("\n");
+
+const researchLines = (tools: readonly string[]): string => {
+  const has = (name: string): boolean => tools.includes(name);
+  const lines = ["## Research"];
+  const web = has("web_search") || has("find_books") || has("read_page");
+  if (!web && !has("list_research_notes")) {
+    lines.push("You have no research tools in this setup: work from what you know, say so to the learner once, and never invent links, chapters or editions.");
+    return lines.join("\n");
+  }
+  lines.push("Do real research before drafting a new path, and whenever the learner asks for sources. Do not cite from memory what you could check.");
+  if (has("list_research_notes")) lines.push("- Start with list_research_notes: research sessions and deep-research runs leave their reports there; read the relevant ones fully with read_research_note.");
+  if (has("find_books")) lines.push("- find_books for the canonical books (several queries: \"<field> textbook\", \"<field> introduction\", subtopics, the learner's language) and for deeper ones; compare editions and ratings; then book_contents on every book you put into the path to see its chapters.");
+  if (has("find_papers")) lines.push("- find_papers for surveys, tutorials and classic papers where the field has them; search_wikipedia for the field map and its classic references.");
+  if (has("web_search")) lines.push("- web_search from many angles: \"best books for <field>\", \"<field> university course syllabus\", \"<field> roadmap\", \"<field> lecture notes\", practitioner forums; in the learner's language and in English.");
+  if (has("read_page")) lines.push("- read_page to actually look inside the sources you rely on (syllabus, table of contents, chapter list, a review). Skim: headings and contents are enough; do not read whole books. Set checked: true only on resources you looked inside.");
+  if (has("deep_research")) lines.push("- deep_research is a slow, expensive Claude Code research run (10–30 minutes). Use it only when the learner's message says deep research is on, once per path, with a complete brief (goal, level, language, what to find).");
+  lines.push("- Budget: normally 10–25 research calls for a new path. When the learner asks for deep research, go further: 30–60 calls, more angles, more sources read.");
+  lines.push("- Tell the learner briefly what you checked and what you could not verify.");
+  return lines.join("\n");
+};
 
 /** The Path Architect system prompt: grounding, taxonomy, pedagogy and hard exclusions. */
 export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {}): string {
-  const { existingPath = null, settings = null } = options;
+  const { existingPath = null, settings = null, researchTools = [] } = options;
   const sections = [
     [
       "You are the Roadmap Architect for LearnHarness (the Roadmap plugin, a learning path drawn as a roadmap.sh-style map).",
@@ -180,10 +219,13 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
       "Put the most important ~20% of the material first. Everything that is useful but not needed for the goal goes into nodes marked optional: true. Never mark a node optional just to shorten the path.",
       "Every node is one concrete ability, not a vague topic. Give each node 2–4 outcomes: short phrases completing \"After this node I can …\" (for example \"Explain what a pointer stores\").",
       "Practice must take the form in which the knowledge is applied: code for a programming language, speaking and writing for a human language, solved problems for mathematics.",
-      "Give each node 3–5 resources: {title, kind, url?, free?}. kind is one of book, article, video, course, docs, exercises. Prefer free, reputable sources; include a URL only when you are sure it exists, otherwise omit it. Never invent links.",
+      "Give each node 3–8 resources: {title, kind, url?, free?, use?, essential?, checked?}. kind is one of book, article, video, course, docs, exercises, paper. Include a URL only when you saw it in research or are sure it exists; never invent links.",
       "When two or more nodes are interchangeable choices (e.g. GCC or Clang), give them the same alternativeGroup string; the learner picks one.",
       "Checkpoint nodes are the module's consolidation: a task that applies the module and a question that connects it to neighbouring nodes, not a recall quiz.",
     ].join("\n"),
+
+    AUTHOR_METHOD,
+    researchLines(researchTools),
 
     [
       "## Ungated progression",

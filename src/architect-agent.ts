@@ -33,7 +33,7 @@ export const ARCHITECT_DEFINITION_ID = "path-architect";
 export const MAX_SOURCE_CHUNK_CHARS = 20_000;
 export const DEFAULT_SOURCE_CHUNK_CHARS = 12_000;
 /** A long-running design conversation needs room, but is never unbounded. */
-export const ARCHITECT_MAX_TURNS = 40;
+export const ARCHITECT_MAX_TURNS = 90;
 
 export interface ArchitectAgentOptions {
   readonly store: LearningPathStore;
@@ -42,6 +42,8 @@ export interface ArchitectAgentOptions {
   readonly activeChatId: () => string | null;
   /** Backend hook for `ctx.events.emit` after a successful tool write. */
   readonly onPathSaved?: (path: LearningPath, created: boolean) => void;
+  /** Research tools for the enabled channels (none: offline). */
+  readonly researchTools?: readonly PluginAgentTool[];
 }
 
 export interface ArchitectRegistration {
@@ -226,7 +228,10 @@ const nodeDraftSchema = objectSchema({
     kind: { type: "string", enum: RESOURCE_KINDS },
     url: { type: "string", description: "Only when you are sure the address exists." },
     free: { type: "boolean" },
-  }, ["title", "kind"]), description: "3–5 study resources." },
+    use: { type: "string", description: "Which part serves this node and what to skip, e.g. \"ch. 3–4; skip 4.5\"." },
+    essential: { type: "boolean", description: "True for the canonical must-know resource(s) of this node." },
+    checked: { type: "boolean", description: "True only if you actually looked inside it (contents, syllabus, page) in this conversation." },
+  }, ["title", "kind"]), description: "3–8 study resources: the canonical ones first, then deeper ones." },
   interleavesNodeIds: { type: "array", items: { type: "string" }, description: "Optional; defaults to the two preceding nodes for new nodes." },
   progression: { type: "string", enum: PROGRESSION_STATES, description: SERVER_OWNED },
   childSessions: { type: "array", items: { type: "object", additionalProperties: true }, description: SERVER_OWNED },
@@ -537,7 +542,10 @@ export function buildArchitectDefinition(
   return {
     id: ARCHITECT_DEFINITION_ID,
     model: toModelSpec(model),
-    instructions: buildArchitectSystemPrompt({ settings: options.store.settings() }),
+    instructions: buildArchitectSystemPrompt({
+      settings: options.store.settings(),
+      researchTools: (options.researchTools ?? []).map((tool) => tool.name),
+    }),
     maxTurns: ARCHITECT_MAX_TURNS,
     tools: [
       listUploadedSourcesTool(ctx, options),
@@ -545,6 +553,7 @@ export function buildArchitectDefinition(
       getLearningPathTool(ctx, options),
       saveLearningPathTool(ctx, options),
       saveLearningPathTool(ctx, options, true),
+      ...(options.researchTools ?? []),
     ],
   };
 }

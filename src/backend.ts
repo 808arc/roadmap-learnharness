@@ -17,6 +17,14 @@
  * and no tool writes after the signal aborts.
  */
 import { importLegacyData } from "./legacy-import.ts";
+import { KEY_ENGINES, effectiveResearch } from "./domain.ts";
+import type { ResearchSettings } from "./domain.ts";
+import { findClaudeBinary, runClaudeResearch } from "./research/claude-cli.ts";
+import { localChannels } from "./research/extensions.ts";
+import { createKeyStore } from "./research/key-store.ts";
+import { createResearchNotes } from "./research/notes.ts";
+import { createResearchChats, registerResearchSessions, researchBrief } from "./research/session-research.ts";
+import { buildResearchTools } from "./research/tools.ts";
 import { sessionMetrics } from "./session-metrics.ts";
 import { randomUUID } from "node:crypto";
 import type {
@@ -264,6 +272,42 @@ export function activate(ctx: PluginBackendContext): void {
   let pendingModel: ArchitectModelConfig | null = null;
   let activeChatId: string | null = null;
   let disposed = false;
+  const notes = createResearchNotes(ctx.dataDirectory);
+  const keys = createKeyStore(ctx.dataDirectory);
+  const researchChats = createResearchChats(ctx.dataDirectory);
+  const research = (): ResearchSettings => effectiveResearch(store.settings().research);
+  const hostWeb = (): ReturnType<NonNullable<typeof localChannels.hostWeb>> => {
+    try {
+      return localChannels.hostWeb?.(ctx) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  let researchActivity: { text: string; at: string } | null = null;
+  const researchTools = () => {
+    const settings = research();
+    const binary = settings.claudeCli ? findClaudeBinary() : null;
+    const key = settings.ownKey ? keys.read(settings.keyEngine) : null;
+    return buildResearchTools(ctx, {
+      settings,
+      notes,
+      ownKey: key ? { engine: settings.keyEngine, key } : null,
+      hostWeb: settings.hostWeb ? hostWeb() : null,
+      deepResearch: binary
+        ? (question, signal) =>
+            runClaudeResearch(binary, question, {
+              signal: signal ? AbortSignal.any([signal, ctx.signal]) : ctx.signal,
+              onActivity: (text) => {
+                researchActivity = { text, at: new Date().toISOString() };
+                emit("research-activity", researchActivity);
+              },
+            })
+        : null,
+    });
+  };
+  /** Changes when the set of research tools changes, so the Architect is re-registered. */
+  const researchSignature = (): string => researchTools().map((tool) => tool.name).join(",");
+  let registeredResearch = "";
 
   const emit = (topic: string, data: unknown): void => {
     if (ctx.signal.aborted || disposed) return;
@@ -294,6 +338,15 @@ export function activate(ctx: PluginBackendContext): void {
     }),
   );
 
+  disposers.push(
+    registerResearchSessions(ctx, {
+      chats: researchChats,
+      notes,
+      enabled: () => research().session,
+      onNote: (noteId, chatId) => emit("research-notes-changed", { noteId, chatId }),
+    }),
+  );
+
   const cancelRuns = (): void => {
     const ids = new Set(watchers.keys());
     if (activeChatId) ids.add(activeChatId);
@@ -312,8 +365,11 @@ export function activate(ctx: PluginBackendContext): void {
     pendingModel = null;
     architect?.unregister();
     architect = null;
+    const tools = researchTools();
+    registeredResearch = tools.map((tool) => tool.name).join(",");
     const registration = registerArchitect(ctx, model, {
       store,
+      researchTools: tools,
       activeChatId: () => activeChatId,
       onPathSaved: (path, created) =>
         emit(EVENT_PATHS_CHANGED, { id: path.id, created, updatedAt: path.updatedAt }),
@@ -345,7 +401,7 @@ export function activate(ctx: PluginBackendContext): void {
   };
 
   const ensureRegistered = (model: ArchitectModelConfig): void => {
-    if (architect && sameModel(architect.definition.model, model)) return;
+    if (architect && sameModel(architect.definition.model, model) && registeredResearch === researchSignature()) return;
     if (architect && runningArchitectConversation()) {
       throw new Error(
         "An Architect conversation is still running. Stop it or wait for it to finish before " +
@@ -358,7 +414,7 @@ export function activate(ctx: PluginBackendContext): void {
   // Settings never cancel a run: a model change waits until no Architect
   // conversation is running. Returns whether the change was deferred.
   const applySettingsModel = (model: ArchitectModelConfig): boolean => {
-    if (architect && sameModel(architect.definition.model, model)) {
+    if (architect && sameModel(architect.definition.model, model) && registeredResearch === researchSignature()) {
       pendingModel = null;
       return false;
     }
@@ -522,6 +578,13 @@ export function activate(ctx: PluginBackendContext): void {
     }
     // Following the host slot: the next conversation re-resolves the model.
     pendingModel = null;
+    // Research channels changed: rebuild the Architect's tools now (or after the running turn).
+    if (architect && registeredResearch !== researchSignature()) {
+      const current = architect.definition.model as ArchitectModelConfig;
+      const deferred = applySettingsModel({ provider: current.provider, id: current.id, ...(current.thinkingLevel ? { thinkingLevel: current.thinkingLevel } : {}) });
+      emit(EVENT_SETTINGS_CHANGED, { settings: saved, modelPending: deferred });
+      return { settings: saved, modelPending: deferred };
+    }
     emit(EVENT_SETTINGS_CHANGED, { settings: saved, modelPending: false });
     return { settings: saved, modelPending: false };
   });
@@ -758,6 +821,69 @@ export function activate(ctx: PluginBackendContext): void {
       prompt: brief.text,
       watchpoints: brief.watchpoints.length,
     };
+  });
+
+  // ── Research channels ────────────────────────────────────────────────────
+  handle("research.status", async () => {
+    const settings = research();
+    const web = hostWeb();
+    return {
+      settings: store.settings().research ?? null,
+      effective: settings,
+      keys: Object.fromEntries(KEY_ENGINES.map((engine) => [engine, keys.has(engine)])),
+      claudeCli: findClaudeBinary() !== null,
+      // Only true in the owner's private build on the private LearnHarness fork.
+      hostWebBuilt: typeof localChannels.hostWeb === "function",
+      hostWeb: web !== null,
+      hostSearch: Boolean(web?.search),
+      notes: notes.list(),
+      activity: researchActivity,
+      tools: researchTools().map((tool) => tool.name),
+    };
+  });
+
+  handle("research.setKey", (input) => {
+    const value = object(input, "research.setKey");
+    const engine = readText(value.engine, "engine", { max: 20 });
+    if (!(KEY_ENGINES as readonly string[]).includes(engine)) throw new Error("Unknown search engine.");
+    const key = readText(value.key, "key", { max: 300, trim: true });
+    keys.save(engine as (typeof KEY_ENGINES)[number], key);
+    emit(EVENT_SETTINGS_CHANGED, { settings: store.settings(), modelPending: false });
+    return { ok: true };
+  });
+
+  handle("research.clearKey", (input) => {
+    const value = object(input, "research.clearKey");
+    const engine = readText(value.engine, "engine", { max: 20 });
+    if (!(KEY_ENGINES as readonly string[]).includes(engine)) throw new Error("Unknown search engine.");
+    keys.clear(engine as (typeof KEY_ENGINES)[number]);
+    emit(EVENT_SETTINGS_CHANGED, { settings: store.settings(), modelPending: false });
+    return { ok: true };
+  });
+
+  handle("research.deleteNote", (input) => {
+    const value = object(input, "research.deleteNote");
+    const removed = notes.remove(readText(value.noteId, "noteId", { max: 80 }));
+    emit("research-notes-changed", {});
+    return { removed };
+  });
+
+  handle("research.prepareSession", (input) => {
+    if (!research().session) throw new Error("Research sessions are turned off in Roadmap settings.");
+    const value = object(input, "research.prepareSession");
+    const topic = readText(value.topic, "topic", { max: 300, trim: true });
+    const details = value.details === undefined ? "" : readText(value.details, "details", { max: 4000, trim: true });
+    const ru = value.locale === "ru";
+    return { title: `${ru ? "Исследование" : "Research"}: ${topic}`, prompt: researchBrief(topic, details, ru ? "ru" : "en") };
+  });
+
+  handle("research.linkSession", (input) => {
+    const value = object(input, "research.linkSession");
+    const chatId = readText(value.chatId, "chatId", { max: 128 });
+    const topic = readText(value.topic, "topic", { max: 300, trim: true });
+    researchChats.add(chatId, topic);
+    emit("research-notes-changed", { chatId });
+    return { ok: true };
   });
 
   /** Link an existing native chat to one node; never creates or mutates the chat. */

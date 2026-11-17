@@ -216,6 +216,8 @@ export function createRoadmapCanvas(
     if (node.alternativeGroup) button.classList.add("rm-alt");
     if (node.progression === "skipped") button.classList.add("rm-skip");
     if (node.progression === "consolidated") button.classList.add("rm-done");
+    if (node.progression === "in_progress") button.classList.add("rm-prog");
+    if (node.type === "checkpoint") button.classList.add("rm-check");
     if (x !== null && y !== null && w !== null) {
       button.style.left = `${x}px`;
       button.style.top = `${y}px`;
@@ -410,11 +412,18 @@ export function createRoadmapCanvas(
     };
     const alt = el(document, "span", "rm-legend-item");
     alt.append(el(document, "span", "rm-legend-alt", t("mark.alternativeShort")), el(document, "span", undefined, t("mark.alternative")));
+    const swatch = (state: "consolidated" | "in_progress" | "unstarted" | "skipped", key: MessageKey): HTMLElement => {
+      const span = el(document, "span", "rm-legend-item");
+      const chip = el(document, "span", `rm-legend-swatch rm-node${state === "consolidated" ? " rm-done" : state === "in_progress" ? " rm-prog" : state === "skipped" ? " rm-skip" : ""}`);
+      setIcon(chip, statusIcon(state));
+      span.append(chip, el(document, "span", undefined, t(key)));
+      return span;
+    };
     legend.replaceChildren(
-      item(statusIcon("consolidated"), "status.consolidated"),
-      item(statusIcon("in_progress"), "status.in_progress"),
-      item(statusIcon("unstarted"), "status.unstarted"),
-      item(statusIcon("skipped"), "status.skipped"),
+      swatch("consolidated", "status.consolidated"),
+      swatch("in_progress", "status.in_progress"),
+      swatch("unstarted", "status.unstarted"),
+      swatch("skipped", "status.skipped"),
       lineItem(true, "mark.optional"),
       alt,
       item(ICONS.flag, "legend.checkpoint"),

@@ -65,11 +65,12 @@ test("the roadmap view mounts every surface and disposes widgets and listeners o
     assert.ok(container.querySelector(".rm-canvas .rm-stage"), "graph canvas");
     assert.ok(container.querySelector(".rm-side .rm-tabs"), "side panel tabs");
     assert.equal(fixture.all("mountTree").length, 0, "the roadmap draws its own map instead of a host tree");
-    assert.equal(fixture.all("mountStandardComposer").length, 1);
+    assert.equal(fixture.all("mountComposer").length, 1);
+    assert.equal(fixture.all("mountStandardComposer").length, 0, "model and thinking live in settings, not in the composer");
     assert.equal(fixture.all("mountMarkdown").length, 1, "the stored Architect turn is rendered as Markdown");
     toolbar(fixture, "New roadmap");
     toolbar(fixture, "Refine");
-    assert.ok(liveButtons(fixture).some((button) => button.props.label === "Upload PDF or text"));
+    assert.ok(container.querySelector(".rm-composer .rm-chip-button"), "the composer offers attaching books and notes");
     assert.equal(container.querySelector(".rm-crumb-path")!.textContent, "Linear algebra from canon");
     assert.match(container.querySelector(".rm-status-summary")!.textContent ?? "", /consolidated 1 of 6 · in progress 2/);
     assert.match(container.querySelector(".rm-status-errors")!.textContent ?? "", /1 open error/);
@@ -229,16 +230,16 @@ test("Architect chat sends, shows busy state and adopts notification snapshots a
     assert.equal(fixture.all("mountMarkdown").length, 1);
     assert.equal(fixture.find("mountMarkdown").props.text, "Here is a plan.");
 
-    const composer = fixture.find("mountStandardComposer");
-    assert.equal(composer.props.composer.value, "");
-    assert.equal(composer.props.composer.busy, false);
-    assert.equal(typeof composer.props.composer.onStop, "function");
-    assert.equal(typeof composer.props.dictation.onTranscript, "function");
+    const composer = fixture.find("mountComposer");
+    assert.equal(composer.props.value, "");
+    assert.equal(composer.props.busy, false);
+    assert.equal(typeof composer.props.onStop, "function");
+    assert.equal(typeof fixture.find("mountDictation").props.onTranscript, "function");
 
-    await composer.props.composer.onChange("Refine module two.");
-    assert.equal(fixture.find("mountStandardComposer").props.composer.value, "Refine module two.");
+    await composer.props.onChange("Refine module two.");
+    assert.equal(fixture.find("mountComposer").props.value, "Refine module two.");
 
-    await composer.props.composer.onSend();
+    await composer.props.onSend();
     await fixture.flush();
     const send = fixture.calls.filter((call) => call.name === "architect.send").at(-1);
     assert.ok(send);
@@ -246,7 +247,7 @@ test("Architect chat sends, shows busy state and adopts notification snapshots a
       { id: (send.input as { id: string }).id, text: (send.input as { text: string }).text },
       { id: "chat-architect", text: "Refine module two." },
     );
-    assert.equal(fixture.find("mountStandardComposer").props.composer.busy, true);
+    assert.equal(fixture.find("mountComposer").props.busy, true);
     assert.match(
       fixture.root.querySelector<HTMLElement>(".lp-architect-status")!.textContent ?? "",
       /The Architect is thinking/,
@@ -259,22 +260,22 @@ test("Architect chat sends, shows busy state and adopts notification snapshots a
     fixture.emit("architect-changed", { id: "chat-architect", kind: "state", status: "idle" });
     await fixture.flush();
 
-    assert.equal(fixture.find("mountStandardComposer").props.composer.busy, false);
+    assert.equal(fixture.find("mountComposer").props.busy, false);
     assert.ok(
       fixture.all("mountMarkdown").some((markdown) => markdown.props.text === "Module two now has a contrast node."),
     );
-    assert.equal(fixture.find("mountStandardComposer").props.composer.value, "");
+    assert.equal(fixture.find("mountComposer").props.value, "");
 
     // New roadmap starts a fresh Architect conversation and opens the Architect tab.
     toolbar(fixture, "New roadmap").click();
     await fixture.flush();
     assert.equal(fixture.calls.filter((call) => call.name === "architect.create").length, 0,
       "opening the composer must leave time to select a model before creating a conversation");
-    assert.equal(fixture.find("mountStandardComposer").props.model.disabled, false);
+    assert.match(fixture.find("mountComposer").props.placeholder, /goal|цель/i);
     fixture.emit("paths-changed", { id: path.id });
     await fixture.flush();
-    assert.equal(fixture.find("mountStandardComposer").props.model.disabled, false,
-      "a path refresh must not replace the new model-selection draft with the old chat");
+    assert.match(fixture.find("mountComposer").props.placeholder, /goal|цель/i,
+      "a path refresh must not replace the new draft with the old chat");
     assert.ok(toolbar(fixture, "Refine").classList.contains("rm-active"), "New roadmap opens the Architect tab");
     assert.equal(fixture.root.querySelector<HTMLElement>(".rm-panel-architect")!.hidden, false);
   } finally {
@@ -282,37 +283,25 @@ test("Architect chat sends, shows busy state and adopts notification snapshots a
   }
 });
 
-test("a new path chooses its Architect model before the conversation is created", async () => {
+test("the composer uses the settings model, sends deep research only when confirmed, and accepts dropped books", async () => {
   const fixture = createViewFixture();
   try {
     await mounted(fixture);
-    const composer = fixture.find("mountStandardComposer");
-    assert.match(fixture.root.querySelector(".lp-model-hint")?.textContent ?? "", /configured default/);
-    await composer.props.model.onChange({ provider: "custom", id: "chosen-architect" });
-    assert.equal(composer.props.thinking.value, undefined);
-    await composer.props.thinking.onChange("high");
-    await composer.props.model.onChange({ provider: "custom", id: "another-model" });
-    assert.equal(composer.props.thinking.value, undefined, "changing models clears incompatible thinking");
-    await composer.props.model.onChange({ provider: "custom", id: "chosen-architect" });
-    await composer.props.thinking.onChange("high");
-    toolbar(fixture, "New roadmap").click();
-    assert.deepEqual(composer.props.model.value, { provider: "custom", id: "chosen-architect" },
-      "opening an already-empty draft does not discard a model choice");
-    await composer.props.composer.onChange("Teach me geometry");
-    await composer.props.composer.onSend();
+    await fixture.flush();
+    const composer = fixture.find("mountComposer");
+    assert.match(fixture.root.querySelector(".rm-model-hint")?.textContent ?? "", /settings/);
+    const deep = fixture.root.querySelector<HTMLButtonElement>(".rm-deep")!;
+    assert.equal(deep.hidden, false, "deep research is offered when research tools exist");
+    deep.click();
+    const dialog = fixture.find("openDialog");
+    assert.ok(dialog, "turning deep research on asks for confirmation first");
+    await composer.props.onChange("Teach me geometry");
+    await composer.props.onSend();
     await fixture.flush();
     const created = fixture.calls.find((call) => call.name === "architect.create");
-    assert.deepEqual((created?.input as { model: unknown }).model,
-      { provider: "custom", id: "chosen-architect", thinkingLevel: "high" });
-    assert.ok(fixture.calls.some((call) => call.name === "architect.send"));
-    assert.equal(composer.props.model.disabled, true, "the model is fixed for this conversation");
-    await composer.props.composer.onStop();
-    await fixture.flush();
-    toolbar(fixture, "New roadmap").click();
-    assert.equal(composer.props.model.disabled, false);
-    assert.equal(composer.props.model.value, undefined);
-    assert.equal(composer.props.thinking.value, undefined);
-    assert.equal(fixture.calls.filter((call) => call.name === "architect.create").length, 1);
+    assert.equal((created?.input as { model?: unknown }).model, undefined, "no model is chosen in the composer");
+    const send = fixture.calls.find((call) => call.name === "architect.send");
+    assert.equal((send?.input as { text: string }).text, "Teach me geometry", "unconfirmed deep research is not sent");
   } finally {
     fixture.restore();
   }
@@ -344,9 +333,9 @@ test("background refreshes keep the conversation in view and select the path it 
   try {
     await mounted(fixture);
     toolbar(fixture, "New roadmap").click();
-    const composer = fixture.find("mountStandardComposer");
-    await composer.props.composer.onChange("Teach me shaders");
-    await composer.props.composer.onSend();
+    const composer = fixture.find("mountComposer");
+    await composer.props.onChange("Teach me shaders");
+    await composer.props.onSend();
     await fixture.flush();
     const created = fixture.calls.find((call) => call.name === "architect.create");
     assert.ok(created);
@@ -378,11 +367,11 @@ test("Refine over an unsent draft opens the selected roadmap's conversation", as
     await mounted(fixture);
     toolbar(fixture, "New roadmap").click();
     await fixture.flush();
-    assert.equal(fixture.find("mountStandardComposer").props.model.disabled, false, "a new draft is open");
+    const fresh = fixture.find("mountComposer").props.placeholder;
     toolbar(fixture, "Refine").click(); // back to the node tab
     toolbar(fixture, "Refine").click(); // reopen for the selected roadmap
     await fixture.flush();
-    assert.equal(fixture.find("mountStandardComposer").props.model.disabled, true,
+    assert.notEqual(fixture.find("mountComposer").props.placeholder, fresh,
       "the path's existing conversation replaced the draft");
     assert.equal(fixture.calls.filter((call) => call.name === "architect.create").length, 0);
   } finally {
@@ -446,7 +435,7 @@ test("document upload surfaces conversion errors without saving and saves on suc
     fixture.toMarkdown = async () => {
       throw new Error("Only UTF-8 text or a valid PDF can be converted.");
     };
-    Object.defineProperty(input, "files", { configurable: true, value: { item: () => file } });
+    Object.defineProperty(input, "files", { configurable: true, value: { length: 1, 0: file, item: () => file } });
     fire(input, "change");
     await fixture.flush();
 
@@ -456,7 +445,7 @@ test("document upload surfaces conversion errors without saving and saves on suc
     assert.match(status().textContent ?? "", /Only UTF-8 text or a valid PDF/);
     assert.equal(fixture.uploaded.length, 0, "a failed conversion never reaches sources.save");
     assert.equal(fixture.calls.filter((call) => call.name === "sources.save").length, 0);
-    assert.equal(fixture.find("mountStandardComposer").props.composer.value, "", "the draft is untouched");
+    assert.equal(fixture.find("mountComposer").props.value, "", "the draft is untouched");
 
     const good = new File(["# Book"], "book.md", { type: "text/markdown" });
     fixture.toMarkdown = async () => ({
@@ -464,7 +453,7 @@ test("document upload surfaces conversion errors without saving and saves on suc
       markdown: "# Book\n\nConverted content.",
       notices: ["Page 2 was image-only and was skipped."],
     });
-    Object.defineProperty(input, "files", { configurable: true, value: { item: () => good } });
+    Object.defineProperty(input, "files", { configurable: true, value: { length: 1, 0: good, item: () => good } });
     fire(input, "change");
     await fixture.flush();
 

@@ -67,7 +67,9 @@ test("Architect definition is reconstructed on activation and released on cleanu
   assert.ok(definition);
   assert.deepEqual(
     (definition.tools ?? []).map((tool) => tool.name),
-    ["list_uploaded_sources", "read_uploaded_source_chunk", "get_learning_path", "save_learning_path", "save_learning_path_json"],
+    ["list_uploaded_sources", "read_uploaded_source_chunk", "get_learning_path", "save_learning_path", "save_learning_path_json",
+      // Hybrid research (the default): notes plus the keyless open catalogs.
+      "list_research_notes", "read_research_note", "read_page", "find_books", "book_contents", "find_papers", "search_wikipedia"],
   );
   assert.match(definition.instructions, /Roadmap Architect/);
   assert.deepEqual(definition.model, {

@@ -80,6 +80,9 @@ const backend = await build({
   ...common,
   entryPoints: ["src/backend.ts"],
   outfile: path.join(output, "backend.cjs"),
+  // Private builds only: src/local-only/ is git-ignored (see its README.md).
+  // ROADMAP_PUBLIC=1 builds the public package even where that folder exists.
+  ...(process.env.ROADMAP_PUBLIC !== "1" && fs.existsSync(path.join(root, "src/local-only/index.ts")) ? { inject: ["src/local-only/index.ts"] } : {}),
   format: "cjs",
   platform: "node",
   external: ["node:*"],

@@ -97,11 +97,12 @@ test("backend enable, disable and re-enable are idempotent and keep stored data"
   activateBackend(host.ctx);
   assert.ok(host.handlers.size > 0);
   assert.ok(host.definitions.has("path-architect"));
-  assert.equal(host.toolContributions.length, 1);
-  assert.equal(host.instructions.length, 1);
+  // The node bridge and the research-session tool.
+  assert.equal(host.toolContributions.length, 2);
+  assert.equal(host.instructions.length, 2);
   assert.deepEqual(await host.call("paths.status"), {
     id: "roadmap",
-    version: "0.2.1",
+    version: "0.3.0",
     active: true,
   });
   assert.deepEqual(

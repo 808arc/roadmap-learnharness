@@ -10,16 +10,30 @@
  * - `ctx.ui.mountButton` for the PDF/UTF-8 upload trigger.
  * All handles are scoped to the per-mount `AbortSignal` and disposed on unmount.
  */
-import { t } from "../i18n.ts";
+import { locale, t } from "../i18n.ts";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ArchitectProgress } from "../topics.ts";
 import type {
   PluginAgentSnapshot,
+  PluginComposerProps,
+  PluginDialogProps,
   PluginFrontendContext,
   PluginModelValue,
-  PluginStandardComposerProps,
   PluginWidgetHandle,
 } from "learnharness-plugin-api";
+import { createBrowserSessionHost } from "../native-session-host.ts";
+import type { NativeSessionHost } from "../native-session-host.ts";
+
+interface PaneResearchStatus {
+  readonly effective: { session: boolean };
+  readonly tools: readonly string[];
+}
+
+const DEEP_RESEARCH_PREFIX =
+  "[Deep research is ON for this message. Research thoroughly before answering: many search angles, read the tables of contents, " +
+  "syllabi and pages you rely on, canonical and deeper sources, and use deep_research if you have it. Then build or refine the path.]\n\n";
+
+const ACCEPTED = /\.(pdf|md|markdown|txt|text)$/i;
 
 export interface ArchitectPane {
   readonly element: HTMLElement;
@@ -116,25 +130,45 @@ export function createArchitectPane(
   log.append(history, live, emptyChat);
   root.append(log);
 
-  const uploadRow = element(document, "div", "lp-upload-row");
-  const uploadHost = element(document, "span", "lp-button-host");
-  uploadRow.append(uploadHost);
+  // One composer card: attached books, the text field, then a quiet tool bar.
+  const card = element(document, "div", "rm-composer");
+  const sourcesRow = element(document, "div", "rm-composer-sources");
   const uploadStatus = element(document, "p", "lp-upload-status");
   uploadStatus.setAttribute("role", "status");
   uploadStatus.setAttribute("aria-live", "polite");
-  uploadRow.append(uploadStatus);
   const fileInput = element(document, "input", "lp-file-input");
   fileInput.type = "file";
+  fileInput.multiple = true;
   fileInput.accept = ".pdf,.md,.markdown,.txt,.text,application/pdf,text/plain,text/markdown";
   fileInput.hidden = true;
   fileInput.setAttribute("aria-label", t("a.uploadAria"));
-  uploadRow.append(fileInput);
-  root.append(uploadRow);
-
-  const modelHint = element(document, "p", "lp-model-hint");
-  root.append(modelHint);
   const composerHost = element(document, "div", "lp-composer-host");
-  root.append(composerHost);
+  const bar = element(document, "div", "rm-composer-bar");
+  const attach = element(document, "button", "rm-chip-button");
+  attach.type = "button";
+  attach.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>';
+  attach.append(element(document, "span", undefined, t("a.attach")));
+  attach.title = t("a.attachHint");
+  const deep = element(document, "button", "rm-chip-button rm-deep");
+  deep.type = "button";
+  deep.setAttribute("aria-pressed", "false");
+  deep.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>';
+  deep.append(element(document, "span", undefined, t("a.deep")));
+  deep.title = t("a.deepHint");
+  const researchSession = element(document, "button", "rm-chip-button");
+  researchSession.type = "button";
+  researchSession.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg>';
+  researchSession.append(element(document, "span", undefined, t("a.researchSession")));
+  researchSession.title = t("a.researchSessionHint");
+  const spacer = element(document, "span", "rm-composer-spacer");
+  const modelHint = element(document, "span", "rm-model-hint");
+  const dictationHost = element(document, "span", "rm-dictation-host");
+  bar.append(attach, deep, researchSession, spacer, dictationHost);
+  sourcesRow.append(uploadStatus, fileInput);
+  card.append(sourcesRow, composerHost, bar);
+  const dropHint = element(document, "div", "rm-drop-hint", t("a.dropHint"));
+  dropHint.hidden = true;
+  root.append(card, modelHint, dropHint);
   container.append(root);
 
   let conversation: PluginAgentSnapshot | null = null;
@@ -152,83 +186,128 @@ export function createArchitectPane(
   let disposed = false;
   let loadVersion = 0;
   let newDraft = false;
+  let deepResearch = false;
+  let research: PaneResearchStatus | null = null;
+  const sessionHost: NativeSessionHost = createBrowserSessionHost();
+  const uploadQueue: File[] = [];
 
-  const uploadButton = ctx.ui.mountButton(
-    uploadHost,
-    {
-      label: t("a.upload"),
-      variant: "outline",
-      size: "sm",
-      onClick: () => {
-        if (!signal.aborted && !disposed && !uploading) fileInput.click();
-      },
-    },
-    { signal },
-  );
+  attach.addEventListener("click", () => {
+    if (!signal.aborted && !disposed) fileInput.click();
+  }, { signal });
 
   const busy = (): boolean => creating || sending || conversation?.status === "running";
 
-  const composerProps = (): PluginStandardComposerProps => ({
-    composer: {
-      value: draft,
-      onChange: (value) => {
-        if (signal.aborted || disposed) return;
-        draft = value;
-        updateComposer();
-      },
-      onSend: () => {
-        void send();
-      },
-      onStop: () => {
-        void stop();
-      },
-      busy: busy(),
-      canSend: draft.trim().length > 0,
-      placeholder: conversation
-        ? t("a.phRefine")
-        : t("a.phNew"),
+  const composerProps = (): PluginComposerProps => ({
+    value: draft,
+    onChange: (value) => {
+      if (signal.aborted || disposed) return;
+      draft = value;
+      updateComposer();
     },
-    model: {
-      value: model,
-      disabled: busy() || conversation !== null,
-      onChange: (value) => {
-        if (signal.aborted || disposed || conversation) return;
-        model = value;
-        thinking = undefined; // a different model may not support the previous level
-        updateComposer();
-      },
+    onSend: () => {
+      void send();
     },
-    thinking: {
-      model,
-      value: thinking,
-      disabled: busy() || conversation !== null || model === undefined,
-      onChange: (value) => {
-        if (signal.aborted || disposed || conversation) return;
-        thinking = value;
-        updateComposer();
-      },
+    onStop: () => {
+      void stop();
     },
-    dictation: {
-      disabled: busy(),
-      onTranscript: (text) => {
-        if (signal.aborted || disposed) return;
-        draft = draft.length === 0 ? text : `${draft} ${text}`;
-        updateComposer();
-      },
-    },
+    busy: busy(),
+    canSend: draft.trim().length > 0,
+    placeholder: conversation ? t("a.phRefine") : t("a.phNew"),
   });
 
-  let composerHandle: PluginWidgetHandle<PluginStandardComposerProps> | null = null;
+  let composerHandle: PluginWidgetHandle<PluginComposerProps> | null = null;
+  let dictationHandle: PluginWidgetHandle<{ disabled?: boolean; onTranscript: (text: string) => void }> | null = null;
+
+  const webTools = (): boolean =>
+    (research?.tools ?? []).some((name) => name === "web_search" || name === "find_books" || name === "read_page" || name === "deep_research");
 
   function updateComposer(): void {
     if (disposed || signal.aborted) return;
-    modelHint.textContent = conversation
-      ? t("a.sharedModel")
-      : model
-        ? t("a.newModel", { model: `${model.provider}:${model.id}`, thinking: thinking ? t("a.thinkingSuffix", { level: thinking }) : "" })
-        : t("a.chooseModel");
+    modelHint.textContent = t("a.modelHint");
+    deep.hidden = !webTools();
+    if (deep.hidden) deepResearch = false;
+    deep.setAttribute("aria-pressed", String(deepResearch));
+    deep.classList.toggle("rm-on", deepResearch);
+    researchSession.hidden = !research?.effective.session;
     composerHandle?.update(composerProps());
+    dictationHandle?.update({ disabled: busy(), onTranscript });
   }
+
+  function onTranscript(text: string): void {
+    if (signal.aborted || disposed) return;
+    draft = draft.length === 0 ? text : `${draft} ${text}`;
+    updateComposer();
+  }
+
+  async function loadResearch(): Promise<void> {
+    try {
+      research = await ctx.call<PaneResearchStatus>("research.status");
+    } catch {
+      research = null;
+    }
+    updateComposer();
+  }
+
+  /** Deep research costs time and tokens: ask once per switch-on. */
+  function confirmDeep(): void {
+    if (deepResearch) {
+      deepResearch = false;
+      updateComposer();
+      return;
+    }
+    let dialog: PluginWidgetHandle<PluginDialogProps> | null = null;
+    dialog = ctx.ui.openDialog(
+      {
+        title: t("a.deepTitle"),
+        content: (content, contentSignal) => {
+          content.append(element(document, "h2", "lp-dialog-title", t("a.deepTitle")));
+          content.append(element(document, "p", "lp-dialog-text", t("a.deepWarning")));
+          const actions = element(document, "div", "lp-dialog-actions");
+          content.append(actions);
+          const cancelHost = element(document, "span", "lp-button-host");
+          const okHost = element(document, "span", "lp-button-host");
+          actions.append(cancelHost, okHost);
+          ctx.ui.mountButton(cancelHost, { label: t("a.cancel"), variant: "outline", size: "sm", onClick: () => dialog?.dispose() }, { signal: contentSignal });
+          ctx.ui.mountButton(okHost, {
+            label: t("a.deepConfirm"),
+            size: "sm",
+            onClick: () => {
+              deepResearch = true;
+              dialog?.dispose();
+              updateComposer();
+            },
+          }, { signal: contentSignal });
+        },
+      },
+      { signal },
+    );
+  }
+  deep.addEventListener("click", confirmDeep, { signal });
+
+  /** Open a LearnHarness teaching chat that researches the topic in the draft. */
+  async function startResearchSession(): Promise<void> {
+    const topic = draft.trim().split("\n")[0]!.slice(0, 300);
+    if (!topic) {
+      error = t("a.researchNeedsTopic");
+      renderStatus();
+      return;
+    }
+    try {
+      const prepared = await ctx.call<{ title: string; prompt: string }>("research.prepareSession", {
+        topic,
+        details: draft.trim().slice(0, 4000),
+        locale: locale(),
+      });
+      const created = await sessionHost.create({ title: prepared.title, kind: "teaching" });
+      if (!sessionHost.stageOpeningPrompt(created.chatId, prepared.prompt)) throw new Error(t("a.researchStageFailed"));
+      await ctx.call("research.linkSession", { chatId: created.chatId, topic });
+      ctx.app.openSession(created.chatId);
+    } catch (problem) {
+      error = errorMessage(problem);
+      renderStatus();
+    }
+  }
+  researchSession.addEventListener("click", () => void startResearchSession(), { signal });
 
   function renderStatus(): void {
     if (disposed || signal.aborted) return;
@@ -507,11 +586,12 @@ export function createArchitectPane(
     try {
       const result = await ctx.call<{ conversation: PluginAgentSnapshot }>("architect.send", {
         id: conversation.id,
-        text,
+        text: deepResearch ? `${DEEP_RESEARCH_PREFIX}${text}` : text,
         requestId: requestId(),
       });
       if (signal.aborted || disposed) return;
       draft = "";
+      deepResearch = false;
       setConversation(result.conversation);
     } catch (problem) {
       if (signal.aborted || disposed) return;
@@ -553,9 +633,17 @@ export function createArchitectPane(
   }
 
   async function uploadFile(file: File): Promise<void> {
-    if (signal.aborted || disposed || uploading) return;
+    if (signal.aborted || disposed) return;
+    if (uploading) {
+      uploadQueue.push(file);
+      return;
+    }
+    if (!ACCEPTED.test(file.name)) {
+      uploadStatus.textContent = t("a.unsupported", { name: file.name });
+      uploadStatus.dataset.state = "error";
+      return;
+    }
     uploading = true;
-    uploadButton.update({ label: t("a.upload"), disabled: true });
     uploadStatus.className = "lp-upload-status";
     delete uploadStatus.dataset.state;
     uploadStatus.textContent = t("a.converting", { name: file.name });
@@ -578,19 +666,57 @@ export function createArchitectPane(
       uploadStatus.dataset.state = "error";
     } finally {
       uploading = false;
-      if (!signal.aborted && !disposed) uploadButton.update({ disabled: false });
+      const next = uploadQueue.shift();
+      if (next && !signal.aborted && !disposed) void uploadFile(next);
     }
   }
 
+  // Drag books and notes onto the Architect: a drop target over the whole pane.
+  let dragDepth = 0;
+  const hasFiles = (event: DragEvent): boolean => Array.from(event.dataTransfer?.types ?? []).includes("Files");
+  root.addEventListener("dragenter", (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth += 1;
+    dropHint.hidden = false;
+    root.classList.add("rm-dragging");
+  }, { signal });
+  root.addEventListener("dragover", (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  }, { signal });
+  root.addEventListener("dragleave", (event) => {
+    if (!hasFiles(event)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) {
+      dropHint.hidden = true;
+      root.classList.remove("rm-dragging");
+    }
+  }, { signal });
+  root.addEventListener("drop", (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth = 0;
+    dropHint.hidden = true;
+    root.classList.remove("rm-dragging");
+    for (const file of Array.from(event.dataTransfer?.files ?? [])) void uploadFile(file);
+  }, { signal });
+
   const onFileChange = (): void => {
     if (signal.aborted || disposed) return;
-    const file = fileInput.files?.item(0) ?? null;
+    const files = Array.from(fileInput.files ?? []);
     fileInput.value = "";
-    if (file) void uploadFile(file);
+    for (const file of files) void uploadFile(file);
   };
   fileInput.addEventListener("change", onFileChange, { signal });
 
-  composerHandle = ctx.ui.mountStandardComposer(composerHost, composerProps(), { signal });
+  composerHandle = ctx.ui.mountComposer(composerHost, composerProps(), { signal });
+  dictationHandle = ctx.ui.mountDictation(dictationHost, { disabled: busy(), onTranscript }, { signal });
+  const offNotification = ctx.onNotification((event) => {
+    if (event.topic === "settings-changed" || event.topic === "research-notes-changed") void loadResearch();
+  });
+  void loadResearch();
   updateComposer();
   renderMessages();
   renderStatus();
@@ -610,7 +736,8 @@ export function createArchitectPane(
       disposed = true;
       fileInput.removeEventListener("change", onFileChange);
       clearMessages();
-      uploadButton.dispose();
+      offNotification();
+      dictationHandle?.dispose();
       composerHandle?.dispose();
       composerHandle = null;
       root.remove();

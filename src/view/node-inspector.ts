@@ -69,6 +69,7 @@ const RESOURCE_ICON: Record<NodeResource["kind"], string> = {
   course: ICONS.course,
   docs: ICONS.docs,
   exercises: ICONS.exercises,
+  paper: ICONS.article,
 };
 
 /** "K&R, ch. 5 · §5.1 · pp. 93–117" in the active locale. */
@@ -206,7 +207,13 @@ export function createNodeInspector(
       const resources = section(t("insp.resources"));
       for (const resource of node.resources) {
         const kind = t(`res.${resource.kind}` as MessageKey);
-        const sub = resource.free ? `${kind} · ${t("insp.free")}` : kind;
+        const sub = [
+          resource.essential ? t("insp.essential") : "",
+          kind,
+          resource.free ? t("insp.free") : "",
+          resource.checked ? t("insp.checked") : "",
+          resource.use ?? "",
+        ].filter(Boolean).join(" · ");
         let title: string | HTMLElement = resource.title;
         if (resource.url) {
           const link = el(document, "a", "rm-link", resource.title);

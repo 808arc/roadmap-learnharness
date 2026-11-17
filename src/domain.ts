@@ -123,7 +123,7 @@ export function defaultArtifactFor(nodeType: NodeType): ArtifactType {
 }
 
 /** Typed study resources attached to a node (roadmap.sh style: 2–5 per node). */
-export const RESOURCE_KINDS = ["book", "article", "video", "course", "docs", "exercises"] as const;
+export const RESOURCE_KINDS = ["book", "article", "video", "course", "docs", "exercises", "paper"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 
 export interface NodeResource {
@@ -131,6 +131,12 @@ export interface NodeResource {
   readonly kind: ResourceKind;
   readonly url?: string;
   readonly free?: boolean;
+  /** Which part to use for this node and what to skip, e.g. "ch. 3–4; skip the exercises in 4.5". */
+  readonly use?: string;
+  /** A canonical, must-know resource for this node. */
+  readonly essential?: boolean;
+  /** The Architect actually looked inside (contents, syllabus or page) during research. */
+  readonly checked?: boolean;
 }
 
 export const VIEW_MODES = ["graph", "tree"] as const;
@@ -146,6 +152,40 @@ export interface DisplaySettings {
 }
 
 export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "graph", showOptional: true };
+
+/** How the Architect reaches beyond its own memory. Every channel can be switched off;
+ * with all of them off the Architect works offline from what the model knows. */
+export const RESEARCH_PRESETS = ["hybrid", "custom", "offline"] as const;
+export type ResearchPreset = (typeof RESEARCH_PRESETS)[number];
+export const KEY_ENGINES = ["tavily", "brave"] as const;
+export type KeyEngine = (typeof KEY_ENGINES)[number];
+
+export interface ResearchSettings {
+  readonly preset: ResearchPreset;
+  /** A LearnHarness teacher session researches with the app's own search key. */
+  readonly session: boolean;
+  /** Keyless catalogs: Open Library, Google Books, OpenAlex, arXiv, Wikipedia, page reading. */
+  readonly openSources: boolean;
+  /** The learner's own Tavily/Brave key, stored in the plugin data folder (off by default). */
+  readonly ownKey: boolean;
+  readonly keyEngine: KeyEngine;
+  /** Deep research by the Claude Code CLI with its built-in WebSearch/WebFetch (off by default). */
+  readonly claudeCli: boolean;
+  /** Local fork only: host-mediated search (`ctx.web`). Ignored where the host lacks it. */
+  readonly hostWeb: boolean;
+}
+
+export const HYBRID_RESEARCH: ResearchSettings = {
+  preset: "hybrid", session: true, openSources: true, ownKey: false, keyEngine: "tavily", claudeCli: false, hostWeb: false,
+};
+
+/** The effective switches: a preset overrides the individual ones. */
+export function effectiveResearch(settings: ResearchSettings | undefined): ResearchSettings {
+  const value = settings ?? HYBRID_RESEARCH;
+  if (value.preset === "hybrid") return { ...HYBRID_RESEARCH, keyEngine: value.keyEngine };
+  if (value.preset === "offline") return { ...value, session: false, openSources: false, ownKey: false, claudeCli: false, hostWeb: false };
+  return value;
+}
 
 export interface ArtifactConfig {
   readonly type: ArtifactType;
@@ -287,6 +327,8 @@ export interface PluginSettings {
   readonly display?: DisplaySettings;
   /** Language for Architect-written titles, goals and outcomes; `auto` follows the learner. */
   readonly contentLanguage?: LanguagePreference;
+  /** Absent means HYBRID_RESEARCH. */
+  readonly research?: ResearchSettings;
 }
 
 export interface ValidationIssue {
@@ -673,6 +715,9 @@ function readNodeResource(value: unknown, path: string): NodeResource {
     kind: readEnum(record.kind, RESOURCE_KINDS, `${path}.kind`),
     ...(url === undefined ? {} : { url }),
     ...(record.free === undefined || record.free === null ? {} : { free: readBoolean(record.free, `${path}.free`) }),
+    ...(typeof record.use === "string" && record.use.trim() ? { use: readString(record.use, `${path}.use`, { max: 400 }) } : {}),
+    ...(record.essential === true ? { essential: true } : {}),
+    ...(record.checked === true ? { checked: true } : {}),
   };
 }
 
@@ -795,8 +840,10 @@ function readPluginSettingsValue(value: unknown): PluginSettings {
     record.contentLanguage === undefined
       ? undefined
       : readEnum(record.contentLanguage, LANGUAGE_PREFERENCES, `${path}.contentLanguage`);
+  const research = record.research === undefined ? undefined : readResearchSettings(record.research, `${path}.research`);
   return {
     artifactDefaults,
+    ...(research === undefined ? {} : { research }),
     ...(architect === undefined ? {} : { architect }),
     ...(display === undefined ? {} : { display }),
     ...(contentLanguage === undefined ? {} : { contentLanguage }),
@@ -809,6 +856,21 @@ function readDisplaySettings(value: unknown, path: string): DisplaySettings {
     language: record.language === undefined ? DEFAULT_DISPLAY.language : readEnum(record.language, LANGUAGE_PREFERENCES, `${path}.language`),
     defaultView: record.defaultView === undefined ? DEFAULT_DISPLAY.defaultView : readEnum(record.defaultView, VIEW_MODES, `${path}.defaultView`),
     showOptional: record.showOptional === undefined ? DEFAULT_DISPLAY.showOptional : readBoolean(record.showOptional, `${path}.showOptional`),
+  };
+}
+
+function readResearchSettings(value: unknown, path: string): ResearchSettings {
+  const record = readObject(value, path);
+  const flag = (key: keyof ResearchSettings): boolean =>
+    record[key] === undefined ? (HYBRID_RESEARCH[key] as boolean) : readBoolean(record[key], `${path}.${key}`);
+  return {
+    preset: record.preset === undefined ? "hybrid" : readEnum(record.preset, RESEARCH_PRESETS, `${path}.preset`),
+    session: flag("session"),
+    openSources: flag("openSources"),
+    ownKey: flag("ownKey"),
+    keyEngine: record.keyEngine === undefined ? "tavily" : readEnum(record.keyEngine, KEY_ENGINES, `${path}.keyEngine`),
+    claudeCli: flag("claudeCli"),
+    hostWeb: flag("hostWeb"),
   };
 }
 

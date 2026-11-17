@@ -83,7 +83,8 @@ test("instructions exist, and native tools are injected only for linked chats of
     chat("chat-unlinked", "teach"),
   ]);
   try {
-    assert.equal(host.instructions.length, 1);
+    // The node bridge plus the research-session note.
+    assert.equal(host.instructions.length, 2);
     assert.deepEqual(host.instructions[0]!.agents, ["prober", "teacher", "practice"]);
     assert.match(host.instructions[0]!.text, /If roadmap_get_brief is not in your current tool set, ignore this entire section/);
     assert.equal(host.instructions[0]!.text, NATIVE_BRIDGE_INSTRUCTIONS);

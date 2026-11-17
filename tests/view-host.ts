@@ -316,6 +316,9 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
     mountTree(container: HTMLElement, props: AnyProps, widget: { signal: AbortSignal }) {
       return mountRecord("mountTree", container, props, widget.signal).handle;
     },
+    mountComposer(container: HTMLElement, props: AnyProps, widget: { signal: AbortSignal }) {
+      return mountRecord("mountComposer", container, props, widget.signal).handle;
+    },
     mountStandardComposer(container: HTMLElement, props: AnyProps, widget: { signal: AbortSignal }) {
       return mountRecord("mountStandardComposer", container, props, widget.signal).handle;
     },
@@ -333,9 +336,6 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
     },
     mountKnowledgePicker(container: HTMLElement, props: AnyProps, widget: { signal: AbortSignal }) {
       return mountRecord("mountKnowledgePicker", container, props, widget.signal).handle;
-    },
-    mountComposer(container: HTMLElement, props: AnyProps, widget: { signal: AbortSignal }) {
-      return mountRecord("mountComposer", container, props, widget.signal).handle;
     },
     mountWorkerResult(container: HTMLElement, props: AnyProps, widget: { signal: AbortSignal }) {
       return mountRecord("mountWorkerResult", container, props, widget.signal).handle;
@@ -449,6 +449,8 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
       }
       case "settings.get":
         return Promise.resolve({ settings: structuredClone(settingsState) } as T);
+      case "research.status":
+        return Promise.resolve({ effective: { session: true }, tools: ["read_page", "find_books"], notes: [], keys: {} } as T);
       case "settings.save": {
         settingsState = structuredClone(value as PluginSettings);
         fixtures.settings = settingsState;
