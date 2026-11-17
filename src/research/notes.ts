@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-export type NoteOrigin = "session" | "claude-cli" | "architect";
+export type NoteOrigin = "session" | "claude-cli" | "architect" | "diagnostic";
 
 export interface ResearchNote {
   readonly id: string;

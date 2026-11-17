@@ -329,6 +329,8 @@ export interface PluginSettings {
   readonly contentLanguage?: LanguagePreference;
   /** Absent means HYBRID_RESEARCH. */
   readonly research?: ResearchSettings;
+  /** Prober and teacher may offer to build a roadmap from what they found out. Absent means on. */
+  readonly proposeRoadmaps?: boolean;
 }
 
 export interface ValidationIssue {
@@ -841,8 +843,10 @@ function readPluginSettingsValue(value: unknown): PluginSettings {
       ? undefined
       : readEnum(record.contentLanguage, LANGUAGE_PREFERENCES, `${path}.contentLanguage`);
   const research = record.research === undefined ? undefined : readResearchSettings(record.research, `${path}.research`);
+  const proposeRoadmaps = record.proposeRoadmaps === undefined ? undefined : readBoolean(record.proposeRoadmaps, `${path}.proposeRoadmaps`);
   return {
     artifactDefaults,
+    ...(proposeRoadmaps === undefined ? {} : { proposeRoadmaps }),
     ...(research === undefined ? {} : { research }),
     ...(architect === undefined ? {} : { architect }),
     ...(display === undefined ? {} : { display }),

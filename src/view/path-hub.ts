@@ -533,6 +533,19 @@ export function mountPathHub(
     renderAll();
   }
 
+  /** A "Build" pressed on a proposal card in a session: open a new Architect conversation with the dossier. */
+  async function takePendingBuild(): Promise<void> {
+    try {
+      const pending = await ctx.call<{ noteId: string | null; message?: string }>("diagnostic.takePending", { locale: locale() });
+      if (!pending.noteId || !pending.message || disposed || signal.aborted) return;
+      setTab("architect");
+      pane.startNew();
+      await pane.discuss(pending.message);
+    } catch {
+      // Nothing waiting, or the backend is older; the view works as usual.
+    }
+  }
+
   async function askArchitect(text: string): Promise<void> {
     if (disposed || signal.aborted) return;
     setTab("architect");
@@ -710,7 +723,7 @@ export function mountPathHub(
   void loadDisplay().then(() => {
     if (disposed || signal.aborted || locale() !== mountedLocale) return;
     renderAll();
-    return refreshAll();
+    return refreshAll().then(() => takePendingBuild());
   });
 
   return () => {

@@ -25,6 +25,7 @@ import { createKeyStore } from "./research/key-store.ts";
 import { createResearchNotes } from "./research/notes.ts";
 import { createResearchChats, registerResearchSessions, researchBrief } from "./research/session-research.ts";
 import { buildResearchTools } from "./research/tools.ts";
+import { applyMisconceptionsTool, buildMessage, createDeclinedChats, registerProposals } from "./diagnostic.ts";
 import { sessionMetrics } from "./session-metrics.ts";
 import { randomUUID } from "node:crypto";
 import type {
@@ -347,6 +348,19 @@ export function activate(ctx: PluginBackendContext): void {
     }),
   );
 
+  const declined = createDeclinedChats(ctx.dataDirectory);
+  // A "Build" pressed on a proposal card, picked up by the Roadmap view when it opens.
+  let pendingBuild: { noteId: string; at: number } | null = null;
+  const proposals = registerProposals(ctx, {
+    store,
+    notes,
+    declined,
+    isResearchChat: (chatId) => researchChats.get(chatId) !== null,
+    enabled: () => store.settings().proposeRoadmaps !== false,
+    onProposal: (summary, chatId) => emit("research-notes-changed", { noteId: summary.noteId, chatId }),
+  });
+  disposers.push(() => proposals.dispose());
+
   const cancelRuns = (): void => {
     const ids = new Set(watchers.keys());
     if (activeChatId) ids.add(activeChatId);
@@ -365,8 +379,15 @@ export function activate(ctx: PluginBackendContext): void {
     pendingModel = null;
     architect?.unregister();
     architect = null;
-    const tools = researchTools();
-    registeredResearch = tools.map((tool) => tool.name).join(",");
+    const tools = [
+      ...researchTools(),
+      applyMisconceptionsTool(ctx, {
+        store,
+        notes,
+        onPathChanged: (path) => emit(EVENT_PATHS_CHANGED, { id: path.id, updatedAt: path.updatedAt, change: "error" }),
+      }),
+    ];
+    registeredResearch = researchSignature();
     const registration = registerArchitect(ctx, model, {
       store,
       researchTools: tools,
@@ -570,6 +591,7 @@ export function activate(ctx: PluginBackendContext): void {
       assertModelAvailable(catalog, preference);
     }
     const saved = store.saveSettings(requested);
+    proposals.sync();
     const override = preferenceModel(saved.architect);
     if (override) {
       const modelPending = applySettingsModel(override);
@@ -821,6 +843,30 @@ export function activate(ctx: PluginBackendContext): void {
       prompt: brief.text,
       watchpoints: brief.watchpoints.length,
     };
+  });
+
+  // ── Roadmap proposals from sessions ──────────────────────────────────────
+  handle("diagnostic.decline", (input) => {
+    const value = object(input, "diagnostic.decline");
+    declined.add(readText(value.chatId, "chatId", { max: 128 }));
+    return { ok: true };
+  });
+
+  handle("diagnostic.requestBuild", (input) => {
+    const value = object(input, "diagnostic.requestBuild");
+    const noteId = readText(value.noteId, "noteId", { max: 80 });
+    const note = notes.read(noteId);
+    if (!note || note.origin !== "diagnostic") throw new Error("This diagnostic dossier no longer exists.");
+    pendingBuild = { noteId, at: Date.now() };
+    return { ok: true };
+  });
+
+  /** One-shot: the Roadmap view asks on open whether a build is waiting. */
+  handle("diagnostic.takePending", (input) => {
+    const value = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    const pending = pendingBuild && Date.now() - pendingBuild.at < 10 * 60_000 ? pendingBuild : null;
+    pendingBuild = null;
+    return pending ? { noteId: pending.noteId, message: buildMessage(pending.noteId, value.locale === "ru" ? "ru" : "en") } : { noteId: null };
   });
 
   // ── Research channels ────────────────────────────────────────────────────

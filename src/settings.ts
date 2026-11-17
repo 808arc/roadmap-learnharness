@@ -293,6 +293,14 @@ export function mountSettingsPage(
           void saveSettings({ ...settings, display: { ...currentDisplay(), defaultView: value as ViewMode } }),
       },
       {
+        key: "propose-roadmaps",
+        type: "toggle" as const,
+        label: t("s.propose"),
+        description: t("s.proposeDesc"),
+        value: settings.proposeRoadmaps !== false,
+        onChange: (value: boolean) => void saveSettings({ ...settings, proposeRoadmaps: value }),
+      },
+      {
         key: "display-optional",
         type: "toggle" as const,
         label: t("s.showOptional"),

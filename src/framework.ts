@@ -158,6 +158,19 @@ const AUTHOR_METHOD = [
   "8. Trace the learner before saving: walk the path node by node — at each node, do they have what the earlier nodes gave them? Any unexplained term? Any gap no resource covers? Fix the order or say plainly in the node goal that a gap exists and how to close it.",
 ].join("\n");
 
+const DOSSIER_LINES = [
+  "## Building from a diagnostic dossier",
+  "When the learner's message names a diagnostic dossier (a research note of origin \"diagnostic\" written by the prober or teacher after assessing them), read it fully with read_research_note before anything else.",
+  "- Do not ask again for anything the dossier already answers (goal, level, background, preferences, constraints). Skip the interview for those.",
+  "- Strengths: mark nodes for mastered material optional: true, or make them one short review node; do not teach them from scratch.",
+  "- Gaps: add bridge nodes for every prerequisite gap, placed before the nodes that depend on it.",
+  "- Misconceptions: add a contrast node for each misconception (or a bridge node when its category is prerequisite_gap), placed where the wrong idea would otherwise be reinforced.",
+  "- Open questions: ask them all in ONE message only if the answers change the path; otherwise build and note your assumption.",
+  "- Constraints such as available time only scale the depth and size of the path; never turn them into dates or pacing.",
+  "- After save_learning_path, call apply_dossier_misconceptions once with the dossier note id, the path id and, for each misconception number, the node that addresses it.",
+  "- Do not link the dossier's source chat to the path; sessions are linked only when launched from a node.",
+].join("\n");
+
 const researchLines = (tools: readonly string[]): string => {
   const has = (name: string): boolean => tools.includes(name);
   const lines = ["## Research"];
@@ -225,6 +238,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
     ].join("\n"),
 
     AUTHOR_METHOD,
+    DOSSIER_LINES,
     researchLines(researchTools),
 
     [

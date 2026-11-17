@@ -62,7 +62,18 @@ in progress, and a group of alternatives counts once.
    cue), never as grades. Open errors follow into later sessions until resolved.
    When a topic really is not sticking, a session may suggest a small repair
    node; you accept, discuss or dismiss it. The roadmap never changes silently.
-4. **Refine.** *Refine* reopens the roadmap's Architect conversation; *Find
+4. **A roadmap from any session.** When the prober or teacher has assessed you
+   and your goal is wider than one session, it offers a roadmap once (never in
+   sessions launched from a roadmap or in research sessions; if you say no, it
+   stops). On agreement it hands the Architect the full diagnostic dossier —
+   goal, background, every check with your answer and its verdict, strengths,
+   gaps, misconceptions by root cause, preferences, constraints, sources, open
+   questions and key quotes. A card in the chat offers *Build* / *Not now*.
+   *Build* opens Roadmap and the Architect builds from the dossier without
+   asking again: mastered material becomes optional or a short review, gaps get
+   bridge nodes, misconceptions get contrast nodes and land in the Error Ledger
+   as open entries. The source session is not linked to the roadmap.
+5. **Refine.** *Refine* reopens the roadmap's Architect conversation; *Find
    resources* on a node asks it for typed resources for that node.
 
 There is deliberately **no scheduling and no gamification**: no hours, streaks,
@@ -126,6 +137,7 @@ Settings → Roadmap:
 | Artifact defaults per node type | Framework recommendation |
 | Architect model | Follow the host's strong model, or choose one |
 | Research | Hybrid: research sessions + open catalogs |
+| Offer roadmaps from sessions | On (off removes both the rule and the tool) |
 | Roadmaps | Delete a roadmap (sessions and the Knowledge Graph are never touched) |
 
 ## Data

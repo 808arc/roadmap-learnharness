@@ -7,6 +7,7 @@ import { registerSessionActions } from "./session-actions.ts";
 import { mountSettingsPage } from "./settings.ts";
 import { mountPathHub } from "./view/path-hub.ts";
 import { registerLearningPathToolRenderers } from "./view/tool-renderers.ts";
+import { registerProposalCard } from "./view/proposal-card.ts";
 
 export function activate(ctx: PluginFrontendContext): () => void {
   const disposers: (() => void)[] = [];
@@ -54,6 +55,7 @@ export function activate(ctx: PluginFrontendContext): () => void {
   // Session top-bar actions and compact roadmap_* result cards.
   disposers.push(registerSessionActions(ctx));
   disposers.push(registerLearningPathToolRenderers(ctx));
+  disposers.push(registerProposalCard(ctx));
 
   disposers.push(
     ctx.registerSettings((settingsContainer, settingsSignal) => {
