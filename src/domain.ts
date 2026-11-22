@@ -268,6 +268,11 @@ export interface PivotSuggestion {
   readonly insertedNodeId?: string;
 }
 
+/** A folder path or git URL. Roadmap only passes it along; the repo's own tools read it. */
+export interface CodeRepoLink {
+  readonly location: string;
+}
+
 export interface PathNode {
   readonly id: string;
   readonly type: NodeType;
@@ -297,6 +302,8 @@ export interface PathNode {
   readonly resources?: readonly NodeResource[];
   /** The roadmap.sh catalog topic this node covers. Absent on nodes linked before issue #6. */
   readonly catalogTopic?: CatalogTopicLink;
+  /** A code repository the learner studies for this node; the brief names it, nothing else reads it. */
+  readonly codeRepo?: CodeRepoLink;
 }
 
 /** A node's link to one catalog topic, by roadmap slug and topic slug. */
@@ -667,6 +674,17 @@ function readCatalogTopicLink(value: unknown, path: string): CatalogTopicLink {
   return { roadmap: slugOf(record.roadmap, "roadmap"), slug: slugOf(record.slug, "slug") };
 }
 
+/** Longest accepted repo location: a folder path or a git URL. */
+export const CODE_REPO_LOCATION_MAX = 500;
+
+function readCodeRepoLink(value: unknown, path: string): CodeRepoLink {
+  const record = readObject(value, path);
+  const location = readString(record.location, `${path}.location`, { max: CODE_REPO_LOCATION_MAX });
+  // Stricter than readString: tabs and line breaks are not allowed in a path or URL here.
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(location)) fail(`${path}.location`, "must not contain control characters");
+  return { location };
+}
+
 function readPathNode(value: unknown, path: string): PathNode {
   const record = readObject(value, path);
   return {
@@ -739,6 +757,9 @@ function readPathNode(value: unknown, path: string): PathNode {
     ...(record.catalogTopic === undefined
       ? {}
       : { catalogTopic: readCatalogTopicLink(record.catalogTopic, `${path}.catalogTopic`) }),
+    ...(record.codeRepo === undefined
+      ? {}
+      : { codeRepo: readCodeRepoLink(record.codeRepo, `${path}.codeRepo`) }),
   };
 }
 

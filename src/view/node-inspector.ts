@@ -242,6 +242,11 @@ export function createNodeInspector(
     const source = section(t("insp.source"));
     source.append(item(ICONS.book, formatAnchor(node.sourceAnchor), node.lightPreReading ? t("insp.preReading", { text: node.lightPreReading }) : undefined));
 
+    if (node.codeRepo) {
+      const repo = section(t("insp.codeRepo"));
+      repo.append(item(null, node.codeRepo.location));
+    }
+
     if (node.resources?.length) {
       const resources = section(t("insp.resources"));
       for (const resource of node.resources) {
