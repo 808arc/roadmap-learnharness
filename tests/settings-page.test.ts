@@ -36,6 +36,10 @@ test("settings page edits justified artifact defaults and persists them", async 
     assert.match(fixture.root.textContent ?? "", /a small program, interpreter or test case/);
     assert.match(fixture.root.textContent ?? "", /labelled arrows/);
     assert.match(fixture.root.textContent ?? "", /from a blank page in your own words/);
+    // The research line names capabilities, never tool names (the fixture reports read_page and find_books).
+    const researchLine = fixture.root.querySelector(".rm-research-tools")?.textContent ?? "";
+    assert.equal(researchLine, "Now the Architect can use: public pages, book catalogs and contents.");
+    assert.doesNotMatch(researchLine, /read_page|find_books/);
 
     const artifactRows = fixture.find(
       "mountSettingsRows",
