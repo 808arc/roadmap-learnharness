@@ -24,6 +24,7 @@ import type {
 import { ARTIFACT_TYPES, DEFAULT_DISPLAY, PROGRESSION_STATES, artifactCatalogEntry, recommendedArtifactsFor } from "../domain.ts";
 import { locale, resolveLocale, setLocale, t } from "../i18n.ts";
 import type { NativeSessionHost } from "../native-session-host.ts";
+import type { Mastery } from "../learner-map.ts";
 import { nextUpForPath, type NextRecommendation } from "../node-next.ts";
 import { createSessionLauncher } from "../session-launcher.ts";
 import { consumePathHubTarget, subscribePathHubTarget } from "../session-navigation.ts";
@@ -75,9 +76,9 @@ function nodeById(path: LearningPath, nodeId: string | null): PathNode | null {
 }
 
 /** Next-up recommendations. A roadmap the ranking cannot read yields none rather than breaking the view. */
-function nextRecommendations(path: LearningPath): NextRecommendation[] {
+function nextRecommendations(path: LearningPath, mastery: readonly Mastery[]): NextRecommendation[] {
   try {
-    return nextUpForPath(path);
+    return nextUpForPath(path, undefined, mastery);
   } catch {
     return [];
   }
@@ -203,6 +204,10 @@ export function mountPathHub(
   let toolbarControls = new AbortController();
   const mountedLocale = locale();
   const chatStatuses = new Map<string, SessionStatus>();
+  // Knowledge Graph mastery for evidence and next-up. A failed read leaves `masteryReady` false: no
+  // evidence, and no next-up list, rather than a ranking that treats every topic as unseen.
+  let mastery: readonly Mastery[] = [];
+  let masteryReady = false;
 
   const pane = createArchitectPane(ctx, architectPanel, signal);
   const launcher = createSessionLauncher(ctx, { host: options.sessionHost });
@@ -230,6 +235,7 @@ export function mountPathHub(
     unlinkSession(chatId) {
       return unlinkSession(chatId);
     },
+    knowledgeMastery: () => mastery,
     chatStatus: chatStatuses,
     selectNode(nodeId) {
       selectNode(nodeId);
@@ -405,7 +411,7 @@ export function mountPathHub(
   /** "Next up": selecting an item opens it in the node panel, which holds Lesson and Practice. Nothing is gated. */
   function renderNext(): void {
     statusNext.replaceChildren();
-    const recommendations = path ? nextRecommendations(path) : [];
+    const recommendations = path && masteryReady ? nextRecommendations(path, mastery) : [];
     statusNext.hidden = recommendations.length === 0;
     if (!path || recommendations.length === 0) return;
     statusNext.append(el(document, "span", "rm-status-next-label", t("next.title")));
@@ -527,6 +533,10 @@ export function mountPathHub(
       if (path) {
         await refreshChatStatuses(token, path.id);
         if (!live(token)) return;
+        const read = await readKnowledgeMastery();
+        if (!live(token)) return;
+        mastery = read ?? [];
+        masteryReady = read !== null;
       } else {
         chatStatuses.clear();
         tab = "architect";
@@ -544,6 +554,16 @@ export function mountPathHub(
     } catch (problem) {
       if (!live(token)) return;
       showError(t("error.load", { message: problemText(problem) }));
+    }
+  }
+
+  /** Knowledge Graph mastery from `graph.mastery`. Null when the read fails, so callers show no evidence. */
+  async function readKnowledgeMastery(): Promise<readonly Mastery[] | null> {
+    try {
+      const result = await ctx.call<{ mastery: readonly Mastery[] }>("graph.mastery");
+      return Array.isArray(result.mastery) ? result.mastery : null;
+    } catch {
+      return null;
     }
   }
 

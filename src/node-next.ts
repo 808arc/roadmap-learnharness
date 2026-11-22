@@ -3,6 +3,7 @@
 // node can still be opened. Reasons are i18n keys with variables; the view translates them.
 import type { LearningPath, PathNode } from "./domain.ts";
 import type { MessageKey } from "./i18n.ts";
+import type { Mastery } from "./learner-map.ts";
 import { nodePrerequisites, type NodePrerequisites } from "./node-catalog-link.ts";
 import { findNodeGaps, type NodeGap } from "./node-gaps.ts";
 
@@ -152,14 +153,14 @@ export function rankNextNodes(input: NextInput): NextRecommendation[] {
 }
 
 /**
- * Next nodes for a roadmap as the view has it today. The view receives no Knowledge Graph mastery
- * and no catalog, so prerequisites follow module order (nodePrerequisites with an empty catalog)
- * and mastery is empty. Throws on the same data errors as findNodeGaps.
+ * Next nodes for a roadmap as the view has it. The view has no catalog, so prerequisites follow module
+ * order (nodePrerequisites with an empty catalog). `mastery` is the Knowledge Graph mastery (default
+ * empty). Throws on the same data errors as findNodeGaps.
  */
-export function nextUpForPath(path: LearningPath, limit: number = NEXT_LIMIT): NextRecommendation[] {
+export function nextUpForPath(path: LearningPath, limit: number = NEXT_LIMIT, mastery: readonly Mastery[] = []): NextRecommendation[] {
   const nodes = path.modules.flatMap(module => module.nodes);
   const prerequisites = nodePrerequisites(nodes, { roadmaps: [] });
-  const gaps = findNodeGaps({ roadmap: path.id, nodes, prerequisites, mastery: [] });
+  const gaps = findNodeGaps({ roadmap: path.id, nodes, prerequisites, mastery });
   return rankNextNodes({ nodes, prerequisites, gaps, limit });
 }
 
