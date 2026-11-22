@@ -223,6 +223,49 @@ test("a failed listing is not kept: the next call asks GitHub again", async () =
   assert.equal(calls.length, 2);
 });
 
+test("a save checks that an uploaded source exists without reading its text, and still refuses a missing or symlinked one", async (t) => {
+  const { fetch } = fakeFetch({});
+  const { store, tool } = upstreamDefinition(t, fetch);
+  const STORED = "0f8fad5b-d9cb-469f-a165-70867728950e";
+  const MISSING = "1a9bbe6c-e0da-47aa-b276-81978839a61f";
+  const LINKED = "2bacd17d-f1eb-48bb-8387-92089940b72a";
+  store.writeSource(STORED, "# Stored source\n\nSynthetic text.");
+  const target = path.join(store.directory, "outside.md");
+  fs.writeFileSync(target, "# Outside");
+  fs.symlinkSync(target, path.join(store.directory, "sources", `${LINKED}.md`));
+
+  const reads: string[] = [];
+  const readSource = store.readSource;
+  store.readSource = (sourceId: string) => {
+    reads.push(sourceId);
+    return readSource(sourceId);
+  };
+  const draftWith = (sourceId: string) => {
+    const draft = rawPath();
+    draft.id = `path-${sourceId.slice(0, 8)}`;
+    draft.sourceSpine = {
+      mode: "uploaded",
+      references: [{ title: "Synthetic corpus", kind: "textbook" }],
+      sources: [{ sourceId, name: "corpus.md", uploadedAt: "2026-01-31T09:30:00.000Z" }],
+    } as typeof draft.sourceSpine;
+    for (const module of draft.modules) for (const node of module.nodes) delete node.resources;
+    return draft;
+  };
+
+  const saved = await tool("save_learning_path").execute("c1", draftWith(STORED), undefined);
+  assert.equal(saved.isError, undefined, saved.content[0]?.text);
+  assert.deepEqual(reads, [], "a stored source is confirmed from the listing, not read");
+
+  const missing = await tool("save_learning_path").execute("c2", draftWith(MISSING), undefined);
+  assert.equal(missing.isError, true);
+  assert.match(missing.content[0]?.text ?? "", /not stored/);
+  assert.deepEqual(reads, [MISSING], "a source the listing does not show is still checked with readSource");
+
+  const linked = await tool("save_learning_path").execute("c3", draftWith(LINKED), undefined);
+  assert.equal(linked.isError, true);
+  assert.match(linked.content[0]?.text ?? "", /symlinked/, "a symlinked source is refused as before");
+});
+
 /** A learner whose graph holds distinctive synthetic text, to prove none of it leaves the plugin. */
 const SECRET = "ZZ-LEARNER-SECRET-7731";
 function learnerContext(): PluginBackendContext {

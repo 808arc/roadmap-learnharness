@@ -464,7 +464,12 @@ async function saveDraft(
     candidate.updatedAt = now;
     candidate.architectChatId = chatId;
     parsed = parseLearningPath(candidate);
-    for (const source of uploadedSources(parsed)) {
+    // Existence is what the check needs, so the listing answers it; a source the listing does not show
+    // (a symlink, a non-file) still goes through readSource, which refuses or reports it as before.
+    const sources = uploadedSources(parsed);
+    const listed = sources.length > 0 ? new Set(options.store.listSourceIds()) : null;
+    for (const source of sources) {
+      if (listed?.has(source.sourceId.toLowerCase())) continue;
       if (options.store.readSource(source.sourceId) === null) {
         return errorResult(
           `Source spine references uploaded source "${source.sourceId}" (${source.name}), which is not stored. ` +
