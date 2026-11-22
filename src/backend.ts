@@ -37,9 +37,12 @@ import type {
 } from "learnharness-plugin-api";
 import {
   ARCHITECT_DEFINITION_ID,
+  graphBriefMessage,
   registerArchitect,
 } from "./architect-agent.ts";
 import type { ArchitectRegistration } from "./architect-agent.ts";
+import { buildGraphBrief } from "./graph-brief.ts";
+import type { GraphBrief } from "./graph-brief.ts";
 import {
   ARTIFACT_TYPES,
   CHILD_SESSION_KINDS,
@@ -206,6 +209,13 @@ function sameModel(a: ArchitectModelConfig, b: ArchitectModelConfig): boolean {
   return a.provider === b.provider && a.id === b.id && a.thinkingLevel === b.thinkingLevel;
 }
 
+/** The learner's knowledge graph as a brief, or null when it holds no topics to offer. */
+function learnerGraphBrief(ctx: PluginBackendContext): GraphBrief | null {
+  const graph = ctx.learning.graph();
+  const brief = buildGraphBrief({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
+  return brief.topics.length > 0 ? brief : null;
+}
+
 /** Native chat kinds are `teach`/`practice`; plugin links say `teaching`/`practice`. */
 function nativeKind(record: { readonly kind?: "teach" | "practice" }): ChildSessionKind {
   return record.kind === "practice" ? "practice" : "teaching";
@@ -280,6 +290,8 @@ export function activate(ctx: PluginBackendContext): void {
   // applied once no Architect conversation is running.
   let pendingModel: ArchitectModelConfig | null = null;
   let activeChatId: string | null = null;
+  // The graph brief each Architect conversation was sent with (see architect.send).
+  const graphBriefs = new Map<string, GraphBrief>();
   let disposed = false;
   const notes = createResearchNotes(ctx.dataDirectory);
   const keys = createKeyStore(ctx.dataDirectory);
@@ -400,6 +412,7 @@ export function activate(ctx: PluginBackendContext): void {
       store,
       researchTools: tools,
       activeChatId: () => activeChatId,
+      graphBrief: () => (activeChatId === null ? null : (graphBriefs.get(activeChatId) ?? null)),
       onPathSaved: (path, created) =>
         emit(EVENT_PATHS_CHANGED, { id: path.id, created, updatedAt: path.updatedAt }),
     });
@@ -1174,8 +1187,12 @@ export function activate(ctx: PluginBackendContext): void {
     const requestId = readRequestId(value.requestId);
     activeChatId = id;
     watch(id);
-    debug("architect.send.request", { id, requestId, characters: text.length });
-    const conversation = await ctx.agents.send(id, text, { requestId, purpose: "user" });
+    // Opt-in: the learner's graph travels as quoted data ahead of the message.
+    const brief = value.learnerGraph === true ? learnerGraphBrief(ctx) : null;
+    if (brief) graphBriefs.set(id, brief);
+    const sent = brief ? `${graphBriefMessage(brief)}\n\n${text}` : text;
+    debug("architect.send.request", { id, requestId, characters: text.length, graphTopics: brief?.topics.length ?? 0 });
+    const conversation = await ctx.agents.send(id, sent, { requestId, purpose: "user" });
     debug("architect.send.accepted", { id, status: conversation.status });
     emit(EVENT_ARCHITECT_CHANGED, {
       id: conversation.id,
