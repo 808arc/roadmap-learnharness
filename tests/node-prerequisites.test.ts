@@ -3,7 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { completeDraft } from "../src/architect-agent.ts";
+import { DRAFT_ID_PREFIX, completeDraft, replaceDraftIds } from "../src/architect-agent.ts";
+import { nextUpForPath } from "../src/node-next.ts";
 import { parseLearningPath, validateLearningPath } from "../src/domain.ts";
 import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import { nodePrerequisites } from "../src/node-catalog-link.ts";
@@ -13,6 +14,7 @@ import type { CanvasState } from "../src/view/roadmap-canvas.ts";
 import { layoutRoadmap, buildDependencyGraph } from "../src/view/roadmap-layout.ts";
 import { setLocale, t } from "../src/i18n.ts";
 import { makeNode, makePath, rawPath } from "./fixtures.ts";
+import { createHost } from "./host.ts";
 
 const { parseHTML } = createRequire(import.meta.url)("linkedom") as {
   parseHTML(html: string): { document: Document };
@@ -237,4 +239,95 @@ test("the Architect's draft refuses a cycle with the plain message", () => {
   const result = validateLearningPath(completed);
   assert.equal(result.ok, false);
   assert.match(result.ok ? "" : result.issues[0]!.message, /prerequisites form a cycle/);
+});
+
+/** A new-path draft as the model writes it: no ids except the given draft ids. */
+function newDraft(nodes: Record<string, unknown>[]): Record<string, unknown> {
+  return {
+    title: "Synthetic draft",
+    goal: "Exercise draft ids",
+    createdAt: "2026-01-31T09:30:00.000Z",
+    updatedAt: "2026-01-31T09:30:00.000Z",
+    sourceSpine: { mode: "canonical", references: [{ title: "Synthetic Book", kind: "textbook" }] },
+    modules: [{ title: "Only", nodes: nodes.map((node) => ({
+      type: "concept", goal: "Synthetic goal", sourceAnchor: { reference: "Synthetic Book" }, ...node,
+    })) }],
+  };
+}
+
+test("draft ids link new nodes inside one draft and are replaced by server ids on save", () => {
+  const draft = newDraft([
+    { id: "draft:basics", title: "Basics", prerequisites: [] },
+    { id: "draft:other-root", title: "Other root", prerequisites: [] },
+    { title: "Needs both", prerequisites: ["draft:basics", "draft:other-root", "draft:ghost"] },
+  ]);
+  const validated = parseLearningPath(completeDraft(draft, null, "chat-synthetic", null));
+  const saved = parseLearningPath(replaceDraftIds(validated, null));
+  const [basics, otherRoot, needsBoth] = saved.modules[0]!.nodes;
+  const serialized = JSON.stringify(saved);
+  assert.ok(!serialized.includes(DRAFT_ID_PREFIX), "no draft id survives the save");
+  assert.match(basics!.id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(needsBoth!.prerequisites, [basics!.id, otherRoot!.id], "references follow the new ids; the unknown one is dropped");
+  assert.deepEqual(needsBoth!.interleavesNodeIds, [basics!.id, otherRoot!.id], "default interleaving follows them too");
+});
+
+test("a draft id never replaces or points at a stored node", () => {
+  const existing = pathWith([makeNode("a", "concept"), makeNode("b", "concept")]);
+  const draft = {
+    ...existing,
+    modules: existing.modules.map((module) => ({
+      ...module,
+      nodes: [
+        ...module.nodes.map((node) => ({ ...node, prerequisites: [] })),
+        { id: "draft:a", type: "concept", title: "New", goal: "New goal", sourceAnchor: { reference: "OSTEP" }, prerequisites: ["a"] },
+      ],
+    })),
+  };
+  const saved = parseLearningPath(replaceDraftIds(parseLearningPath(completeDraft(draft as never, existing, "chat-synthetic", null)), existing));
+  const ids = saved.modules[0]!.nodes.map((node) => node.id);
+  assert.deepEqual(ids.slice(0, 2), ["a", "b"], "stored ids are kept");
+  assert.notEqual(ids[2], "a");
+  assert.match(ids[2]!, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(saved.modules[0]!.nodes[2]!.prerequisites, ["a"]);
+});
+
+test("a draft that gives some new nodes prerequisites must give them to every new node; none at all keeps module order", () => {
+  const mixed = newDraft([
+    { title: "Root", prerequisites: [] },
+    { title: "Forgot" },
+  ]);
+  assert.throws(() => completeDraft(mixed, null, "chat-synthetic", null), /Every new node needs prerequisites[^]*"Forgot"/);
+
+  const none = newDraft([{ title: "First" }, { title: "Second" }]);
+  const saved = parseLearningPath(completeDraft(none, null, "chat-synthetic", null));
+  assert.deepEqual(saved.modules[0]!.nodes.map((node) => node.prerequisites), [undefined, undefined]);
+  const layout = layoutRoadmap(saved, { expandedModuleId: null, showOptional: true });
+  assert.equal(layout.edges.length, 1, "falls back to module order, as old data does");
+});
+
+test("next-up follows a node's own prerequisites, not module order", () => {
+  const path = pathWith([
+    makeNode("a", "concept", { prerequisites: [], progression: "consolidated" }),
+    makeNode("b", "concept", { prerequisites: [] }),
+    makeNode("c", "skill", { prerequisites: ["a"] }),
+  ]);
+  const next = nextUpForPath(path).map((entry) => entry.nodeId);
+  assert.ok(next.includes("c"), "c needs only a, which is done; module order would have made it wait for b");
+  assert.ok(next.includes("b"));
+});
+
+test("save_learning_path stores server ids in place of draft ids, with the prerequisites rewritten", async (t) => {
+  const h = createHost({});
+  t.after(() => h.close());
+  await h.call("architect.create");
+  const draft = newDraft([
+    { id: "draft:root", title: "Root", prerequisites: [] },
+    { id: "draft:next", title: "Next", prerequisites: ["draft:root"] },
+  ]);
+  const saved = await h.runTool<{ isError?: boolean; details: { pathId: string }; content: { text: string }[] }>("save_learning_path", draft);
+  assert.equal(saved.isError, undefined, saved.content[0]?.text);
+  const { path } = await h.call<{ path: LearningPath }>("paths.get", { id: saved.details.pathId });
+  const [root, next] = path.modules[0]!.nodes;
+  assert.ok(!JSON.stringify(path).includes(DRAFT_ID_PREFIX));
+  assert.deepEqual(next!.prerequisites, [root!.id]);
 });

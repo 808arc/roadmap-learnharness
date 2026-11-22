@@ -123,7 +123,7 @@ const sourceAnchorSchema = objectSchema({
 }, ["reference"]);
 const SERVER_OWNED = "Server-owned: ignored for existing nodes; omit for new ones.";
 const nodeDraftSchema = objectSchema({
-  id: { type: "string", description: "Refinement only: existing node id from get_learning_path. New ids are server-generated." },
+  id: { type: "string", description: "Existing node id from get_learning_path. New node: omit, or a draft id \"draft:<name>\" only to name it in prerequisites of this draft; the server replaces it." },
   type: { type: "string", enum: NODE_TYPES },
   title: { type: "string" }, goal: { type: "string" },
   sourceAnchor: sourceAnchorSchema,
@@ -145,7 +145,7 @@ const nodeDraftSchema = objectSchema({
     checked: { type: "boolean", description: "True only if you looked inside it (contents, syllabus, page) in this conversation." },
   }, ["title", "kind"]), description: "3–8 resources: canonical first, then deeper." },
   interleavesNodeIds: { type: "array", items: { type: "string" }, description: "Optional; new nodes default to the two preceding nodes." },
-  prerequisites: { type: "array", items: { type: "string" }, description: "Ids of nodes in this draft this one needs first: existing ids on refinement, or the id you gave a new node. Only dependencies shown by the learner's graph chains or the topic files; never invent. [] is allowed." },
+  prerequisites: { type: "array", items: { type: "string" }, description: "Required on new nodes. Ids of nodes in this draft needed first: existing ids, or a new node's \"draft:<name>\" id. [] = starts a branch. Only from graph chains or topic files; never invent." },
   progression: { type: "string", enum: PROGRESSION_STATES, description: SERVER_OWNED },
   childSessions: { type: "array", items: { type: "object", additionalProperties: true }, description: SERVER_OWNED },
   errors: { type: "array", items: { type: "object", additionalProperties: true }, description: SERVER_OWNED },
@@ -277,9 +277,49 @@ function draftPrerequisites(value: unknown[], draftIds: ReadonlySet<string>): st
   return [...new Set(value.filter((id): id is string => typeof id === "string" && draftIds.has(id)))];
 }
 
+/** Prefix of a draft-local node id: a name for a new node, valid only inside one draft. */
+export const DRAFT_ID_PREFIX = "draft:";
+
+/**
+ * Replace draft-local ids with server ids. A new node may carry an id such as "draft:hashing" so
+ * other nodes of the same draft can list it in prerequisites. Each such id that is not a stored
+ * node of `existing` gets a fresh id, and every reference inside the path (prerequisites,
+ * interleavesNodeIds, pivot insertions) is rewritten. Runs on a validated path, so validation
+ * messages name the ids the model wrote. A draft id is never stored, so it can neither match a
+ * stored node nor be reused by a later draft. Other ids are kept as written (stored ids on
+ * refinement; a full path saved with its own ids keeps them).
+ */
+export function replaceDraftIds(path: LearningPath, existing: LearningPath | null): LearningPath {
+  const stored = new Set(existing?.modules.flatMap(module => module.nodes.map(node => node.id)) ?? []);
+  const ids = new Map<string, string>();
+  for (const module of path.modules) {
+    for (const node of module.nodes) {
+      if (node.id.startsWith(DRAFT_ID_PREFIX) && !stored.has(node.id)) ids.set(node.id, randomUUID());
+    }
+  }
+  if (ids.size === 0) return path;
+  const real = (id: string): string => ids.get(id) ?? id;
+  return {
+    ...path,
+    modules: path.modules.map(module => ({
+      ...module,
+      nodes: module.nodes.map(node => ({
+        ...node,
+        id: real(node.id),
+        interleavesNodeIds: node.interleavesNodeIds.map(real),
+        ...(node.prerequisites === undefined ? {} : { prerequisites: node.prerequisites.map(real) }),
+        pivotSuggestions: node.pivotSuggestions.map(pivot =>
+          pivot.insertedNodeId === undefined ? pivot : { ...pivot, insertedNodeId: real(pivot.insertedNodeId) }),
+      })),
+    })),
+  };
+}
+
 /** Complete the server-owned fields without changing existing learner state on refinement.
  * `graphKeys` (from a graph brief) marks matching nodes optional review; null leaves the draft as written.
- * Prerequisites keep only ids of this draft; a cycle is refused later, by parseLearningPath. */
+ * Prerequisites keep only ids of this draft; a cycle is refused later, by parseLearningPath. Once any
+ * node of the draft has prerequisites, every new node must write them ([] for a root), so a draft
+ * never mixes explicit edges with the module-order fallback; only stored old nodes may lack them. */
 export function completeDraft(
   args: Record<string, unknown>,
   existing: LearningPath | null,
@@ -308,6 +348,20 @@ export function completeDraft(
           `Call get_learning_path with id "${existing.id}" for the current outline.`,
       );
     }
+  }
+  // No mixed drafts: once any node has prerequisites (written now, or stored), every new node must
+  // state its own. A draft with none at all keeps the module-order fallback, as old data does.
+  const draftNodes = modules.flatMap(module => isRecord(module) && Array.isArray(module.nodes) ? module.nodes.filter(isRecord) : []);
+  const storedNode = (node: Record<string, unknown>) => typeof node.id === "string" ? previousNodes.get(node.id) : undefined;
+  const explicit = draftNodes.some(node => Array.isArray(node.prerequisites) || storedNode(node)?.prerequisites !== undefined);
+  const withoutPrerequisites = draftNodes
+    .filter(node => storedNode(node) === undefined && !Array.isArray(node.prerequisites))
+    .map(node => typeof node.title === "string" ? `"${node.title}"` : "(untitled)");
+  if (explicit && withoutPrerequisites.length > 0) {
+    throw new DraftError(
+      "Every new node needs prerequisites: the ids of nodes it needs first, or [] for a node that starts a branch; " +
+        `nothing was written. Missing on: ${withoutPrerequisites.join(", ")}.`,
+    );
   }
   return {
     // Path-level preferences the draft does not mention survive refinement.
@@ -481,7 +535,8 @@ async function saveDraft(
     candidate.createdAt = existing?.createdAt ?? candidate.createdAt ?? now;
     candidate.updatedAt = now;
     candidate.architectChatId = chatId;
-    parsed = parseLearningPath(candidate);
+    // Validate as drafted (messages name the model's ids), then swap draft-local ids for server ids.
+    parsed = parseLearningPath(replaceDraftIds(parseLearningPath(candidate), existing));
     for (const source of uploadedSources(parsed)) {
       const check = checkStoredSource(options.store, source.sourceId);
       if (check.status === "refused") return errorResult(check.message);
