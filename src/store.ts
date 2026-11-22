@@ -1,7 +1,10 @@
 /** Learning Path — versioned, atomic persistence under `ctx.dataDirectory`.
  *
  * Owns exactly these files:
- *   learning-paths.json      versioned path records
+ *   roadmaps/index.json      versioned roadmap order, ids and the migration marker
+ *   roadmaps/<id>.json       one versioned file per roadmap
+ *   learning-paths.json      legacy single file; migrated once, then kept as
+ *                            learning-paths.json.migrated
  *   settings.json            versioned plugin settings
  *   architect.json           chosen Architect model (needed to re-register)
  *   sources/<sourceId>.md    converted learner uploads (UUID names only)
@@ -34,6 +37,11 @@ import type {
 
 export const STORE_SCHEMA_VERSION = 1;
 export const LEARNING_PATHS_FILE = "learning-paths.json";
+export const ROADMAPS_DIRECTORY = "roadmaps";
+export const ROADMAP_INDEX_FILE = "index.json";
+/** Version of the one-time move from `learning-paths.json` to `roadmaps/`. */
+export const ROADMAP_MIGRATION_VERSION = 1;
+export const MIGRATED_LEGACY_SUFFIX = ".migrated";
 export const SETTINGS_FILE = "settings.json";
 export const ARCHITECT_FILE = "architect.json";
 export const SOURCES_DIRECTORY = "sources";
@@ -83,12 +91,6 @@ export function assertSourceId(value: unknown): string {
     throw new StoreError("io", "Invalid source ID: expected a UUID.");
   }
   return value.toLowerCase();
-}
-
-interface PathsFile {
-  readonly schemaVersion: number;
-  readonly revision: number;
-  readonly paths: readonly LearningPath[];
 }
 
 interface SettingsFile {
@@ -187,6 +189,189 @@ function loadPathsFile(filename: string): { paths: LearningPath[]; revision: num
     return result.value;
   });
   return { paths, revision };
+}
+
+interface RoadmapFile {
+  readonly schemaVersion: number;
+  readonly revision: number;
+  readonly roadmap: LearningPath;
+}
+
+interface RoadmapIndexFile {
+  readonly schemaVersion: number;
+  readonly revision: number;
+  /** Roadmap ids in display order. A refused roadmap keeps its place here. */
+  readonly roadmaps: readonly string[];
+  readonly migration: RoadmapMigrationMarker;
+}
+
+interface RoadmapMigrationMarker {
+  readonly version: number;
+  /** The legacy file the roadmaps came from, or null when the store started empty. */
+  readonly from: string | null;
+}
+
+/** A roadmap file the store refused on open. It is never overwritten or deleted. */
+export interface RoadmapRefusal {
+  readonly id: string;
+  readonly filename: string;
+  readonly code: StoreErrorCode;
+  readonly message: string;
+}
+
+const ROADMAP_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+/** `:` is valid in roadmap ids but not in every filesystem's names. `%` is never in an id, so this is reversible. */
+function roadmapFilename(directory: string, id: string): string {
+  return path.join(directory, ROADMAPS_DIRECTORY, `${id.replace(/:/g, "%3A")}.json`);
+}
+
+function pathExists(filename: string): boolean {
+  return fs.lstatSync(filename, { throwIfNoEntry: false }) !== undefined;
+}
+
+function roadmapEnvelope(roadmap: LearningPath, revision: number): RoadmapFile {
+  return { schemaVersion: STORE_SCHEMA_VERSION, revision, roadmap };
+}
+
+function indexEnvelope(ids: readonly string[], revision: number, migration: RoadmapMigrationMarker): RoadmapIndexFile {
+  return { schemaVersion: STORE_SCHEMA_VERSION, revision, roadmaps: ids, migration };
+}
+
+/** Parse the roadmap index; `null` when it does not exist yet. */
+function loadRoadmapIndex(filename: string): { ids: string[]; revision: number; migration: RoadmapMigrationMarker | null } | null {
+  const raw = readJsonFile(filename);
+  if (raw === undefined) return null;
+  const record = asRecord(raw, filename);
+  readSchemaVersion(record, filename);
+  const revision = readRevision(record, filename);
+  if (!Array.isArray(record.roadmaps)) {
+    throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: roadmaps must be an array. No data was changed.`);
+  }
+  const seen = new Set<string>();
+  const ids = record.roadmaps.map((value, index) => {
+    if (typeof value !== "string" || !ROADMAP_ID_PATTERN.test(value)) {
+      throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: roadmaps[${index}] is not a roadmap id. No data was changed.`);
+    }
+    if (seen.has(value)) {
+      throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: duplicate roadmap id "${value}". No data was changed.`);
+    }
+    seen.add(value);
+    return value;
+  });
+  let migration: RoadmapMigrationMarker | null = null;
+  if (record.migration !== undefined) {
+    const marker = record.migration as Record<string, unknown> | null;
+    if (
+      marker === null ||
+      typeof marker !== "object" ||
+      !Number.isSafeInteger(marker.version) ||
+      (marker.from !== null && typeof marker.from !== "string")
+    ) {
+      throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: invalid migration marker. No data was changed.`);
+    }
+    migration = { version: marker.version as number, from: marker.from as string | null };
+  }
+  return { ids, revision, migration };
+}
+
+/** Parse one roadmap file and check it holds the roadmap its name says. Throws `StoreError` to refuse it. */
+function loadRoadmapFile(filename: string, id: string): { roadmap: LearningPath; revision: number } {
+  const raw = readJsonFile(filename);
+  if (raw === undefined) {
+    throw new StoreError("corrupt", `Roadmap file ${filename} is missing. No data was changed.`);
+  }
+  const record = asRecord(raw, filename);
+  readSchemaVersion(record, filename);
+  const revision = readRevision(record, filename);
+  const result = validateLearningPath(record.roadmap);
+  if (!result.ok) {
+    const issue = result.issues[0];
+    throw new StoreError(
+      "corrupt",
+      `Roadmap data at ${filename} is corrupt: roadmap ${issue?.path ?? ""} ${issue?.message ?? "is invalid"}. No data was changed.`,
+    );
+  }
+  if (result.value.id !== id) {
+    throw new StoreError(
+      "corrupt",
+      `Roadmap data at ${filename} is corrupt: it holds roadmap "${result.value.id}", not "${id}". No data was changed.`,
+    );
+  }
+  return { roadmap: result.value, revision };
+}
+
+/** One-time move of the legacy `learning-paths.json` into `roadmaps/`.
+ * The legacy file is renamed only after every new file was written, read back and matched.
+ * Any failure removes the new files this attempt wrote and leaves the legacy file as it was. */
+function migrateLegacyPaths(directory: string): void {
+  const legacy = path.join(directory, LEARNING_PATHS_FILE);
+  const roadmapsDirectory = path.join(directory, ROADMAPS_DIRECTORY);
+  const indexFilename = path.join(roadmapsDirectory, ROADMAP_INDEX_FILE);
+  // Corrupt, newer or symlinked legacy data is refused here, before anything is written.
+  const { paths } = loadPathsFile(legacy);
+  const ids = paths.map((roadmap) => roadmap.id);
+  const created: string[] = [];
+  try {
+    fs.mkdirSync(roadmapsDirectory, { recursive: true, mode: 0o700 });
+    for (const roadmap of paths) {
+      const filename = roadmapFilename(directory, roadmap.id);
+      const content = serialize(roadmapEnvelope(roadmap, 1));
+      if (pathExists(filename)) {
+        // Only an identical leftover from an interrupted run is accepted; anything else is never overwritten.
+        const existing = fs.lstatSync(filename);
+        if (!existing.isFile() || existing.isSymbolicLink() || fs.readFileSync(filename, "utf8") !== content) {
+          throw new StoreError(
+            "io",
+            `Migration stopped: ${filename} already exists and differs from learning-paths.json. Nothing was overwritten; learning-paths.json is untouched.`,
+          );
+        }
+        continue;
+      }
+      atomicWrite(filename, content);
+      created.push(filename);
+    }
+    atomicWrite(
+      indexFilename,
+      serialize(indexEnvelope(ids, 1, { version: ROADMAP_MIGRATION_VERSION, from: LEARNING_PATHS_FILE })),
+    );
+    created.push(indexFilename);
+    // Read every new file back before the legacy file may move.
+    for (const roadmap of paths) {
+      const back = loadRoadmapFile(roadmapFilename(directory, roadmap.id), roadmap.id);
+      if (serialize(back.roadmap) !== serialize(roadmap)) {
+        throw new StoreError("corrupt", `Migrated roadmap "${roadmap.id}" does not read back equal. learning-paths.json is untouched.`);
+      }
+    }
+    const index = loadRoadmapIndex(indexFilename);
+    if (
+      index === null ||
+      index.ids.join("\n") !== ids.join("\n") ||
+      index.migration?.version !== ROADMAP_MIGRATION_VERSION
+    ) {
+      throw new StoreError("corrupt", "The migrated roadmap index does not read back as written. learning-paths.json is untouched.");
+    }
+  } catch (problem) {
+    // Roll back only the new files this attempt wrote; the legacy file was never touched.
+    for (const filename of created.reverse()) {
+      try {
+        fs.unlinkSync(filename);
+      } catch {
+        // Leave whatever could not be removed; the legacy file is still the source of truth.
+      }
+    }
+    if (problem instanceof StoreError) throw problem;
+    throw new StoreError("io", `Migration of learning-paths.json failed. learning-paths.json is untouched. ${problem instanceof Error ? problem.message : String(problem)}`, { cause: problem });
+  }
+  // Keep the old data under a name that is never reused, so an earlier copy is never overwritten.
+  let migrated = `${legacy}${MIGRATED_LEGACY_SUFFIX}`;
+  if (pathExists(migrated)) migrated = `${migrated}.${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  try {
+    fs.renameSync(legacy, migrated);
+  } catch (problem) {
+    // The roadmaps are safe; the migration never runs again because the index now exists.
+    console.warn("[roadmap] migrated roadmaps, but could not rename learning-paths.json:", problem instanceof Error ? problem.message : problem);
+  }
 }
 
 function loadSettingsFile(filename: string): { settings: PluginSettings; revision: number } {
@@ -358,8 +543,11 @@ function sameData(filename: string, revision: number, current: unknown, next: un
 export interface LearningPathStore {
   /** Absolute data directory this store owns. */
   readonly directory: string;
+  /** Roadmaps that loaded, in roadmap-index order. Refused roadmaps are listed by `refusals()`. */
   paths(): readonly LearningPath[];
   path(id: string): LearningPath | null;
+  /** Roadmap files refused on open. Each is left on disk untouched; saving or deleting it throws. */
+  refusals(): readonly RoadmapRefusal[];
   /** Validate and atomically create/update one path, keyed by path id. */
   savePath(value: unknown): LearningPath;
   deletePath(id: string): boolean;
@@ -390,12 +578,36 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
   }
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
 
-  const pathsFilename = path.join(directory, LEARNING_PATHS_FILE);
   const settingsFilename = path.join(directory, SETTINGS_FILE);
   const architectFilename = path.join(directory, ARCHITECT_FILE);
   const sourcesDirectory = path.join(directory, SOURCES_DIRECTORY);
+  const roadmapsDirectory = path.join(directory, ROADMAPS_DIRECTORY);
+  const roadmapIndexFilename = path.join(roadmapsDirectory, ROADMAP_INDEX_FILE);
 
-  let pathsState = loadPathsFile(pathsFilename);
+  // The one-time move runs only while the index is missing, so it never runs twice.
+  if (!pathExists(roadmapIndexFilename) && pathExists(path.join(directory, LEARNING_PATHS_FILE))) {
+    migrateLegacyPaths(directory);
+  }
+  const roadmapIndex = loadRoadmapIndex(roadmapIndexFilename);
+  let order: string[] = roadmapIndex?.ids ?? [];
+  let indexState: { revision: number; migration: RoadmapMigrationMarker | null } = {
+    revision: roadmapIndex?.revision ?? 0,
+    migration: roadmapIndex?.migration ?? null,
+  };
+  // Each roadmap file is loaded on its own: one bad file is refused without blocking the others.
+  const roadmapState = new Map<string, { roadmap: LearningPath; revision: number }>();
+  const refusals = new Map<string, RoadmapRefusal>();
+  for (const id of order) {
+    const filename = roadmapFilename(directory, id);
+    if (!pathExists(filename)) continue; // Listed but missing: nothing to refuse and nothing to lose.
+    try {
+      roadmapState.set(id, loadRoadmapFile(filename, id));
+    } catch (problem) {
+      if (!(problem instanceof StoreError)) throw problem;
+      refusals.set(id, { id, filename, code: problem.code, message: problem.message });
+    }
+  }
+
   let settingsState = loadSettingsFile(settingsFilename);
   let architectState = loadArchitectFile(architectFilename);
   let sourceState = loadSourceIndex(sourcesDirectory);
@@ -463,47 +675,83 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
     atomicWrite(path.join(sourcesDirectory, `${id}.md`), markdown);
   };
 
-  const writePaths = (paths: LearningPath[]): void => {
-    if (sameData(pathsFilename, pathsState.revision, pathsState.paths, paths)) {
-      pathsState = { paths, revision: pathsState.revision };
-      return;
+  const loadedPaths = (): LearningPath[] =>
+    order.flatMap((id) => {
+      const entry = roadmapState.get(id);
+      return entry ? [entry.roadmap] : [];
+    });
+
+  const assertNotRefused = (id: string): void => {
+    const refusal = refusals.get(id);
+    if (refusal) {
+      throw new StoreError(refusal.code, `Roadmap "${id}" was refused on open and was not changed. ${refusal.message}`);
     }
-    atomicWrite(
-      pathsFilename,
-      serialize({
-        schemaVersion: STORE_SCHEMA_VERSION,
-        revision: pathsState.revision + 1,
-        paths,
-      } satisfies PathsFile),
-    );
-    pathsState = { paths, revision: pathsState.revision + 1 };
+  };
+
+  /** Rewrite the index only when the order or the membership changed. */
+  const writeRoadmapIndex = (ids: string[]): void => {
+    fs.mkdirSync(roadmapsDirectory, { recursive: true, mode: 0o700 });
+    const migration = indexState.migration ?? { version: ROADMAP_MIGRATION_VERSION, from: null };
+    atomicWrite(roadmapIndexFilename, serialize(indexEnvelope(ids, indexState.revision + 1, migration)));
+    indexState = { revision: indexState.revision + 1, migration };
+    order = ids;
+  };
+
+  const writeRoadmapFile = (roadmap: LearningPath, revision: number): void => {
+    fs.mkdirSync(roadmapsDirectory, { recursive: true, mode: 0o700 });
+    atomicWrite(roadmapFilename(directory, roadmap.id), serialize(roadmapEnvelope(roadmap, revision)));
   };
 
   return {
     directory,
 
-    paths: () => pathsState.paths,
+    paths: () => loadedPaths(),
 
     path(id) {
-      return pathsState.paths.find((candidate) => candidate.id === id) ?? null;
+      return roadmapState.get(id)?.roadmap ?? null;
     },
+
+    refusals: () => [...refusals.values()],
 
     savePath(value) {
       const parsed = parseLearningPath(value);
-      const index = pathsState.paths.findIndex((candidate) => candidate.id === parsed.id);
-      const next =
-        index === -1
-          ? [...pathsState.paths, parsed]
-          : pathsState.paths.map((candidate, position) => (position === index ? parsed : candidate));
-      writePaths(next);
+      assertNotRefused(parsed.id);
+      const current = roadmapState.get(parsed.id);
+      if (current) {
+        // Unchanged data writes nothing; a change rewrites only this roadmap's file.
+        if (serialize(current.roadmap) === serialize(parsed)) return parsed;
+        writeRoadmapFile(parsed, current.revision + 1);
+        roadmapState.set(parsed.id, { roadmap: parsed, revision: current.revision + 1 });
+        return parsed;
+      }
+      // An unlisted file of this name is a leftover; it is never overwritten.
+      const filename = roadmapFilename(directory, parsed.id);
+      if (pathExists(filename)) {
+        throw new StoreError(
+          "io",
+          `Roadmap file ${filename} exists but is not in the roadmap index, so it was not overwritten.`,
+        );
+      }
+      // The index goes first: a crash in between leaves a listed roadmap with no file, which reads as absent.
+      if (!order.includes(parsed.id)) writeRoadmapIndex([...order, parsed.id]);
+      writeRoadmapFile(parsed, 1);
+      roadmapState.set(parsed.id, { roadmap: parsed, revision: 1 });
       return parsed;
     },
 
     deletePath(id) {
-      const next = pathsState.paths.filter((candidate) => candidate.id !== id);
-      if (next.length === pathsState.paths.length) return false;
-      writePaths(next);
-      return true;
+      assertNotRefused(id);
+      const current = roadmapState.get(id);
+      if (!current && !order.includes(id)) return false;
+      // The index goes first, so a crash never leaves an index entry pointing at a deleted file.
+      if (order.includes(id)) writeRoadmapIndex(order.filter((candidate) => candidate !== id));
+      roadmapState.delete(id);
+      try {
+        fs.unlinkSync(roadmapFilename(directory, id));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      return current !== undefined;
     },
 
     settings: () => settingsState.settings,
