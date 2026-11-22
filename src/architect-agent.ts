@@ -174,6 +174,8 @@ class DraftError extends Error {}
 
 /** Cap on the quoted graph brief in one message, in UTF-16 code units. */
 export const GRAPH_BRIEF_MAX_CHARS = 8_000;
+/** Statement length used when the brief must shrink to fit. */
+const GRAPH_BRIEF_SHORT_STATEMENT = 120;
 export const GRAPH_BRIEF_OPEN = "<<<LEARNER_GRAPH_DATA";
 export const GRAPH_BRIEF_CLOSE = "LEARNER_GRAPH_DATA>>>";
 
@@ -188,12 +190,28 @@ export function graphBriefTopicKeys(brief: GraphBrief): Set<string> {
  * "<" and ">" are escaped, so neither marker can appear inside the quoted data. */
 export function quoteGraphBrief(brief: GraphBrief, maxChars = GRAPH_BRIEF_MAX_CHARS): string {
   const encode = (view: GraphBrief): string => JSON.stringify(view).replace(/[<>]/g, (ch) => `\\u00${ch.charCodeAt(0).toString(16)}`);
-  let view = brief;
+  // Counts report what the model actually sees, so dropped items are never claimed as present.
+  const shown = (view: GraphBrief): GraphBrief => ({
+    ...view,
+    counts: {
+      ...view.counts,
+      droppedTopics: view.counts.topics - view.topics.length,
+      droppedChains: view.counts.chains - view.chains.length,
+    },
+  });
+  let view = shown(brief);
   let json = encode(view);
-  while (json.length > maxChars && (view.chains.length > 0 || view.topics.length > 0)) {
-    view = view.chains.length > 0
-      ? { ...view, chains: view.chains.slice(0, -1) }
-      : { ...view, topics: view.topics.slice(0, -1) };
+  // Chains carry the structure prerequisites are built from, so they go last:
+  // shorten statements first, then drop topics, and only then chains.
+  for (const limit of [GRAPH_BRIEF_SHORT_STATEMENT, 0]) {
+    if (json.length <= maxChars) break;
+    view = shown({ ...view, topics: view.topics.map((topic) => ({ ...topic, statement: topic.statement.slice(0, limit) })) });
+    json = encode(view);
+  }
+  while (json.length > maxChars && (view.topics.length > 0 || view.chains.length > 0)) {
+    view = shown(
+      view.topics.length > 0 ? { ...view, topics: view.topics.slice(0, -1) } : { ...view, chains: view.chains.slice(0, -1) },
+    );
     json = encode(view);
   }
   return json;
@@ -647,6 +665,13 @@ export function usageSince(messages: readonly unknown[], from: number): LogField
   return reported ? { ...totals } : {};
 }
 
+/** A short, URL-free reason for a rejected tool result, safe for the log. */
+function rejectionReason(result: { content?: ReadonlyArray<{ type: string; text?: string }> }): string {
+  const text = result.content?.find((part) => part.type === "text")?.text ?? "";
+  const firstLine = text.split("\n")[0] ?? "";
+  return firstLine.replace(/https?:\/\/\S+/g, "<url>").slice(0, 120) || "unknown";
+}
+
 /** Time each research tool call as a `research` step. Tools without a server execute pass through. */
 function timedResearchTool(tool: PluginAgentTool, log: PluginLog | undefined): PluginAgentTool {
   if (!log || tool.kind === "input" || !tool.execute) return tool;
@@ -657,7 +682,11 @@ function timedResearchTool(tool: PluginAgentTool, log: PluginLog | undefined): P
       const step: LogStep = log.begin("research", { tool: tool.name });
       try {
         const result = await execute(...args);
-        step.end({ outcome: result.isError ? "rejected" : "accepted", ok: !result.isError });
+        step.end({
+          outcome: result.isError ? "rejected" : "accepted",
+          ok: !result.isError,
+          ...(result.isError ? { reason: rejectionReason(result) } : {}),
+        });
         return result;
       } catch (error) {
         step.fail(error);

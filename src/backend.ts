@@ -1283,6 +1283,13 @@ export function activate(ctx: PluginBackendContext): void {
     // Opt-in: the learner's graph travels as quoted data ahead of the message.
     const brief = value.learnerGraph === true ? learnerGraphBrief(ctx) : null;
     if (brief) graphBriefs.set(id, brief);
+    architectLog.event("graph brief", {
+      chatId: id,
+      learnerGraph: value.learnerGraph === true,
+      attached: brief !== null,
+      topics: brief?.counts.topics ?? 0,
+      chains: brief?.counts.chains ?? 0,
+    });
     const sent = brief ? `${graphBriefMessage(brief)}\n\n${text}` : text;
     debug("architect.send.request", { id, requestId, characters: text.length, graphTopics: brief?.topics.length ?? 0 });
     const conversation = await ctx.agents.send(id, sent, { requestId, purpose: "user" });

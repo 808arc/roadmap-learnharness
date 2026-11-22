@@ -196,10 +196,13 @@ test("a large fixture is capped in the quoted prompt text", async (t) => {
   const quoted = quotedBody(content);
   const body = content.slice(content.indexOf(GRAPH_BRIEF_OPEN) + GRAPH_BRIEF_OPEN.length, content.indexOf(GRAPH_BRIEF_CLOSE));
   assert.ok(body.length <= GRAPH_BRIEF_MAX_CHARS, `the quoted data stays within ${GRAPH_BRIEF_MAX_CHARS} characters`);
-  assert.ok(quoted.chains.length < BRIEF_MAX_CHAINS, "the cap drops the last chains first");
+  const full = buildGraphBrief(large);
+  assert.equal(quoted.chains.length, full.chains.length, "chains are kept: they carry the structure");
   assert.ok(quoted.topics.length > 0, "the cap keeps some topics");
-  const kept = buildGraphBrief(large).topics.slice(0, quoted.topics.length).map((topic) => topic.name);
+  const kept = full.topics.slice(0, quoted.topics.length).map((topic) => topic.name);
   assert.deepEqual(quoted.topics.map((topic: { name: string }) => topic.name), kept, "the kept topics are a prefix, in order");
+  assert.equal(quoted.counts.droppedTopics, quoted.counts.topics - quoted.topics.length, "counts report the topics actually dropped");
+  assert.equal(quoted.counts.droppedChains, quoted.counts.chains - quoted.chains.length, "counts report the chains actually dropped");
 });
 
 // ---------------------------------------------------------------------------
@@ -241,7 +244,8 @@ test("quoting a brief with an oversized statement still respects the cap", () =>
   };
   const quoted = quoteGraphBrief(brief);
   assert.ok(quoted.length <= GRAPH_BRIEF_MAX_CHARS, "the quoted brief is capped even when a single topic is oversized");
-  assert.deepEqual(JSON.parse(quoted).topics, [], "the oversized topic is dropped rather than sent whole");
+  const [topic] = JSON.parse(quoted).topics;
+  assert.ok(topic && topic.statement.length < 20_000, "the oversized statement is shortened rather than sent whole");
 });
 
 // ---------------------------------------------------------------------------
