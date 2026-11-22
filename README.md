@@ -27,8 +27,6 @@ Russian (Settings → Roadmap → Interface language; *Auto* follows the system)
   optional nodes are dashed. Drag to pan, Ctrl + wheel or the zoom control to zoom.
 - **Graph view.** Only the nodes and their prerequisite arrows, in columns by
   dependency depth, with no module frames. Pan and zoom work the same way.
-- **List view.** The roadmap as a nested text list: each node sits under its
-  deepest prerequisite, and a row's children can be collapsed.
 - **Node panel** (Node / Errors / Architect tabs): status, type, the goal,
   *After this node I can…*, the source anchor with a pre-reading pointer, typed
   resources (book, article, video, course, docs, exercises; free or not), the

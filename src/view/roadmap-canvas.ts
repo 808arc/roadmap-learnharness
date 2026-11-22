@@ -1,5 +1,5 @@
 /** Roadmap canvas: the module tree (module frames, pan + zoom), the flat graph (nodes and
- * arrows, pan + zoom) and the list (nested text, no canvas).
+ * arrows, pan + zoom).
  *
  * Controlled component: `render` receives the authoritative path and UI state;
  * clicks are reported through callbacks. All listeners belong to the signal.
@@ -13,8 +13,8 @@ import { buildDependencyGraph, isDone, layoutGraph, layoutRoadmap, moduleCounts 
 import type { PlacedModule, RoadmapLayout } from "./roadmap-layout.ts";
 import { el } from "./dom.ts";
 
-/** "tree": module frames around their nodes; "graph": nodes and arrows only; "list": nested text. */
-export type ViewMode = "tree" | "graph" | "list";
+/** "tree": module frames around their nodes; "graph": nodes and arrows only. */
+export type ViewMode = "tree" | "graph";
 
 export interface CanvasState {
   readonly path: LearningPath;
@@ -37,9 +37,6 @@ export interface RoadmapCanvas {
   render(state: CanvasState): void;
   dispose(): void;
 }
-
-/** Indent per tree level, in px. */
-const TREE_INDENT = 18;
 
 export function moduleState(module: PathModule): "done" | "progress" | "todo" {
   const { done, total } = moduleCounts(module);
@@ -71,7 +68,6 @@ export function createRoadmapCanvas(
   const viewport = el(document, "div", "rm-viewport");
   const stage = el(document, "div", "rm-stage");
   viewport.append(stage);
-  const tree = el(document, "div", "rm-tree");
   const controls = el(document, "div", "rm-zoom");
   const zoomOut = el(document, "button", "rm-zoom-btn");
   const zoomLabel = el(document, "button", "rm-zoom-value", "100%");
@@ -84,7 +80,7 @@ export function createRoadmapCanvas(
   zoomLabel.title = t("zoom.fit");
   controls.append(zoomOut, zoomLabel, zoomIn);
   const legend = el(document, "div", "rm-legend");
-  root.append(viewport, tree, controls, legend);
+  root.append(viewport, controls, legend);
   host.append(root);
 
   let state: CanvasState | null = null;
@@ -93,8 +89,6 @@ export function createRoadmapCanvas(
   let tx = 0;
   let ty = 0;
   let placedViewKey: string | null = null;
-  /** Tree rows whose children the learner collapsed; everything else starts expanded. */
-  const collapsedTreeNodes = new Set<string>();
   let disposed = false;
 
   const applyTransform = (): void => {
@@ -363,61 +357,6 @@ export function createRoadmapCanvas(
     }
   };
 
-  /** The list view: each node sits under its deepest prerequisite, one indent per dependency level.
-   * Any number of children; a row's toggle collapses only that row's children. */
-  const renderTree = (current: CanvasState): void => {
-    const graph = buildDependencyGraph(current.path, { showOptional: current.showOptional, prerequisites: current.prerequisites });
-    const byId = new Map<string, { node: PathNode; module: PathModule }>();
-    for (const module of current.path.modules) {
-      for (const node of module.nodes) byId.set(node.id, { node, module });
-    }
-    const children = new Map<string, string[]>();
-    const roots: string[] = [];
-    for (const id of graph.nodeIds) {
-      const parentId = graph.parent.get(id) ?? null;
-      if (parentId === null) roots.push(id);
-      else children.set(parentId, [...(children.get(parentId) ?? []), id]);
-    }
-    const list = el(document, "div", "rm-tree-list");
-    const addRow = (id: string, level: number): void => {
-      const entry = byId.get(id);
-      if (!entry) return;
-      const kids = children.get(id) ?? [];
-      const expanded = !collapsedTreeNodes.has(id);
-      const row = el(document, "div", "rm-tree-row");
-      row.style.paddingLeft = `${level * TREE_INDENT}px`;
-      if (kids.length > 0) {
-        const toggle = el(document, "button", "rm-tree-toggle");
-        toggle.type = "button";
-        toggle.title = expanded ? t("tree.collapse") : t("tree.expand");
-        toggle.setAttribute("aria-label", toggle.title);
-        setIcon(toggle, expanded ? ICONS.chevronDown : ICONS.chevronRight);
-        toggle.addEventListener("click", () => {
-          if (disposed || signal.aborted) return;
-          if (collapsedTreeNodes.has(id)) collapsedTreeNodes.delete(id);
-          else collapsedTreeNodes.add(id);
-          if (state) renderTree(state);
-        }, { signal });
-        row.append(toggle);
-      } else {
-        row.append(el(document, "span", "rm-tree-toggle rm-tree-toggle-empty"));
-      }
-      const button = nodeButton(entry.node, entry.node.id === current.selectedNodeId, null, null, null);
-      button.classList.add("rm-tree-node");
-      row.append(button, el(document, "span", "rm-tree-module-tag", entry.module.title));
-      const parentId = graph.parent.get(id) ?? null;
-      const others = graph.edges
-        .filter((edge) => edge.to === id && edge.from !== parentId)
-        .map((edge) => byId.get(edge.from)?.node.title)
-        .filter((title): title is string => title !== undefined);
-      if (others.length > 0) row.append(el(document, "span", "rm-tree-also", t("tree.alsoAfter", { titles: others.join(", ") })));
-      list.append(row);
-      if (expanded) for (const kid of kids) addRow(kid, level + 1);
-    };
-    for (const id of roots) addRow(id, 0);
-    tree.replaceChildren(list);
-  };
-
   const renderLegend = (): void => {
     const item = (icon: string, key: MessageKey, extraClass = ""): HTMLElement => {
       const span = el(document, "span", `rm-legend-item ${extraClass}`);
@@ -468,13 +407,9 @@ export function createRoadmapCanvas(
       if (disposed || signal.aborted) return;
       state = next;
       root.dataset.view = next.view;
-      viewport.hidden = next.view === "list";
-      controls.hidden = next.view === "list";
-      tree.hidden = next.view !== "list";
-      legend.hidden = !next.showLegend || next.view === "list";
+      legend.hidden = !next.showLegend;
       renderLegend();
-      if (next.view === "list") renderTree(next);
-      else renderGraph(next);
+      renderGraph(next);
     },
     dispose() {
       if (disposed) return;

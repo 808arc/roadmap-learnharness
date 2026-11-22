@@ -135,16 +135,14 @@ test("the graph lays modules bottom-up, expands the working module and follows s
     assert.equal(inspector(fixture).dataset.nodeId, "n-contrast");
     assert.equal(root.querySelector<HTMLElement>(".rm-box-focus")!.dataset.moduleId, "module-synthesis");
 
-    // List view lists modules and nodes as text; selection survives switching views.
-    toolbar(fixture, "List").click();
-    await fixture.flush();
-    assert.equal(root.querySelector<HTMLElement>(".rm-viewport")!.hidden, true);
-    assert.equal(root.querySelector<HTMLElement>(".rm-tree")!.hidden, false);
-    assert.ok(canvasNode(fixture, "n-contrast").classList.contains("rm-sel"));
+    // The switch offers Tree and Graph only; selection survives switching views.
     assert.deepEqual(
-      [...root.querySelectorAll(".rm-tree .rm-tree-row .rm-node-title")].map((node) => node.textContent),
-      ["Node n-holistic", "Node n-concept", "Node n-skill", "Node n-contrast", "Node n-checkpoint", "Node n-bridge"],
+      [...root.querySelectorAll(".rm-top .rm-seg button")].map((button) => button.textContent),
+      ["Tree", "Graph"],
     );
+    toolbar(fixture, "Graph").click();
+    await fixture.flush();
+    assert.ok(canvasNode(fixture, "n-contrast").classList.contains("rm-sel"));
 
     // Session rows open the native chat.
     await selectNode(fixture, "n-skill");

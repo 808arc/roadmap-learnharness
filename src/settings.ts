@@ -44,7 +44,7 @@ import { mountResearchSettings } from "./research-settings.ts";
 import { DEFAULT_ARCHITECT_PREFERENCES, DEFAULT_DISPLAY, LANGUAGE_PREFERENCES, VIEW_MODES } from "./domain.ts";
 import type { DisplaySettings, LanguagePreference, ViewMode } from "./domain.ts";
 
-const VIEW_LABELS: Record<ViewMode, MessageKey> = { tree: "view.tree", graph: "view.graph", list: "view.list" };
+const VIEW_LABELS: Record<ViewMode, MessageKey> = { tree: "view.tree", graph: "view.graph" };
 
 interface PathSummary {
   readonly id: string;

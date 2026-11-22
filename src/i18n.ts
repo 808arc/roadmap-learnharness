@@ -379,9 +379,8 @@ const en = {
   "flash.close": "Close",
   // Node prerequisites (issue #44). New blocks go at the end of the table.
   "legend.prerequisitesNote": "arrows run from each prerequisite to the node that needs it; no arrow in starts a branch",
-  // Roadmap views: the List view and the help text for the default view. New blocks go at the end of the table.
-  "view.list": "List",
-  "s.defaultViewHelp": "Tree draws modules as blocks; Graph draws nodes and arrows only; List is a nested text list.",
+  // Roadmap views: the help text for the default view. New blocks go at the end of the table.
+  "s.defaultViewHelp": "Tree draws modules as blocks; Graph draws nodes and arrows only.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -760,8 +759,7 @@ const ru: Record<MessageKey, string> = {
   // Предпосылки узлов (issue #44). Новые блоки добавляются в конец таблицы.
   "legend.prerequisitesNote": "стрелки ведут от каждой предпосылки к узлу, которому она нужна; без входящей стрелки узел начинает ветку",
   // Представления карты: Список и подсказка к виду по умолчанию. Новые блоки добавляются в конец таблицы.
-  "view.list": "Список",
-  "s.defaultViewHelp": "Дерево рисует модули блоками; Граф — только узлы и стрелки; Список — вложенный текстовый список.",
+  "s.defaultViewHelp": "Дерево рисует модули блоками; Граф — только узлы и стрелки.",
 };
 
 export const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };

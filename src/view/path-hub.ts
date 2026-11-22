@@ -1,8 +1,8 @@
 /** Roadmap view (formerly the Learning Paths "Path Hub").
  *
  * Layout after the Learny roadmap mockup:
- * - a toolbar: roadmap switcher, Tree/Graph/List, Refine, New roadmap;
- * - the roadmap canvas (module tree or node graph with pan/zoom, or the list);
+ * - a toolbar: roadmap switcher, Tree/Graph, Refine, New roadmap;
+ * - the roadmap canvas (module tree or node graph with pan/zoom);
  * - a side panel with Node / Errors / Architect tabs;
  * - a status line with progress and open errors.
  *
@@ -154,9 +154,8 @@ export function mountPathHub(
   const segment = el(document, "div", "rm-seg");
   const treeTab = el(document, "button");
   const graphTab = el(document, "button");
-  const listTab = el(document, "button");
-  treeTab.type = graphTab.type = listTab.type = "button";
-  segment.append(treeTab, graphTab, listTab);
+  treeTab.type = graphTab.type = "button";
+  segment.append(treeTab, graphTab);
   const actions = el(document, "div", "rm-top-actions");
   toolbar.append(crumb, el(document, "span", "rm-grow"), spine, segment, actions);
   root.append(toolbar);
@@ -318,10 +317,8 @@ export function mountPathHub(
     spine.title = spine.textContent;
     treeTab.textContent = t("view.tree");
     graphTab.textContent = t("view.graph");
-    listTab.textContent = t("view.list");
     treeTab.className = view === "tree" ? "rm-on" : "";
     graphTab.className = view === "graph" ? "rm-on" : "";
-    listTab.className = view === "list" ? "rm-on" : "";
     segment.hidden = path === null;
     toolbarControls.abort();
     toolbarControls = new AbortController();
@@ -774,7 +771,6 @@ export function mountPathHub(
   for (const [tab, mode] of [
     [treeTab, "tree"],
     [graphTab, "graph"],
-    [listTab, "list"],
   ] as const) {
     tab.addEventListener("click", () => {
       view = mode;

@@ -143,7 +143,7 @@ export interface NodeResource {
   readonly checked?: boolean;
 }
 
-export const VIEW_MODES = ["tree", "graph", "list"] as const;
+export const VIEW_MODES = ["tree", "graph"] as const;
 export type ViewMode = (typeof VIEW_MODES)[number];
 export const LANGUAGE_PREFERENCES = ["auto", "ru", "en"] as const;
 export type LanguagePreference = (typeof LANGUAGE_PREFERENCES)[number];
@@ -456,6 +456,13 @@ function readEnum<T extends string>(value: unknown, allowed: readonly T[], path:
     fail(path, `must be one of: ${allowed.join(", ")}`);
   }
   return value as T;
+}
+
+/** A saved default view. The removed "list" view falls back to the tree view. */
+function readDefaultView(value: unknown, path: string): ViewMode {
+  if (value === undefined) return DEFAULT_DISPLAY.defaultView;
+  if (value === "list") return "tree";
+  return readEnum(value, VIEW_MODES, path);
 }
 
 function readArray(value: unknown, path: string): readonly unknown[] {
@@ -950,7 +957,7 @@ function readDisplaySettings(value: unknown, path: string): DisplaySettings {
   const record = readObject(value, path);
   return {
     language: record.language === undefined ? DEFAULT_DISPLAY.language : readEnum(record.language, LANGUAGE_PREFERENCES, `${path}.language`),
-    defaultView: record.defaultView === undefined ? DEFAULT_DISPLAY.defaultView : readEnum(record.defaultView, VIEW_MODES, `${path}.defaultView`),
+    defaultView: readDefaultView(record.defaultView, `${path}.defaultView`),
     showOptional: record.showOptional === undefined ? DEFAULT_DISPLAY.showOptional : readBoolean(record.showOptional, `${path}.showOptional`),
     patternHints: record.patternHints === undefined ? DEFAULT_DISPLAY.patternHints : readBoolean(record.patternHints, `${path}.patternHints`),
   };
