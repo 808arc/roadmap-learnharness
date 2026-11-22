@@ -22,6 +22,7 @@ import {
   listRoadmapTopics,
   parseTopicMarkdown,
   readTopic,
+  withUpstreamTimeout,
 } from "../src/upstream-roadmaps.ts";
 import type { UpstreamFetch } from "../src/upstream-roadmaps.ts";
 import { rawPath } from "./fixtures.ts";
@@ -162,6 +163,163 @@ test("a 500 is unreachable, an unknown roadmap is not found, and a missing topic
   await assert.rejects(readTopic("synthetic-roadmap", "absent-topic", COMMIT, { fetch }), isUpstreamError("not_found"));
 });
 
+test("a GitHub request that never answers is abandoned at the timeout and reported as unreachable", async () => {
+  let aborted = false;
+  const hanging = (_url: string, init: { headers: Readonly<Record<string, string>>; signal: AbortSignal }) =>
+    new Promise<never>((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        aborted = true;
+        reject(new Error("aborted"));
+      });
+    });
+  const fetch = withUpstreamTimeout(hanging, 20);
+  await assert.rejects(listRoadmapTopics("synthetic-roadmap", COMMIT, { fetch }), isUpstreamError("unreachable"));
+  assert.equal(aborted, true, "the request was aborted by the timeout");
+});
+
+test("a fast GitHub response passes through the timeout wrapper unchanged", async () => {
+  const { fetch: inner, calls } = fakeFetch(standardRoutes());
+  const fetch = withUpstreamTimeout(async (url, init) => inner(url, init), 5_000);
+  const topic = await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, { fetch });
+  assert.equal(topic.title, "Synthetic Topic");
+  assert.equal(calls.length, 2);
+});
+
+test("with a listings cache, the roadmap listing is read once for several topic reads", async () => {
+  const { fetch, calls } = fakeFetch({
+    ...standardRoutes(),
+    [`${ROOT}/synthetic-roadmap/content/other-topic@Qz9-k.md?ref=${COMMIT}`]: { status: 200, body: TOPIC_MD },
+  });
+  const listings = new Map();
+  const options = { fetch, listings };
+  const first = await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, options);
+  const second = await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, options);
+  const other = await readTopic("synthetic-roadmap", "other-topic", COMMIT, options);
+  assert.deepEqual(second, first);
+  assert.equal(other.slug, "other-topic");
+  assert.deepEqual((await listRoadmapTopics("synthetic-roadmap", COMMIT, options)).map((topic) => topic.slug), ["synthetic-topic", "other-topic"]);
+  const listingCalls = calls.filter((call) => call.url.includes("/content?ref="));
+  assert.equal(listingCalls.length, 1, "the listing is read once");
+  assert.equal(calls.length, 4, "one listing and one request per topic file");
+});
+
+test("without a listings cache every topic read lists the roadmap again, as before", async () => {
+  const { fetch, calls } = fakeFetch(standardRoutes());
+  await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, { fetch });
+  await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, { fetch });
+  assert.equal(calls.length, 4);
+});
+
+test("a failed listing is not kept: the next call asks GitHub again", async () => {
+  const route = `${ROOT}/synthetic-roadmap/content?ref=${COMMIT}`;
+  const routes: Record<string, { status: number; body: string } | null> = { [route]: null };
+  const { fetch, calls } = fakeFetch(routes);
+  const listings = new Map();
+  await assert.rejects(listRoadmapTopics("synthetic-roadmap", COMMIT, { fetch, listings }), isUpstreamError("unreachable"));
+  assert.equal(listings.size, 0, "the failed listing is removed from the cache");
+  routes[route] = { status: 200, body: LISTING };
+  const topics = await listRoadmapTopics("synthetic-roadmap", COMMIT, { fetch, listings });
+  assert.equal(topics.length, 2);
+  assert.equal(calls.length, 2);
+});
+
+/** A save whose only source is `sourceId`; resources are removed so the upstream link guard does not apply. */
+function uploadedDraft(sourceId: string, id = `path-${sourceId.slice(0, 8).toLowerCase()}`) {
+  const draft = rawPath();
+  draft.id = id;
+  draft.sourceSpine = {
+    mode: "uploaded",
+    references: [{ title: "Synthetic corpus", kind: "textbook" }],
+    sources: [{ sourceId, name: "corpus.md", uploadedAt: "2026-01-31T09:30:00.000Z" }],
+  } as typeof draft.sourceSpine;
+  for (const module of draft.modules) for (const node of module.nodes) delete node.resources;
+  return draft;
+}
+
+const SOURCE_UUID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+const CAPITAL_UUID = "AB12CD34-EF56-4789-9ABC-DEF012345678";
+const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+
+test("a normal readable uploaded source is accepted, and its text is not loaded to check it", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  store.writeSource(SOURCE_UUID, "# Stored source\n\nSynthetic text.");
+  const reads: string[] = [];
+  const readSource = store.readSource;
+  store.readSource = (sourceId: string) => {
+    reads.push(sourceId);
+    return readSource(sourceId);
+  };
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+  assert.equal(saved.isError, undefined, saved.content[0]?.text);
+  assert.deepEqual(reads, [], "the stored source is confirmed from its metadata");
+});
+
+test("a missing uploaded source is refused and no path is written", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+  assert.equal(saved.isError, true);
+  assert.match(saved.content[0]?.text ?? "", /not stored/);
+  assert.equal(store.paths().length, 0);
+});
+
+test("a symlinked uploaded source is refused and no path is written", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  fs.mkdirSync(path.join(store.directory, "sources"), { recursive: true });
+  const target = path.join(store.directory, "outside.md");
+  fs.writeFileSync(target, "# Outside");
+  fs.symlinkSync(target, path.join(store.directory, "sources", `${SOURCE_UUID}.md`));
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+  assert.equal(saved.isError, true);
+  assert.match(saved.content[0]?.text ?? "", /symlinked/);
+  assert.equal(store.paths().length, 0);
+});
+
+test("a directory named like an uploaded source is refused and no path is written", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  fs.mkdirSync(path.join(store.directory, "sources", `${SOURCE_UUID}.md`), { recursive: true });
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+  assert.equal(saved.isError, true);
+  assert.match(saved.content[0]?.text ?? "", /not a regular file/);
+  assert.equal(store.paths().length, 0);
+});
+
+test("an uploaded source with mode 000 is refused and no path is written", { skip: isRoot ? "root reads any file" : false }, async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  const file = path.join(store.directory, "sources", `${SOURCE_UUID}.md`);
+  store.writeSource(SOURCE_UUID, "# Locked source");
+  fs.chmodSync(file, 0o000);
+  try {
+    const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+    assert.equal(saved.isError, true);
+    assert.match(saved.content[0]?.text ?? "", /cannot be read/);
+    assert.equal(store.paths().length, 0);
+  } finally {
+    fs.chmodSync(file, 0o600);
+  }
+});
+
+test("an id with capital letters is looked up in lowercase: a file named with the capitals is refused as not stored", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  fs.mkdirSync(path.join(store.directory, "sources"), { recursive: true });
+  fs.writeFileSync(path.join(store.directory, "sources", `${CAPITAL_UUID}.md`), "# Capital source");
+  if (fs.existsSync(path.join(store.directory, "sources", `${CAPITAL_UUID.toLowerCase()}.md`))) {
+    t.skip("the filesystem is case-insensitive, so the capitalised name is the lowercase file");
+    return;
+  }
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(CAPITAL_UUID), undefined);
+  assert.equal(saved.isError, true);
+  assert.match(saved.content[0]?.text ?? "", /not stored/);
+  assert.equal(store.paths().length, 0);
+});
+
+test("a file named with the lowercase id is accepted for an id with capital letters", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  store.writeSource(CAPITAL_UUID.toLowerCase(), "# Lowercase source");
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(CAPITAL_UUID), undefined);
+  assert.equal(saved.isError, undefined, saved.content[0]?.text);
+  assert.equal(store.paths().length, 1);
+});
+
 /** A learner whose graph holds distinctive synthetic text, to prove none of it leaves the plugin. */
 const SECRET = "ZZ-LEARNER-SECRET-7731";
 function learnerContext(): PluginBackendContext {
@@ -258,7 +416,7 @@ test("the graph brief is read through ctx.learning.graph() and upstream calls ca
   );
   assert.equal(refused.isError, true);
 
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2, "one listing (reused by the topic read) and one topic file");
   for (const call of calls) {
     assert.equal(call.url.includes(SECRET), false, "no learner text in a URL");
     assert.equal(JSON.stringify(call.headers).includes(SECRET), false, "no learner text in headers");
@@ -371,7 +529,7 @@ test("no graph statement, goal or learner name appears in any request to GitHub"
   await tool("read_learner_graph").execute("c2", {}, undefined);
   await tool("list_roadmap_topics").execute("c3", { roadmapSlug: "synthetic-roadmap" }, undefined);
   await tool("read_roadmap_topic").execute("c4", { roadmapSlug: "synthetic-roadmap", topicSlug: "synthetic-topic" }, undefined);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2, "one listing (reused by the topic read) and one topic file");
   for (const call of calls) {
     assert.match(call.url, new RegExp(`^${UPSTREAM_API_BASE}/repos/${UPSTREAM_REPOSITORY}/contents/roadmaps/`));
     for (const secret of [SECRET, GOAL, NAME]) {

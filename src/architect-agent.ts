@@ -14,6 +14,8 @@
  *   that produced it.
  */
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import nodePath from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type {
   PluginAgentDefinition,
@@ -21,13 +23,13 @@ import type {
   PluginBackendContext,
   PluginModelSpec,
 } from "learnharness-plugin-api";
-import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, parseLearningPath } from "./domain.ts";
+import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, isSourceId, parseLearningPath } from "./domain.ts";
 import type { LearningPath, UploadedSourceReference } from "./domain.ts";
 import { buildGraphBrief } from "./graph-brief.ts";
 import type { GraphBrief } from "./graph-brief.ts";
 import { topicKey } from "./learner-map.ts";
 import { buildArchitectSystemPrompt } from "./framework.ts";
-import { StoreError } from "./store.ts";
+import { SOURCES_DIRECTORY, StoreError } from "./store.ts";
 import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
 import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
 import { UpstreamError, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
@@ -465,7 +467,9 @@ async function saveDraft(
     candidate.architectChatId = chatId;
     parsed = parseLearningPath(candidate);
     for (const source of uploadedSources(parsed)) {
-      if (options.store.readSource(source.sourceId) === null) {
+      const check = checkStoredSource(options.store, source.sourceId);
+      if (check.status === "refused") return errorResult(check.message);
+      if (check.status === "missing") {
         return errorResult(
           `Source spine references uploaded source "${source.sourceId}" (${source.name}), which is not stored. ` +
             "Call list_uploaded_sources and use a real sourceId.",
@@ -520,6 +524,31 @@ async function saveDraft(
         })),
       }),
   );
+}
+
+export type StoredSourceCheck =
+  | { readonly status: "ok" }
+  | { readonly status: "missing" }
+  | { readonly status: "refused"; readonly message: string };
+
+/** Whether an uploaded source can be read, decided from its file's metadata: the text is never loaded.
+ * The file is looked up by the lowercased id only, as readSource always did. Refuses what readSource
+ * refuses (a symlink, a non-file, a missing file) and what cannot be read (no read permission). */
+export function checkStoredSource(store: LearningPathStore, sourceId: string): StoredSourceCheck {
+  if (!isSourceId(sourceId)) return { status: "refused", message: "Invalid source ID: expected a UUID." };
+  const filename = nodePath.join(store.directory, SOURCES_DIRECTORY, `${sourceId.toLowerCase()}.md`);
+  const stat = fs.lstatSync(filename, { throwIfNoEntry: false });
+  if (!stat) return { status: "missing" };
+  if (stat.isSymbolicLink()) {
+    return { status: "refused", message: `Refusing to follow symlinked source file: ${filename}.` };
+  }
+  if (!stat.isFile()) return { status: "refused", message: `Source path is not a regular file: ${filename}.` };
+  try {
+    fs.accessSync(filename, fs.constants.R_OK);
+  } catch {
+    return { status: "refused", message: `Source file cannot be read: ${filename}.` };
+  }
+  return { status: "ok" };
 }
 
 function countNodes(path: LearningPath): number {
@@ -797,6 +826,8 @@ function buildUpstreamDefinition(
 ): PluginAgentDefinition {
   const readUrls = new Map<string, Set<string>>();
   const researchUrls = new Set<string>();
+  // One listing per roadmap for the definition's lifetime: a topic read needs the listing, and the pinned commit never changes.
+  const upstreamReads: UpstreamArchitectOptions = { ...upstream, listings: upstream.listings ?? new Map() };
   const allowed = (): CitableResources => citableResources(readUrls, researchUrls, options.store);
   // Books and web come last and only enrich: they are offered after the graph, topic and path tools.
   const enrichmentTools = (options.researchTools ?? []).map((tool) =>
@@ -813,7 +844,7 @@ function buildUpstreamDefinition(
     maxTurns: ARCHITECT_MAX_TURNS,
     tools: [
       readLearnerGraphTool(ctx, upstream.readGraph),
-      ...upstreamReadTools(ctx, upstream, readUrls),
+      ...upstreamReadTools(ctx, upstreamReads, readUrls),
       getLearningPathTool(ctx, options),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options), allowed),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options, true), allowed),

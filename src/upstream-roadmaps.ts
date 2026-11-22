@@ -43,8 +43,22 @@ export type UpstreamFetch = (
   init: { readonly headers: Readonly<Record<string, string>> },
 ) => Promise<UpstreamResponse>;
 
+/** Longest wait for one GitHub response, headers and body together. A slower request is reported as unreachable. */
+export const UPSTREAM_TIMEOUT_MS = 15_000;
+
+/** Wrap a real fetch so every request is bounded by `timeoutMs`. The caller's init is passed through unchanged. */
+export function withUpstreamTimeout(
+  send: (url: string, init: { readonly headers: Readonly<Record<string, string>>; readonly signal: AbortSignal }) => Promise<UpstreamResponse>,
+  timeoutMs: number = UPSTREAM_TIMEOUT_MS,
+): UpstreamFetch {
+  return (url, init) => send(url, { headers: init.headers, signal: AbortSignal.timeout(timeoutMs) });
+}
+
 export interface UpstreamOptions {
   readonly fetch: UpstreamFetch;
+  /** Topic listings already read, keyed by roadmap and commit. Optional: when given, a listing is fetched once
+   * and reused, because a pinned commit never changes. A failed read is not kept, so the next call retries. */
+  readonly listings?: Map<string, Promise<UpstreamTopicRef[]>>;
 }
 
 export type UpstreamErrorKind = "invalid" | "not_found" | "unreachable";
@@ -128,7 +142,7 @@ async function request(fetchFn: UpstreamFetch, url: string, headers: Readonly<Re
   }
 }
 
-/** Topic files of one roadmap at one commit. */
+/** Topic files of one roadmap at one commit. With `options.listings`, the listing is read once per roadmap and commit. */
 export async function listRoadmapTopics(
   roadmapSlug: string,
   commit: string,
@@ -136,6 +150,21 @@ export async function listRoadmapTopics(
 ): Promise<UpstreamTopicRef[]> {
   const roadmap = assertSlug(roadmapSlug, "roadmapSlug");
   const sha = assertCommit(commit);
+  const cache = options.listings;
+  const key = `${roadmap}@${sha}`;
+  const cached = cache?.get(key);
+  if (cached) return cached;
+  const pending = fetchTopicListing(roadmap, sha, options);
+  if (cache) {
+    cache.set(key, pending);
+    pending.catch(() => {
+      if (cache.get(key) === pending) cache.delete(key);
+    });
+  }
+  return pending;
+}
+
+async function fetchTopicListing(roadmap: string, sha: string, options: UpstreamOptions): Promise<UpstreamTopicRef[]> {
   const body = await request(options.fetch, contentsUrl(roadmap, sha), HEADERS_JSON, `roadmap "${roadmap}"`);
   let entries: unknown;
   try {

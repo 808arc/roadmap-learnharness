@@ -44,11 +44,11 @@ import {
   usageSince,
 } from "./architect-agent.ts";
 import type { ArchitectRegistration } from "./architect-agent.ts";
-import { UPSTREAM_PINNED_COMMIT } from "./upstream-roadmaps.ts";
+import { UPSTREAM_PINNED_COMMIT, withUpstreamTimeout } from "./upstream-roadmaps.ts";
 import type { UpstreamFetch } from "./upstream-roadmaps.ts";
 
 /** The only network seam of the Architect's upstream reads (issue #19). Tests inject their own. */
-const upstreamFetch: UpstreamFetch = (url, init) => fetch(url, init);
+const upstreamFetch: UpstreamFetch = withUpstreamTimeout((url, init) => fetch(url, init));
 import type { GraphBrief } from "./graph-brief.ts";
 import { deriveMastery } from "./learner-map.ts";
 import type { LearnerGraph, Mastery } from "./learner-map.ts";
