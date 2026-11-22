@@ -32,7 +32,17 @@ import { buildArchitectSystemPrompt } from "./framework.ts";
 import { SOURCES_DIRECTORY, StoreError } from "./store.ts";
 import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
 import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
-import { MAX_TOPICS_PER_BATCH, UPSTREAM_REPOSITORY, UpstreamError, assertSlug, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
+import {
+  MAX_TOPICS_PER_BATCH,
+  TOPIC_READ_CONCURRENCY,
+  UPSTREAM_REPOSITORY,
+  UpstreamError,
+  assertSlug,
+  listRoadmapTopics,
+  mapWithConcurrency,
+  prefetchRoadmapTopics,
+  readTopic,
+} from "./upstream-roadmaps.ts";
 import type { UpstreamErrorKind, UpstreamOptions, UpstreamTopic } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
@@ -896,14 +906,15 @@ async function readTopicBatch(roadmapSlug: unknown, topicSlugs: unknown, upstrea
     throw new UpstreamError("invalid", `topicSlugs may name at most ${MAX_TOPICS_PER_BATCH} topics per call.`);
   }
   const slugs = topicSlugs.map((slug, index) => assertSlug(slug, `topicSlugs[${index}]`));
-  const results = await Promise.all(slugs.map(async (slug): Promise<TopicBatchResult> => {
+  // At most TOPIC_READ_CONCURRENCY requests in flight; results keep the order the slugs were given in.
+  const results = await mapWithConcurrency(slugs, TOPIC_READ_CONCURRENCY, async (slug): Promise<TopicBatchResult> => {
     try {
       return { slug, ok: true, topic: await readTopic(roadmap, slug, upstream.commit, upstream) };
     } catch (error) {
       if (error instanceof UpstreamError) return { slug, ok: false, kind: error.kind, error: error.message };
       throw error;
     }
-  }));
+  });
   return { roadmap, results };
 }
 
@@ -931,8 +942,12 @@ export function upstreamReadTools(
         assertLive(ctx, signal);
         try {
           const params = readObject(rawParams);
-          const topics = await listRoadmapTopics(String(params.roadmapSlug), upstream.commit, upstream);
-          const result = { topics: topics.map((topic) => topic.slug) };
+          const roadmap = String(params.roadmapSlug);
+          const topics = await listRoadmapTopics(roadmap, upstream.commit, upstream);
+          const slugs = topics.map((topic) => topic.slug);
+          // Best effort, in the background: the listed topics are read so later batch reads hit the cache.
+          void prefetchRoadmapTopics(roadmap, slugs, upstream.commit, upstream);
+          const result = { topics: slugs };
           return textResult(result, JSON.stringify(result));
         } catch (error) {
           return upstreamFailure(error);
@@ -1003,7 +1018,12 @@ function buildUpstreamDefinition(
   const readUrls = new Map<string, Set<string>>();
   const researchUrls = new Set<string>();
   // One listing per roadmap for the definition's lifetime: a topic read needs the listing, and the pinned commit never changes.
-  const upstreamReads: UpstreamArchitectOptions = { ...upstream, listings: upstream.listings ?? new Map() };
+  // Topic reads in flight are shared, so a prefetch and a batch read of one topic make one request.
+  const upstreamReads: UpstreamArchitectOptions = {
+    ...upstream,
+    listings: upstream.listings ?? new Map(),
+    topics: upstream.topics ?? new Map(),
+  };
   const allowed = (): CitableResources => citableResources(readUrls, researchUrls, options.store);
   // Books and web come last and only enrich: they are offered after the graph, topic and path tools.
   const enrichmentTools = (options.researchTools ?? []).map((tool) =>
