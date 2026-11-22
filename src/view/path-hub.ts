@@ -24,6 +24,7 @@ import type {
 import { ARTIFACT_TYPES, DEFAULT_DISPLAY, PROGRESSION_STATES, artifactCatalogEntry, recommendedArtifactsFor } from "../domain.ts";
 import { locale, resolveLocale, setLocale, t } from "../i18n.ts";
 import type { NativeSessionHost } from "../native-session-host.ts";
+import { nextUpForPath, type NextRecommendation } from "../node-next.ts";
 import { createSessionLauncher } from "../session-launcher.ts";
 import { consumePathHubTarget, subscribePathHubTarget } from "../session-navigation.ts";
 import type { SessionStatus } from "../session-types.ts";
@@ -71,6 +72,15 @@ function nodeById(path: LearningPath, nodeId: string | null): PathNode | null {
     if (node) return node;
   }
   return null;
+}
+
+/** Next-up recommendations. A roadmap the ranking cannot read yields none rather than breaking the view. */
+function nextRecommendations(path: LearningPath): NextRecommendation[] {
+  try {
+    return nextUpForPath(path);
+  } catch {
+    return [];
+  }
 }
 
 export function countNodes(path: LearningPath): { total: number; consolidated: number; inProgress: number; errors: number } {
@@ -166,7 +176,9 @@ export function mountPathHub(
   statusSummary.setAttribute("aria-live", "polite");
   const statusErrors = el(document, "button", "rm-status-errors");
   statusErrors.type = "button";
-  status.append(el(document, "span", "rm-grow"), statusSummary, statusErrors);
+  const statusNext = el(document, "div", "rm-status-next");
+  statusNext.hidden = true;
+  status.append(el(document, "span", "rm-grow"), statusSummary, statusNext, statusErrors);
   root.append(status);
 
   // ── State ────────────────────────────────────────────────────────────
@@ -351,6 +363,26 @@ export function mountPathHub(
     const icon = el(document, "span", "rm-warn-icon");
     setIcon(icon, ICONS.warn);
     statusErrors.append(icon, el(document, "span", undefined, errors === 1 ? t("foot.error1") : t("foot.errors", { n: errors })));
+    renderNext();
+  }
+
+  /** "Next up": selecting an item opens it in the node panel, which holds Lesson and Practice. Nothing is gated. */
+  function renderNext(): void {
+    statusNext.replaceChildren();
+    const recommendations = path ? nextRecommendations(path) : [];
+    statusNext.hidden = recommendations.length === 0;
+    if (!path || recommendations.length === 0) return;
+    statusNext.append(el(document, "span", "rm-status-next-label", t("next.title")));
+    for (const entry of recommendations) {
+      const target = nodeById(path, entry.nodeId);
+      if (!target) continue;
+      const item = el(document, "span", "rm-status-next-item");
+      item.append(
+        button(document, target.title, () => selectNode(target.id), signal, { variant: "ghost", className: "rm-status-next-node" }),
+        el(document, "span", "rm-status-next-why", entry.reasons.map((reason) => t(reason.key, reason.vars)).join(" · ")),
+      );
+      statusNext.append(item);
+    }
   }
 
   /** Light themes need a darker accent; read the effective page background. */
