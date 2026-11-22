@@ -150,6 +150,27 @@ function locateChat(store: LearningPathStore, chatId: string): LocatedChat | nul
   return { path: located.path, node: located.node, kind: located.link.kind };
 }
 
+type LinkedChatLookup =
+  | { readonly located: LocatedChat }
+  | { readonly failure: AgentToolResult<{ error: string }> };
+
+/** Shared prologue for every tool execute: shutdown, deleted chat, then unlinked chat. */
+function resolveLinkedChat(
+  ctx: PluginBackendContext,
+  store: LearningPathStore,
+  chatId: string,
+  signal: AbortSignal | undefined,
+): LinkedChatLookup {
+  assertLive(ctx, signal);
+  const missing = missingNativeResult(ctx, chatId);
+  if (missing) return { failure: missing };
+  const located = locateChat(store, chatId);
+  if (!located) {
+    return { failure: errorResult("This session is no longer linked to a Learning Path node.") };
+  }
+  return { located };
+}
+
 /** Deleted chats stop tools mid-turn instead of writing against a vanished session. */
 function missingNativeResult(
   ctx: PluginBackendContext,
@@ -189,14 +210,9 @@ function briefTool(
       "Call this before teaching or posing practice in a linked child session.",
     parameters: objectSchema({}),
     execute: async (_toolCallId, _params, signal) => {
-      assertLive(ctx, signal);
-      const missing = missingNativeResult(ctx, chatId);
-      if (missing) return missing;
-      const located = locateChat(store, chatId);
-      if (!located) {
-        return errorResult("This session is no longer linked to a Learning Path node.");
-      }
-      const { path, node, kind } = located;
+      const lookup = resolveLinkedChat(ctx, store, chatId, signal);
+      if ("failure" in lookup) return lookup.failure;
+      const { path, node, kind } = lookup.located;
       const brief = buildChildSessionBrief({
         path,
         nodeId: node.id,
@@ -264,13 +280,9 @@ function progressTool(
       ["progression"],
     ),
     execute: async (_toolCallId, rawParams, signal) => {
-      assertLive(ctx, signal);
-      const missing = missingNativeResult(ctx, chatId);
-      if (missing) return missing;
-      const located = locateChat(options.store, chatId);
-      if (!located) {
-        return errorResult("This session is no longer linked to a Learning Path node.");
-      }
+      const lookup = resolveLinkedChat(ctx, options.store, chatId, signal);
+      if ("failure" in lookup) return lookup.failure;
+      const located = lookup.located;
       try {
         const params = readObject(rawParams);
         const progression = readEnum(
@@ -347,13 +359,9 @@ function logErrorTool(
       ["category", "summary"],
     ),
     execute: async (_toolCallId, rawParams, signal) => {
-      assertLive(ctx, signal);
-      const missing = missingNativeResult(ctx, chatId);
-      if (missing) return missing;
-      const located = locateChat(options.store, chatId);
-      if (!located) {
-        return errorResult("This session is no longer linked to a Learning Path node.");
-      }
+      const lookup = resolveLinkedChat(ctx, options.store, chatId, signal);
+      if ("failure" in lookup) return lookup.failure;
+      const located = lookup.located;
       try {
         const params = readObject(rawParams);
         const category = readEnum(params.category, ERROR_CATEGORIES, "category");
@@ -435,13 +443,9 @@ function suggestPivotTool(
       ["proposalType", "title", "rationale"],
     ),
     execute: async (_toolCallId, rawParams, signal) => {
-      assertLive(ctx, signal);
-      const missing = missingNativeResult(ctx, chatId);
-      if (missing) return missing;
-      const located = locateChat(options.store, chatId);
-      if (!located) {
-        return errorResult("This session is no longer linked to a Learning Path node.");
-      }
+      const lookup = resolveLinkedChat(ctx, options.store, chatId, signal);
+      if ("failure" in lookup) return lookup.failure;
+      const located = lookup.located;
       try {
         const params = readObject(rawParams);
         const proposalType = readEnum(params.proposalType, CHILD_PIVOT_TYPES, "proposalType");
