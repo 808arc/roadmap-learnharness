@@ -61,3 +61,14 @@ test("artifact descriptions avoid unexplained jargon", () => {
     assert.doesNotMatch(en.get(key) ?? "", /textbook|layout|seed|hook|scaffold/i, `${key} stays in plain words`);
   }
 });
+
+test("no interface string names the upstream roadmap source", () => {
+  for (const [lang, table] of [
+    ["en", en],
+    ["ru", ru],
+  ] as const) {
+    for (const [key, value] of table) {
+      assert.doesNotMatch(value, /roadmap\.sh|nilbuild/i, `${lang} ${key} must not name the upstream source`);
+    }
+  }
+});
