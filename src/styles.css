@@ -18,6 +18,11 @@
   --rm-ok: #7fbf8a;
   --rm-warn: #d9a441;
   --rm-font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --rm-font-xs: 11px;
+  --rm-font-sm: 12px;
+  --rm-font-md: 13px;
+  --rm-font-lg: 15px;
+  --rm-font-xl: 18px;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -41,7 +46,7 @@
   color: var(--rm-text);
   background: var(--rm-bg);
   font-family: var(--rm-font);
-  font-size: 13px;
+  font-size: var(--rm-font-md);
   line-height: 1.35;
 }
 
@@ -70,7 +75,7 @@
 }
 
 .rm-small {
-  font-size: 11.5px;
+  font-size: var(--rm-font-sm);
 }
 
 /* Toolbar --------------------------------------------------------------- */
@@ -163,7 +168,7 @@
   padding: 8px 20px;
   border-bottom: 1px solid var(--rm-line);
   color: var(--destructive, #ef4444);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
 }
 
 /* Buttons --------------------------------------------------------------- */
@@ -286,7 +291,7 @@
 
 .rm-empty-title {
   margin: 0 0 8px;
-  font-size: 16px;
+  font-size: var(--rm-font-lg);
   font-weight: 600;
 }
 
@@ -296,7 +301,7 @@
 
 .rm-empty-hint {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: var(--rm-font-md);
 }
 
 .rm-canvas {
@@ -409,7 +414,7 @@
 .rm-node-tag {
   flex: none;
   color: var(--rm-muted);
-  font-size: 11px;
+  font-size: var(--rm-font-xs);
 }
 
 /* A node the learner's graph already covers: a small review tag after the title. */
@@ -419,7 +424,7 @@
   border-radius: 3px;
   background: var(--rm-panel-2);
   color: var(--rm-muted);
-  font-size: 10px;
+  font-size: var(--rm-font-xs);
 }
 
 .rm-node-warn {
@@ -504,7 +509,7 @@
 .rm-main-count {
   flex: none;
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -537,13 +542,13 @@
 
 .rm-box-meta {
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-box-label {
   position: absolute;
   color: var(--rm-muted);
-  font-size: 11.5px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-box-error {
@@ -554,7 +559,7 @@
   gap: 6px;
   overflow: hidden;
   color: var(--rm-warn);
-  font-size: 11.5px;
+  font-size: var(--rm-font-sm);
   white-space: nowrap;
 }
 
@@ -630,7 +635,7 @@
   border-radius: 8px;
   background: var(--rm-panel);
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-legend-item {
@@ -661,18 +666,18 @@
 
 .rm-legend-arrow {
   color: var(--rm-faint);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-legend-note {
   color: var(--rm-muted);
-  font-size: 11.5px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-legend-alt {
   width: 16px;
   color: var(--rm-faint);
-  font-size: 10.5px;
+  font-size: var(--rm-font-xs);
 }
 
 /* Side panel ------------------------------------------------------------ */
@@ -747,7 +752,7 @@
 
 .rm-insp-title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--rm-font-lg);
   font-weight: 600;
   line-height: 1.3;
 }
@@ -769,7 +774,7 @@
   border: 1px solid var(--rm-line-2);
   border-radius: 5px;
   background: transparent;
-  font-size: 12.5px;
+  font-size: var(--rm-font-md);
   cursor: pointer;
 }
 
@@ -791,7 +796,7 @@
   border: 1px solid var(--rm-line);
   border-radius: 4px;
   color: var(--rm-muted);
-  font-size: 11.5px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-insp-goal {
@@ -809,7 +814,7 @@
   justify-content: space-between;
   margin-bottom: 8px;
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-li {
@@ -836,7 +841,7 @@
 .rm-li-sub {
   margin-top: 2px;
   color: var(--rm-muted);
-  font-size: 11.5px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-link {
@@ -907,7 +912,7 @@
   padding-left: 10px;
   border-left: 2px solid var(--rm-line-2);
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
   line-height: 1.45;
 }
 
@@ -928,7 +933,7 @@
   flex-basis: 100%;
   margin: 0;
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
   line-height: 1.45;
 }
 
@@ -970,7 +975,7 @@
   align-items: center;
   margin: 4px 0 0 22px;
   color: var(--rm-muted);
-  font-size: 11.5px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-err-note {
@@ -995,7 +1000,7 @@
 .rm-err-actions .rm-btn {
   height: 26px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-err-editor {
@@ -1026,7 +1031,7 @@
   align-items: center;
   gap: 6px;
   color: var(--rm-acc);
-  font-size: 11.5px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-pivot-title {
@@ -1067,7 +1072,7 @@
   padding: 0 16px;
   border-top: 1px solid var(--rm-line);
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
 }
 
 .rm-status-errors {
@@ -1156,7 +1161,7 @@
 
 .lp-title {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: var(--rm-font-xl);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -1190,7 +1195,7 @@
 }
 
 .lp-field-label {
-  font-size: 0.75rem;
+  font-size: var(--rm-font-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -1217,7 +1222,7 @@
   margin: 0;
   padding: 5px 10px;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: var(--rm-font-md);
   color: var(--muted-foreground, var(--foreground));
   background: var(--muted, rgba(127, 127, 127, 0.12));
   white-space: nowrap;
@@ -1294,7 +1299,7 @@
 
 .lp-pane-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--rm-font-lg);
   font-weight: 650;
 }
 
@@ -1361,13 +1366,13 @@
 
 .lp-architect-status {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--rm-font-md);
   color: var(--muted-foreground, var(--foreground));
 }
 
 .lp-architect-log {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--rm-font-sm);
   color: var(--muted-foreground, var(--foreground));
   overflow-wrap: anywhere;
 }
@@ -1398,7 +1403,7 @@
 }
 
 .lp-chat-role {
-  font-size: 0.7rem;
+  font-size: var(--rm-font-xs);
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1451,7 +1456,7 @@ details.lp-chat-reasoning > summary {
   margin: 0;
   padding: 4px 12px;
   color: var(--muted-foreground, var(--foreground));
-  font-size: 0.8rem;
+  font-size: var(--rm-font-md);
 }
 
 .lp-chat-partial {
@@ -1468,7 +1473,7 @@ details.lp-chat-reasoning > summary {
 .lp-upload-status {
   margin: 0;
   min-width: 0;
-  font-size: 0.8rem;
+  font-size: var(--rm-font-md);
   color: var(--muted-foreground, var(--foreground));
 }
 
@@ -1487,7 +1492,7 @@ details.lp-chat-reasoning > summary {
 .lp-model-hint {
   margin: 0;
   color: var(--muted-foreground, var(--foreground));
-  font-size: 0.8rem;
+  font-size: var(--rm-font-md);
   line-height: 1.45;
 }
 
@@ -1536,7 +1541,7 @@ details.lp-chat-reasoning > summary {
 
 .lp-section-title {
   margin: 0;
-  font-size: 0.78rem;
+  font-size: var(--rm-font-sm);
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1560,7 +1565,7 @@ details.lp-chat-reasoning > summary {
 .lp-callout strong {
   display: block;
   margin-bottom: 2px;
-  font-size: 0.78rem;
+  font-size: var(--rm-font-sm);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -1615,7 +1620,7 @@ details.lp-chat-reasoning > summary {
 
 .lp-artifact-justification h4 {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--rm-font-md);
   font-weight: 650;
 }
 
@@ -1661,7 +1666,7 @@ details.lp-chat-reasoning > summary {
 }
 
 .lp-missing-note {
-  font-size: 0.75rem;
+  font-size: var(--rm-font-sm);
   font-weight: 600;
   color: var(--destructive, #ef4444);
 }
@@ -1675,7 +1680,7 @@ details.lp-chat-reasoning > summary {
 
 .lp-dialog-status {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--rm-font-md);
   color: var(--muted-foreground, var(--foreground));
 }
 
@@ -1728,7 +1733,7 @@ details.lp-chat-reasoning > summary {
   border: 1px solid var(--border, #e4e4e7);
   border-radius: 7px;
   background: var(--muted, rgba(127, 127, 127, 0.06));
-  font-size: 0.82rem;
+  font-size: var(--rm-font-md);
   line-height: 1.35;
 }
 
@@ -1811,7 +1816,7 @@ details.lp-chat-reasoning > summary {
 
 .lp-error-meta {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--rm-font-sm);
   color: var(--muted-foreground, var(--foreground));
 }
 
@@ -1820,7 +1825,7 @@ details.lp-chat-reasoning > summary {
   padding: 5px 8px;
   border-left: 2px solid var(--chart-2, #0ea5e9);
   color: var(--muted-foreground, var(--foreground));
-  font-size: 0.85rem;
+  font-size: var(--rm-font-md);
   line-height: 1.4;
   white-space: pre-wrap;
 }
@@ -1896,13 +1901,13 @@ details.lp-chat-reasoning > summary {
 }
 
 .lp-watchpoint-category {
-  font-size: 0.75rem;
+  font-size: var(--rm-font-sm);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
 .lp-watchpoint-source {
-  font-size: 0.75rem;
+  font-size: var(--rm-font-sm);
   color: var(--muted-foreground, var(--foreground));
 }
 
@@ -1930,11 +1935,11 @@ details.lp-chat-reasoning > summary {
   flex-direction: column;
   gap: 1px;
   margin: 0;
-  font-size: 0.92rem;
+  font-size: var(--rm-font-lg);
 }
 
 .lp-pivot-kicker {
-  font-size: 0.72rem;
+  font-size: var(--rm-font-sm);
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1953,7 +1958,7 @@ details.lp-chat-reasoning > summary {
 }
 
 .lp-pivot-note {
-  font-size: 0.8rem;
+  font-size: var(--rm-font-md);
   color: var(--muted-foreground, var(--foreground));
 }
 
@@ -1979,7 +1984,7 @@ details.lp-chat-reasoning > summary {
 
 .lp-settings-title {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: var(--rm-font-xl);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -2007,13 +2012,13 @@ details.lp-chat-reasoning > summary {
 
 .lp-settings-heading {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--rm-font-lg);
   font-weight: 650;
 }
 
 .lp-settings-subheading {
   margin: 8px 0 0;
-  font-size: 0.82rem;
+  font-size: var(--rm-font-md);
   font-weight: 650;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -2046,7 +2051,7 @@ details.lp-chat-reasoning > summary {
 
 .lp-artifact-option-title {
   margin: 0 0 3px;
-  font-size: 0.88rem;
+  font-size: var(--rm-font-lg);
   font-weight: 650;
 }
 
@@ -2090,7 +2095,7 @@ details.lp-chat-reasoning > summary {
 
 .lp-dialog-title {
   margin: 0 0 8px;
-  font-size: 1rem;
+  font-size: var(--rm-font-lg);
   font-weight: 650;
 }
 
@@ -2169,7 +2174,7 @@ details.lp-chat-reasoning > summary {
   border-radius: 999px;
   background: transparent;
   color: var(--rm-muted);
-  font: 500 12.5px/1 var(--rm-font);
+  font: 500 var(--rm-font-md)/1 var(--rm-font);
   cursor: pointer;
 }
 
@@ -2194,7 +2199,7 @@ details.lp-chat-reasoning > summary {
 
 .rm-model-hint {
   color: var(--rm-faint);
-  font: 12px/1.3 var(--rm-font);
+  font: var(--rm-font-sm)/1.3 var(--rm-font);
 }
 
 .rm-dictation-host {
@@ -2211,7 +2216,7 @@ details.lp-chat-reasoning > summary {
   border-radius: 12px;
   background: color-mix(in srgb, var(--rm-bg) 82%, transparent);
   color: var(--rm-acc);
-  font: 600 15px/1.3 var(--rm-font);
+  font: 600 var(--rm-font-lg)/1.3 var(--rm-font);
   pointer-events: none;
 }
 
@@ -2234,20 +2239,20 @@ details.lp-chat-reasoning > summary {
   border: 1px solid color-mix(in srgb, var(--rm-warn) 45%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--rm-warn) 10%, transparent);
-  font-size: 13px;
+  font-size: var(--rm-font-md);
   line-height: 1.5;
 }
 
 .rm-research-notes-title {
   margin: 8px 0 0;
-  font-size: 14px;
+  font-size: var(--rm-font-lg);
 }
 
 .rm-research-notes {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
+  font-size: var(--rm-font-md);
 }
 
 .rm-research-notes li {
@@ -2362,7 +2367,7 @@ details.lp-chat-reasoning > summary {
 .rm-research-tools {
   margin: 0;
   color: var(--muted-foreground, #8d8d8d);
-  font-size: 12px;
+  font-size: var(--rm-font-sm);
   line-height: 1.5;
 }
 
@@ -2403,7 +2408,7 @@ details.lp-chat-reasoning > summary {
 
 .rm-proposal-title {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--rm-font-lg);
   font-weight: 600;
 }
 
@@ -2412,7 +2417,7 @@ details.lp-chat-reasoning > summary {
   grid-template-columns: auto 1fr;
   gap: 4px 12px;
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--rm-font-md);
   line-height: 1.45;
 }
 
@@ -2432,7 +2437,7 @@ details.lp-chat-reasoning > summary {
 .rm-proposal-muted {
   margin: 0;
   color: var(--muted-foreground, #8e8e96);
-  font-size: 12.5px;
+  font-size: var(--rm-font-md);
 }
 
 .rm-proposal-muted[hidden],
@@ -2450,7 +2455,7 @@ details.lp-chat-reasoning > summary {
   height: 32px;
   padding: 0 14px;
   border-radius: 8px;
-  font: 500 13px/1 inherit;
+  font: 500 var(--rm-font-md)/1 inherit;
   font-family: inherit;
   cursor: pointer;
 }
