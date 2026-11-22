@@ -31,12 +31,13 @@ The system may know a lot about the learner, for example from their knowledge gr
 ### Principle 1: Canonical Source Grounding ("No Hallucinated Curricula")
 Every learning path must be anchored to an explicit **Source Spine**. The Path Architect builds the roadmap from the topic files of a developer roadmap (roadmap.sh, from the `nilbuild/developer-roadmap` repository), read at one commit that is pinned in the code:
 
-- **Structure comes from the topic files.** The Architect lists and reads the topics of one roadmap. A saved path is refused unless its resource titles and urls were copied from topic files read in that conversation.
+- **Structure comes from the topic files.** The Architect lists and reads the topics of one roadmap.
+- **Citable resources.** A saved path may cite a url only if it came from a topic file read in this conversation, from a resource of a path already saved, or from a book or web result returned in this conversation. Any other url is refused. A title must match what was read or stored, except for a url known only from a book or web result, which takes any title.
 - **Books and the web enrich nodes last.** Book and web tools (for example `find_books`, `book_contents`, `web_search`) are offered only after the learner's graph and the topic and path tools, and they add detail to existing nodes; they do not build the structure.
 - **Pinned, so the spine is stable.** Every request reads the same commit, so the sources do not change under the learner.
 
 **Why we chose this:**
-> A pinned commit means the same topic files, in the same order, back every path the Architect writes, and a reader can check each resource against the file it came from. Books and web results are offered only as enrichment, so a web page cannot reorder the spine.
+> A pinned commit means the same topic files back every path the Architect writes, and each saved resource can be traced to a file that was read or a result that was returned.
 
 ---
 
@@ -125,7 +126,7 @@ Because learners and domains vary widely, artifacts are **configurable** (global
 
 - **Learning Path:** A persistent, tree-structured curriculum workspace centered on a specific learning goal, anchored to reputable source material, and serving as the parent hub from which topic study and practice chats are launched.
 - **Path Architect:** The plugin-managed conversational agent (`ctx.agents`) used when pressing **"Create a Path"** (or refining an existing path). It clarifies goals and background, selects or ingests the canonical source spine, and emits the structured path.
-- **Canonical Source Spine:** The developer-roadmap topic files, read at one pinned commit, that set the path's structure. Book and web results enrich nodes after that structure is set.
+- **Canonical Source Spine:** The developer-roadmap topic files, read at one pinned commit, from which the Architect builds a path's structure.
 - **Source Anchor:** The specific chapter, lecture, section, or page range in the Canonical Source Spine associated with an individual node (e.g., *OSTEP Ch. 26–27*).
 - **Child Session:** A native LearnHarness **Teaching** or **Practice** chat linked beneath a specific Path Node. Child sessions inherit a tailored brief from their parent node and report progression, errors, and non-stick pivot suggestions back to the Path.
 
