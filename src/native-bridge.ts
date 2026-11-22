@@ -27,7 +27,12 @@ import {
   formatSourceAnchor,
 } from "./domain.ts";
 import type { ChildSessionKind, LearningPath, PathNode } from "./domain.ts";
-import { buildChildSessionBrief } from "./framework.ts";
+import {
+  REDERIVE_DEFERRAL,
+  REDERIVE_PROGRESS_SENTENCE,
+  ROADMAP_SAFETY_SENTENCE,
+  buildChildSessionBrief,
+} from "./framework.ts";
 import {
   appendError,
   appendPivot,
@@ -57,6 +62,10 @@ export const NATIVE_BRIDGE_INSTRUCTIONS = [
   "",
   "Question format (count, question type, answer form) is not set by this section. If the learner or an installed session plugin has set a format, follow it; the micro-priming hook and interleaving examples are content only.",
   "Never invent a node id, never write progress for a different node in this session, and never restructure the path yourself.",
+  "",
+  REDERIVE_DEFERRAL,
+  REDERIVE_PROGRESS_SENTENCE,
+  ROADMAP_SAFETY_SENTENCE,
 ].join("\n");
 
 export interface NativeBridgeOptions {
