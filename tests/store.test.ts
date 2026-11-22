@@ -9,12 +9,14 @@ import {
   ARCHITECT_FILE,
   LEARNING_PATHS_FILE,
   ROADMAPS_DIRECTORY,
+  ROADMAP_INDEX_FILE,
   SETTINGS_FILE,
   SOURCES_DIRECTORY,
   SOURCE_INDEX_FILE,
   STORE_SCHEMA_VERSION,
   StoreError,
   openLearningPathStore,
+  roadmapFileName,
 } from "../src/store.ts";
 import { AT, clone, makePath } from "./fixtures.ts";
 
@@ -27,7 +29,7 @@ function directory(t: { after: (fn: () => void) => void }): string {
 }
 
 const read = (dir: string, name: string): string => fs.readFileSync(path.join(dir, name), "utf8");
-const roadmapFile = (dir: string, id: string): string => path.join(dir, ROADMAPS_DIRECTORY, `${id}.json`);
+const roadmapFile = (dir: string, id: string): string => path.join(dir, ROADMAPS_DIRECTORY, roadmapFileName(id));
 const write = (dir: string, name: string, content: string): void =>
   fs.writeFileSync(path.join(dir, name), content);
 const temporaryFiles = (dir: string): string[] =>
@@ -55,7 +57,7 @@ test("saves, replaces and reloads paths with a versioned envelope", (t) => {
   assert.equal(reopened.paths().length, 2);
   assert.equal(reopened.path("path-linear-algebra")?.title, "Renamed in place");
   // Revisions are per roadmap: path-linear-algebra was saved twice.
-  assert.deepEqual(JSON.parse(read(dir, path.join(ROADMAPS_DIRECTORY, "path-linear-algebra.json"))).revision, 2);
+  assert.deepEqual(JSON.parse(fs.readFileSync(roadmapFile(dir, "path-linear-algebra"), "utf8")).revision, 2);
 
   assert.equal(reopened.deletePath("path-missing"), false);
   assert.equal(reopened.deletePath("path-2"), true);
@@ -243,7 +245,7 @@ test("never touches host-reserved entries or unrelated learner files", (t) => {
   assert.deepEqual(temporaryFiles(dir), []);
   assert.deepEqual(
     fs.readdirSync(dir).sort(),
-    ["agents", "learner-notes.txt", ROADMAPS_DIRECTORY, SETTINGS_FILE, SOURCES_DIRECTORY, "tasks", "usage.jsonl"].sort(),
+    ["agents", "learner-notes.txt", ROADMAPS_DIRECTORY, ROADMAP_INDEX_FILE, SETTINGS_FILE, SOURCES_DIRECTORY, "tasks", "usage.jsonl"].sort(),
   );
 });
 

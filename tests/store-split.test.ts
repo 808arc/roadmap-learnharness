@@ -10,7 +10,9 @@ import {
   ROADMAP_INDEX_FILE,
   STORE_SCHEMA_VERSION,
   StoreError,
+  assertRoadmapNameFree,
   openLearningPathStore,
+  roadmapFileName,
 } from "../src/store.ts";
 import { clone, makePath } from "./fixtures.ts";
 
@@ -22,8 +24,9 @@ function directory(t: { after: (fn: () => void) => void }): string {
 
 const second = () => ({ ...clone(makePath()), id: "path-2", title: "Second path" });
 const third = () => ({ ...clone(makePath()), id: "path-3", title: "Third path" });
-const roadmapPath = (dir: string, id: string): string => path.join(dir, ROADMAPS_DIRECTORY, `${id}.json`);
-const indexPath = (dir: string): string => path.join(dir, ROADMAPS_DIRECTORY, ROADMAP_INDEX_FILE);
+const roadmapPath = (dir: string, id: string): string => path.join(dir, ROADMAPS_DIRECTORY, roadmapFileName(id));
+const indexPath = (dir: string): string => path.join(dir, ROADMAP_INDEX_FILE);
+const named = (id: string, title = `Roadmap ${id}`) => ({ ...clone(makePath()), id, title });
 const indexIds = (dir: string): string[] => JSON.parse(fs.readFileSync(indexPath(dir), "utf8")).roadmaps;
 const roadmapFiles = (dir: string): string[] =>
   fs.existsSync(path.join(dir, ROADMAPS_DIRECTORY))
@@ -80,7 +83,7 @@ test("a failed validation of a new file keeps the old file untouched and can be 
   // Make the read-back of the second new file see garbage, as if the write had been damaged.
   const originalRead = fs.readFileSync;
   t.mock.method(fs, "readFileSync", ((file: fs.PathOrFileDescriptor, ...rest: unknown[]) =>
-    String(file).endsWith(path.join(ROADMAPS_DIRECTORY, "path-2.json"))
+    String(file) === roadmapPath(dir, "path-2")
       ? "{ damaged"
       : (originalRead as (...args: unknown[]) => unknown)(file, ...rest)) as never);
 
@@ -151,12 +154,12 @@ test("a save writes only the changed roadmap, plus the index when membership cha
   }) as never);
 
   store.savePath({ ...second(), title: "Renamed second" });
-  assert.deepEqual(targets, [path.join(ROADMAPS_DIRECTORY, "path-2.json")], "order and membership unchanged: index not written");
+  assert.deepEqual(targets, [path.join(ROADMAPS_DIRECTORY, roadmapFileName("path-2"))], "order and membership unchanged: index not written");
 
   targets.length = 0;
   store.savePath(third());
   // The index goes first on a new id, so a crash in between leaves a listed roadmap with no file, never the reverse.
-  assert.deepEqual(targets, [path.join(ROADMAPS_DIRECTORY, ROADMAP_INDEX_FILE), path.join(ROADMAPS_DIRECTORY, "path-3.json")]);
+  assert.deepEqual(targets, [ROADMAP_INDEX_FILE, path.join(ROADMAPS_DIRECTORY, roadmapFileName("path-3"))]);
 
   targets.length = 0;
   store.savePath(third());
@@ -176,5 +179,71 @@ test("deleting a roadmap removes its file and its index entry", (t) => {
 
   const reopened = openLearningPathStore(dir);
   assert.deepEqual(reopened.paths(), [makePath()]);
-  assert.deepEqual(roadmapFiles(dir), [ROADMAP_INDEX_FILE, "path-linear-algebra.json"]);
+  assert.deepEqual(roadmapFiles(dir), [roadmapFileName("path-linear-algebra")]);
+  assert.equal(fs.existsSync(indexPath(dir)), true);
+});
+
+test("an id named index never overwrites the roadmap index", (t) => {
+  const dir = directory(t);
+  const store = openLearningPathStore(dir);
+  store.savePath(makePath());
+  const indexBefore = fs.readFileSync(indexPath(dir), "utf8");
+
+  store.savePath(named("index", "Index roadmap"));
+  store.savePath(named("index", "Index roadmap, renamed"));
+  assert.deepEqual(indexIds(dir), ["path-linear-algebra", "index"]);
+  assert.deepEqual(openLearningPathStore(dir).paths(), [makePath(), named("index", "Index roadmap, renamed")]);
+  assert.notEqual(fs.readFileSync(indexPath(dir), "utf8"), indexBefore);
+  assert.equal(JSON.parse(fs.readFileSync(indexPath(dir), "utf8")).schemaVersion, STORE_SCHEMA_VERSION);
+});
+
+test("ids differing only in case both survive, even on a case-insensitive file system", (t) => {
+  const dir = directory(t);
+  const store = openLearningPathStore(dir);
+  store.savePath(named("Foo", "Upper"));
+  store.savePath(named("foo", "Lower"));
+  store.savePath(named("Index", "Upper index"));
+  store.savePath(named("index", "Lower index"));
+
+  const names = roadmapFiles(dir).map((name) => name.toLowerCase());
+  assert.equal(new Set(names).size, 4, "four distinct file names under any letter case");
+  assert.deepEqual(
+    openLearningPathStore(dir).paths().map((roadmap) => [roadmap.id, roadmap.title]),
+    [["Foo", "Upper"], ["foo", "Lower"], ["Index", "Upper index"], ["index", "Lower index"]],
+  );
+});
+
+test("a save of a second roadmap does not overwrite the first", (t) => {
+  const dir = directory(t);
+  const store = openLearningPathStore(dir);
+  store.savePath(makePath());
+  const first = fs.readFileSync(roadmapPath(dir, "path-linear-algebra"), "utf8");
+  store.savePath(named("Index"));
+  store.savePath(named("index"));
+  assert.equal(fs.readFileSync(roadmapPath(dir, "path-linear-algebra"), "utf8"), first);
+});
+
+test("refuses ids whose file names would collide, ignoring case", () => {
+  const lossy = (id: string): string => id.toLowerCase();
+  assert.throws(() => assertRoadmapNameFree(["Foo"], "foo", lossy), (error: unknown) => error instanceof StoreError);
+  assert.throws(() => assertRoadmapNameFree(["index"], "Index", lossy), /share a file name/);
+  assert.doesNotThrow(() => assertRoadmapNameFree(["Foo"], "foo"), "the real encoding keeps case-variants apart");
+  assert.doesNotThrow(() => assertRoadmapNameFree(["foo"], "foo", lossy), "the same id is not a collision");
+});
+
+test("migration round-trip with ids index and case variants", (t) => {
+  const dir = directory(t);
+  const original = [named("index"), named("Index"), named("Foo"), named("foo")];
+  const legacyText = writeLegacy(dir, original);
+
+  const store = openLearningPathStore(dir);
+  assert.deepEqual(store.paths(), original);
+  assert.deepEqual(store.refusals(), []);
+  assert.deepEqual(indexIds(dir), ["index", "Index", "Foo", "foo"]);
+  assert.equal(new Set(roadmapFiles(dir).map((name) => name.toLowerCase())).size, 4);
+  for (const roadmap of original) {
+    assert.deepEqual(JSON.parse(fs.readFileSync(roadmapPath(dir, roadmap.id), "utf8")).roadmap, roadmap);
+  }
+  assert.equal(fs.readFileSync(path.join(dir, `${LEARNING_PATHS_FILE}.migrated`), "utf8"), legacyText);
+  assert.deepEqual(openLearningPathStore(dir).paths(), original);
 });

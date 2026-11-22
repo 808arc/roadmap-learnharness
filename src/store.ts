@@ -1,8 +1,8 @@
 /** Learning Path — versioned, atomic persistence under `ctx.dataDirectory`.
  *
  * Owns exactly these files:
- *   roadmaps/index.json      versioned roadmap order, ids and the migration marker
- *   roadmaps/<id>.json       one versioned file per roadmap
+ *   roadmaps-index.json      versioned roadmap order, ids and the migration marker
+ *   roadmaps/<stem>.json     one versioned file per roadmap; the stem is a hash of the id
  *   learning-paths.json      legacy single file; migrated once, then kept as
  *                            learning-paths.json.migrated
  *   settings.json            versioned plugin settings
@@ -38,7 +38,8 @@ import type {
 export const STORE_SCHEMA_VERSION = 1;
 export const LEARNING_PATHS_FILE = "learning-paths.json";
 export const ROADMAPS_DIRECTORY = "roadmaps";
-export const ROADMAP_INDEX_FILE = "index.json";
+/** The roadmap index sits in the data folder root, so no roadmap file name can ever reach it. */
+export const ROADMAP_INDEX_FILE = "roadmaps-index.json";
 /** Version of the one-time move from `learning-paths.json` to `roadmaps/`. */
 export const ROADMAP_MIGRATION_VERSION = 1;
 export const MIGRATED_LEGACY_SUFFIX = ".migrated";
@@ -221,9 +222,39 @@ export interface RoadmapRefusal {
 
 const ROADMAP_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
-/** `:` is valid in roadmap ids but not in every filesystem's names. `%` is never in an id, so this is reversible. */
+/** File stem of a roadmap: lowercase hex of the SHA-256 of its id, always 64 characters of [0-9a-f].
+ * Lowercase-only hex means no two stems differ only by case, so ids such as "Index" and "index"
+ * never collide on a case-insensitive file system. A fixed length keeps every name far below the
+ * 255-byte limit (a 128-character id written as plain hex would not fit). An id can never produce
+ * the index's name, and the id itself is stored inside the roadmap file. */
+export function roadmapFileStem(id: string): string {
+  return createHash("sha256").update(id, "utf8").digest("hex");
+}
+
+export function roadmapFileName(id: string): string {
+  return `${roadmapFileStem(id)}.json`;
+}
+
+/** Refuse `id` when its file name would collide with another listed id's, ignoring case.
+ * `nameOf` defaults to the real encoding; a test can pass a lossy one to exercise the rule. */
+export function assertRoadmapNameFree(
+  existingIds: Iterable<string>,
+  id: string,
+  nameOf: (candidate: string) => string = roadmapFileName,
+): void {
+  const wanted = nameOf(id).toLowerCase();
+  for (const other of existingIds) {
+    if (other !== id && nameOf(other).toLowerCase() === wanted) {
+      throw new StoreError(
+        "io",
+        `Roadmap "${id}" would share a file name with roadmap "${other}" on a case-insensitive file system. It was not saved.`,
+      );
+    }
+  }
+}
+
 function roadmapFilename(directory: string, id: string): string {
-  return path.join(directory, ROADMAPS_DIRECTORY, `${id.replace(/:/g, "%3A")}.json`);
+  return path.join(directory, ROADMAPS_DIRECTORY, roadmapFileName(id));
 }
 
 function pathExists(filename: string): boolean {
@@ -307,10 +338,11 @@ function loadRoadmapFile(filename: string, id: string): { roadmap: LearningPath;
 function migrateLegacyPaths(directory: string): void {
   const legacy = path.join(directory, LEARNING_PATHS_FILE);
   const roadmapsDirectory = path.join(directory, ROADMAPS_DIRECTORY);
-  const indexFilename = path.join(roadmapsDirectory, ROADMAP_INDEX_FILE);
+  const indexFilename = path.join(directory, ROADMAP_INDEX_FILE);
   // Corrupt, newer or symlinked legacy data is refused here, before anything is written.
   const { paths } = loadPathsFile(legacy);
   const ids = paths.map((roadmap) => roadmap.id);
+  ids.forEach((id, position) => assertRoadmapNameFree(ids.slice(0, position), id));
   const created: string[] = [];
   try {
     fs.mkdirSync(roadmapsDirectory, { recursive: true, mode: 0o700 });
@@ -582,7 +614,7 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
   const architectFilename = path.join(directory, ARCHITECT_FILE);
   const sourcesDirectory = path.join(directory, SOURCES_DIRECTORY);
   const roadmapsDirectory = path.join(directory, ROADMAPS_DIRECTORY);
-  const roadmapIndexFilename = path.join(roadmapsDirectory, ROADMAP_INDEX_FILE);
+  const roadmapIndexFilename = path.join(directory, ROADMAP_INDEX_FILE);
 
   // The one-time move runs only while the index is missing, so it never runs twice.
   if (!pathExists(roadmapIndexFilename) && pathExists(path.join(directory, LEARNING_PATHS_FILE))) {
@@ -724,6 +756,8 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
         roadmapState.set(parsed.id, { roadmap: parsed, revision: current.revision + 1 });
         return parsed;
       }
+      // A new id must not share a file name with a listed one; refuse rather than overwrite.
+      assertRoadmapNameFree(order, parsed.id);
       // An unlisted file of this name is a leftover; it is never overwritten.
       const filename = roadmapFilename(directory, parsed.id);
       if (pathExists(filename)) {

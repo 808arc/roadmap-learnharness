@@ -158,11 +158,11 @@ Settings → Roadmap:
 ## Data
 
 Everything lives in the plugin's own data folder (`<plugins>/roadmap-learnharness/data/`):
-`roadmaps/` (one file per roadmap plus `index.json`; an older `learning-paths.json` is
-moved there once and kept as `learning-paths.json.migrated`), `settings.json`, `architect.json`, `sources/`, `research/`
-(research notes), `research-chats.json`, `secrets/` (only if you save your own
-search key) and the host-managed `agents/`. Records are versioned and written atomically; corrupt or
-newer files are refused rather than overwritten. Roadmap never deletes native
+`roadmaps/` (one file per roadmap, named by a hash of its id), `roadmaps-index.json`, `settings.json`,
+`architect.json`, `sources/`, `research/` (research notes), `research-chats.json`, `secrets/` (only if
+you save your own search key) and the host-managed `agents/`. An older `learning-paths.json` is read
+once to write the roadmap files; it stays in the data folder as `learning-paths.json.migrated`.
+Records are versioned and written atomically; corrupt or newer files are refused rather than overwritten. Roadmap never deletes native
 chats or Knowledge Graph records.
 
 ## Development
