@@ -1,4 +1,4 @@
-/** Local, metadata-only timing log for the Architect (`<data>/logs/architect.jsonl`).
+/** Local, metadata-only timing log for the Architect (`<data>/logs/architect-runs.jsonl`).
  *
  * One JSON object per line. Every step writes a `step.start` and a `step.end`
  * line; the end line carries `durationMs` and `ok`. Callers pass counts, sizes,
@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const LOG_DIRECTORY = "logs";
-export const ARCHITECT_LOG_FILE = "architect.jsonl";
+export const ARCHITECT_LOG_FILE = "architect-runs.jsonl";
 /** Size at which the file is trimmed to its newest half. */
 export const LOG_MAX_BYTES = 512 * 1024;
 

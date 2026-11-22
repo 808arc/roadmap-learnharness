@@ -1,7 +1,7 @@
 /** Learning Path — the persistent Path Architect and its server-side tools.
  *
  * One plugin-owned agent definition is registered with `ctx.agents.register`.
- * Registration is reconstructed on every activation from `architect.json`, so a
+ * Registration is reconstructed on every activation from `architect-model.json`, so a
  * saved conversation keeps working after a restart; unregistering cancels its
  * active runs but never deletes conversation records.
  *
