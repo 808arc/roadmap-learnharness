@@ -90,6 +90,8 @@ test("built backend activates and answers its operation", () => {
       },
       registerInstructions: () => () => {},
       registerTools: () => () => {},
+      // A fresh install now defaults to an explicit (cheapest) model, so activation registers the Architect.
+      agents: { register: () => () => {} },
     });
     assert.deepEqual(handlers.get("paths.status")(), {
       id: "roadmap-learnharness",
