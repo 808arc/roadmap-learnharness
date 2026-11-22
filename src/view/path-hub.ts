@@ -142,14 +142,13 @@ export function mountPathHub(
   // ── Toolbar ──────────────────────────────────────────────────────────
   const toolbar = el(document, "header", "rm-top");
   const crumb = el(document, "div", "rm-crumb");
-  const crumbRoot = el(document, "span", "rm-crumb-root");
   const pathSwitch = el(document, "button", "rm-crumb-path");
   pathSwitch.type = "button";
   const pathSwitchTitle = el(document, "span");
   const pathSwitchChevron = el(document, "span", "rm-crumb-chevron");
   setIcon(pathSwitchChevron, ICONS.chevronDown);
   pathSwitch.append(pathSwitchTitle, pathSwitchChevron);
-  crumb.append(crumbRoot, el(document, "span", "rm-crumb-sep", "/"), pathSwitch);
+  crumb.append(pathSwitch);
   const spine = el(document, "span", "rm-top-spine");
   const segment = el(document, "div", "rm-seg");
   const graphTab = el(document, "button");
@@ -309,7 +308,6 @@ export function mountPathHub(
 
   // ── Rendering ────────────────────────────────────────────────────────
   function renderToolbar(): void {
-    crumbRoot.textContent = t("crumb.root");
     pathSwitchTitle.textContent = path?.title ?? summaries.find((entry) => entry.id === selectedPathId)?.title ?? "—";
     pathSwitch.disabled = summaries.length === 0;
     spine.textContent = path ? spineLabel(path) : "";
