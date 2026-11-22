@@ -222,6 +222,18 @@ export interface RoadmapRefusal {
 
 const ROADMAP_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
+/** True when this data folder already holds Roadmap data in any layout, so one-time importers must not run.
+ * Covers the legacy file, the split layout and the migrated copy kept after the split. */
+export function hasRoadmapData(dataDirectory: string): boolean {
+  const present = (name: string): boolean => fs.lstatSync(path.join(dataDirectory, name), { throwIfNoEntry: false }) !== undefined;
+  return (
+    present(LEARNING_PATHS_FILE) ||
+    present(ROADMAP_INDEX_FILE) ||
+    present(ROADMAPS_DIRECTORY) ||
+    present(`${LEARNING_PATHS_FILE}${MIGRATED_LEGACY_SUFFIX}`)
+  );
+}
+
 /** File stem of a roadmap: lowercase hex of the SHA-256 of its id, always 64 characters of [0-9a-f].
  * Lowercase-only hex means no two stems differ only by case, so ids such as "Index" and "index"
  * never collide on a case-insensitive file system. A fixed length keeps every name far below the

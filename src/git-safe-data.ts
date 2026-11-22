@@ -9,7 +9,7 @@
  *   secrets/          search-key.json (plain-text API key)          -> ignored
  *   logs/             architect.jsonl (timing log)                  -> ignored
  *   *.tmp             leftovers of an interrupted atomic write      -> ignored
- *   roadmaps/ (index.json and one file per roadmap), settings.json, architect.json,
+ *   roadmaps-index.json and roadmaps/ (one file per roadmap), settings.json, architect.json,
  *   sources/, research/, research-chats.json, declined-proposals.json -> versioned
  * The plugin keeps no on-disk cache, so there is no cache folder to ignore.
  */
