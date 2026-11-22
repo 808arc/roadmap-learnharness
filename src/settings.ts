@@ -44,6 +44,8 @@ import { mountResearchSettings } from "./research-settings.ts";
 import { DEFAULT_DISPLAY, LANGUAGE_PREFERENCES, VIEW_MODES } from "./domain.ts";
 import type { DisplaySettings, LanguagePreference, ViewMode } from "./domain.ts";
 
+const VIEW_LABELS: Record<ViewMode, MessageKey> = { tree: "view.tree", graph: "view.graph", list: "view.list" };
+
 interface PathSummary {
   readonly id: string;
   readonly title: string;
@@ -286,9 +288,9 @@ export function mountSettingsPage(
         key: "display-view",
         type: "dropdown" as const,
         label: t("s.defaultView"),
-        description: t("s.defaultViewDesc"),
+        description: t("s.defaultViewHelp"),
         value: display.defaultView,
-        options: VIEW_MODES.map((value) => ({ value, label: t(value === "graph" ? "view.graph" : "view.tree") })),
+        options: VIEW_MODES.map((value) => ({ value, label: t(VIEW_LABELS[value]) })),
         onChange: (value: string) =>
           void saveSettings({ ...settings, display: { ...currentDisplay(), defaultView: value as ViewMode } }),
       },

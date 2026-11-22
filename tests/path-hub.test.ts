@@ -139,8 +139,8 @@ test("the graph lays modules bottom-up, expands the working module and follows s
     assert.equal(inspector(fixture).dataset.nodeId, "n-contrast");
     assert.equal(root.querySelector<HTMLElement>(".rm-box-focus")!.dataset.moduleId, "module-synthesis");
 
-    // Tree view lists modules and nodes; selection survives switching views.
-    toolbar(fixture, "Tree").click();
+    // List view lists modules and nodes as text; selection survives switching views.
+    toolbar(fixture, "List").click();
     await fixture.flush();
     assert.equal(root.querySelector<HTMLElement>(".rm-viewport")!.hidden, true);
     assert.equal(root.querySelector<HTMLElement>(".rm-tree")!.hidden, false);

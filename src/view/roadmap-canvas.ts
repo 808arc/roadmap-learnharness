@@ -1,4 +1,5 @@
-/** Roadmap canvas: the bottom-up graph (pan + zoom) and the tree view.
+/** Roadmap canvas: the module tree (module frames, pan + zoom), the flat graph (nodes and
+ * arrows, pan + zoom) and the list (nested text, no canvas).
  *
  * Controlled component: `render` receives the authoritative path and UI state;
  * clicks are reported through callbacks. All listeners belong to the signal.
@@ -8,10 +9,11 @@ import { locale, t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import type { NodePrerequisites } from "../node-catalog-link.ts";
 import { ICONS, setIcon, statusIcon } from "./icons.ts";
-import { buildDependencyGraph, isDone, layoutRoadmap, moduleCounts } from "./roadmap-layout.ts";
+import { buildDependencyGraph, isDone, layoutGraph, layoutRoadmap, moduleCounts } from "./roadmap-layout.ts";
 import type { PlacedModule, RoadmapLayout } from "./roadmap-layout.ts";
 
-export type ViewMode = "graph" | "tree";
+/** "tree": module frames around their nodes; "graph": nodes and arrows only; "list": nested text. */
+export type ViewMode = "tree" | "graph" | "list";
 
 export interface CanvasState {
   readonly path: LearningPath;
@@ -96,8 +98,7 @@ export function createRoadmapCanvas(
   let scale = 1;
   let tx = 0;
   let ty = 0;
-  let placedPathId: string | null = null;
-  let focusModuleId: string | null = null;
+  let placedViewKey: string | null = null;
   /** Tree rows whose children the learner collapsed; everything else starts expanded. */
   const collapsedTreeNodes = new Set<string>();
   let disposed = false;
@@ -331,12 +332,11 @@ export function createRoadmapCanvas(
     return svg;
   };
 
+  /** The pannable canvas: module frames in the tree view, bare nodes and arrows in the graph view. */
   const renderGraph = (current: CanvasState): void => {
-    layout = layoutRoadmap(current.path, {
-      expandedModuleId: current.expandedModuleId,
-      showOptional: current.showOptional,
-      prerequisites: current.prerequisites,
-    });
+    const withModules = current.view === "tree";
+    const options = { showOptional: current.showOptional, prerequisites: current.prerequisites };
+    layout = withModules ? layoutRoadmap(current.path, { ...options, expandedModuleId: current.expandedModuleId }) : layoutGraph(current.path, options);
     stage.style.width = `${layout.width}px`;
     stage.style.height = `${layout.height}px`;
     const children: Element[] = [renderEdges(layout)];
@@ -353,27 +353,23 @@ export function createRoadmapCanvas(
       children.push(nodeButton(placed.node, placed.node.id === current.selectedNodeId, placed.x, placed.y, placed.w));
     }
     stage.replaceChildren(...children);
-    const pathChanged = placedPathId !== current.path.id;
-    const expandedChanged = focusModuleId !== current.expandedModuleId;
-    placedPathId = current.path.id;
-    focusModuleId = current.expandedModuleId;
-    if (pathChanged) {
+    const viewKey = `${current.path.id}\u0000${current.view}`;
+    const viewChanged = placedViewKey !== viewKey;
+    placedViewKey = viewKey;
+    if (viewChanged) {
       scale = 1;
       // Wait one frame so the viewport has its real size on first mount.
       const schedule = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => setTimeout(run, 0);
       schedule(() => {
-        if (!disposed) focus(current.expandedModuleId);
+        if (!disposed) focus(withModules ? current.expandedModuleId : null);
       });
-    } else if (expandedChanged) {
-      clampPan();
-      applyTransform();
     } else {
       clampPan();
       applyTransform();
     }
   };
 
-  /** Nested tree: each node sits under its deepest prerequisite, one indent per dependency level.
+  /** The list view: each node sits under its deepest prerequisite, one indent per dependency level.
    * Any number of children; a row's toggle collapses only that row's children. */
   const renderTree = (current: CanvasState): void => {
     const graph = buildDependencyGraph(current.path, { showOptional: current.showOptional, prerequisites: current.prerequisites });
@@ -478,14 +474,13 @@ export function createRoadmapCanvas(
       if (disposed || signal.aborted) return;
       state = next;
       root.dataset.view = next.view;
-      viewport.hidden = next.view !== "graph";
-      controls.hidden = next.view !== "graph";
-      tree.hidden = next.view !== "tree";
-      legend.hidden = !next.showLegend || next.view !== "graph";
+      viewport.hidden = next.view === "list";
+      controls.hidden = next.view === "list";
+      tree.hidden = next.view !== "list";
+      legend.hidden = !next.showLegend || next.view === "list";
       renderLegend();
-      if (next.view === "graph") renderGraph(next);
-      else renderTree(next);
-      void state;
+      if (next.view === "list") renderTree(next);
+      else renderGraph(next);
     },
     dispose() {
       if (disposed) return;

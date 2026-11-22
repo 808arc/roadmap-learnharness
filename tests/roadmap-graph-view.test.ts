@@ -10,7 +10,8 @@ import type { MessageKey } from "../src/i18n.ts";
 import type { NodePrerequisites } from "../src/node-catalog-link.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
-import { ROW, SUB_H, buildDependencyGraph, layoutRoadmap } from "../src/view/roadmap-layout.ts";
+import { DEFAULT_DISPLAY, VIEW_MODES, parsePluginSettings, validatePluginSettings } from "../src/domain.ts";
+import { ROW, SUB_H, buildDependencyGraph, layoutGraph, layoutRoadmap } from "../src/view/roadmap-layout.ts";
 import { makeNode, makePath } from "./fixtures.ts";
 
 const { parseHTML } = createRequire(import.meta.url)("linkedom") as {
@@ -137,7 +138,7 @@ test("the graph and the tree both render all five children of a node, and the tr
     for (const id of ["root", "one", "two", "three", "four", "five"]) assert.ok(graphIds.includes(id), `graph shows ${id}`);
     assert.equal(host.querySelectorAll(".rm-edges line").length >= 5, true, "five arrows are drawn");
 
-    canvas.render(state("tree"));
+    canvas.render(state("list"));
     const rows = () => [...host.querySelectorAll<HTMLElement>(".rm-tree .rm-tree-row .rm-tree-node")].map((node) => node.dataset.nodeId);
     assert.deepEqual(rows(), ["root", "one", "two", "three", "four", "five"]);
     const indents = [...host.querySelectorAll<HTMLElement>(".rm-tree .rm-tree-row")].map((row) => row.style.paddingLeft);
@@ -155,7 +156,7 @@ test("the graph and the tree both render all five children of a node, and the tr
 });
 
 test("the new interface strings exist in both languages", () => {
-  const keys: MessageKey[] = ["legend.arrow", "legend.moduleOrder", "tree.expand", "tree.collapse", "tree.alsoAfter"];
+  const keys: MessageKey[] = ["legend.arrow", "legend.moduleOrder", "tree.expand", "tree.collapse", "tree.alsoAfter", "view.list", "s.defaultViewHelp"];
   try {
     for (const key of keys) {
       setLocale("en");
@@ -167,8 +168,78 @@ test("the new interface strings exist in both languages", () => {
     }
     setLocale("ru");
     assert.equal(t("tree.expand"), "Развернуть");
+    assert.equal(t("view.list"), "Список");
     assert.equal(locale(), "ru");
   } finally {
     setLocale("en");
   }
+});
+
+test("the three views render: the module tree by default, the bare graph, and the nested list", () => {
+  const parent = makeNode("root", "concept");
+  const children = ["one", "two"].map((id) => makeNode(id, "skill"));
+  const nodes = [parent, ...children];
+  const after = Object.fromEntries(children.map((child) => [child.id, ["root"]]));
+  const { document } = parseHTML("<!doctype html><html><body><div id=\"host\"></div></body></html>");
+  const host = document.getElementById("host") as HTMLElement;
+  const controller = new AbortController();
+  const canvas = createRoadmapCanvas(document as unknown as Document, host, controller.signal, {
+    selectNode() {},
+    toggleModule() {},
+  });
+  const state = (view: CanvasState["view"]): CanvasState => ({
+    path: pathWith(nodes),
+    selectedNodeId: null,
+    expandedModuleId: null,
+    view,
+    showOptional: true,
+    showLegend: false,
+    prerequisites: prerequisites(after, nodes),
+  });
+  const visible = (selector: string): boolean => !host.querySelector<HTMLElement>(selector)!.hidden;
+  try {
+    assert.equal(DEFAULT_DISPLAY.defaultView, "tree", "the default view is the tree");
+    assert.deepEqual([...VIEW_MODES], ["tree", "graph", "list"]);
+
+    canvas.render(state("tree"));
+    assert.ok(host.querySelector(".rm-box[data-module-id=\"module-graph\"]"), "tree draws the module frame");
+    assert.ok(visible(".rm-viewport") && host.querySelector<HTMLElement>(".rm-tree")!.hidden, "tree shows the canvas, not the list");
+
+    canvas.render(state("graph"));
+    assert.equal(host.querySelectorAll(".rm-box").length, 0, "graph draws no module boxes");
+    assert.equal(host.querySelectorAll(".rm-stage .rm-node").length, 3, "graph shows every node");
+    assert.equal(host.querySelectorAll(".rm-edges line").length, 2, "graph draws the arrows");
+    assert.ok(visible(".rm-viewport") && host.querySelector<HTMLElement>(".rm-tree")!.hidden, "graph shows the canvas, not the list");
+
+    canvas.render(state("list"));
+    const rows = host.querySelectorAll<HTMLElement>(".rm-tree .rm-tree-row");
+    assert.equal(rows.length, 3, "the list shows every node");
+    assert.equal(rows[1]!.querySelector(".rm-tree-node")!.getAttribute("data-node-id"), "one");
+    assert.equal(rows[1]!.style.paddingLeft, "18px", "children are nested one level in");
+    assert.ok(visible(".rm-tree") && host.querySelector<HTMLElement>(".rm-viewport")!.hidden, "list shows only the text tree");
+  } finally {
+    canvas.dispose();
+    controller.abort();
+  }
+});
+
+test("the graph layout has no module frames and places each node by dependency depth", () => {
+  const nodes = [makeNode("a", "concept"), makeNode("b", "skill"), makeNode("c", "skill")];
+  const layout = layoutGraph(pathWith(nodes), {
+    showOptional: true,
+    prerequisites: prerequisites({ b: ["a"], c: ["a"] }, nodes),
+  });
+  assert.deepEqual(layout.modules, [], "no module frames");
+  const depth = (id: string): number => layout.nodes.find((placed) => placed.node.id === id)!.depth;
+  assert.deepEqual([depth("a"), depth("b"), depth("c")], [0, 1, 1]);
+  assert.deepEqual(layout.edges.map((edge) => `${edge.from}->${edge.to}`).sort(), ["a->b", "a->c"]);
+  assert.ok(layout.nodes.every((placed) => placed.moduleId === "module-graph"), "nodes keep their module id");
+});
+
+test("old and new default-view settings validate; an unknown view is rejected", () => {
+  for (const view of ["graph", "tree", "list"]) {
+    assert.equal(parsePluginSettings({ artifactDefaults: {}, display: { defaultView: view } }).display?.defaultView, view);
+  }
+  assert.equal((parsePluginSettings({ artifactDefaults: {} }).display ?? DEFAULT_DISPLAY).defaultView, "tree", "no saved value: tree");
+  assert.equal(validatePluginSettings({ artifactDefaults: {}, display: { defaultView: "kanban" } }).ok, false);
 });
