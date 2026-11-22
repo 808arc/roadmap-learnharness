@@ -27,7 +27,7 @@ export const MANIFEST: PluginManifest = {
   apiVersion: 1,
   id: "roadmap-learnharness",
   name: "Roadmap",
-  version: "0.4.0",
+  version: "0.4.1",
   minAppVersion: "0.6.0",
   main: "main.js",
   backend: "backend.cjs",
