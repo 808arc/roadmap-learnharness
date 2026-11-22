@@ -34,7 +34,6 @@ import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
 import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
 import {
   MAX_TOPICS_PER_BATCH,
-  TOPIC_READ_CONCURRENCY,
   UPSTREAM_REPOSITORY,
   UpstreamError,
   assertSlug,
@@ -42,6 +41,7 @@ import {
   mapWithConcurrency,
   prefetchRoadmapTopics,
   readTopic,
+  topicReadConcurrency,
 } from "./upstream-roadmaps.ts";
 import type { UpstreamErrorKind, UpstreamOptions, UpstreamTopic } from "./upstream-roadmaps.ts";
 
@@ -906,8 +906,8 @@ async function readTopicBatch(roadmapSlug: unknown, topicSlugs: unknown, upstrea
     throw new UpstreamError("invalid", `topicSlugs may name at most ${MAX_TOPICS_PER_BATCH} topics per call.`);
   }
   const slugs = topicSlugs.map((slug, index) => assertSlug(slug, `topicSlugs[${index}]`));
-  // At most TOPIC_READ_CONCURRENCY requests in flight; results keep the order the slugs were given in.
-  const results = await mapWithConcurrency(slugs, TOPIC_READ_CONCURRENCY, async (slug): Promise<TopicBatchResult> => {
+  // At most topicReadConcurrency(upstream) requests in flight; results keep the order the slugs were given in.
+  const results = await mapWithConcurrency(slugs, topicReadConcurrency(upstream), async (slug): Promise<TopicBatchResult> => {
     try {
       return { slug, ok: true, topic: await readTopic(roadmap, slug, upstream.commit, upstream) };
     } catch (error) {

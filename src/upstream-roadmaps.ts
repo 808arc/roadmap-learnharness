@@ -46,8 +46,51 @@ export type UpstreamFetch = (
 export const UPSTREAM_TIMEOUT_MS = 15_000;
 /** Most topics one batch read may name (read_roadmap_topics). The Architect prompt states the same cap. */
 export const MAX_TOPICS_PER_BATCH = 10;
-/** Most topic requests in flight at once, for a batch read or a background prefetch. */
+/** Most topic requests in flight at once to GitHub, for a batch read or a background prefetch. */
 export const TOPIC_READ_CONCURRENCY = 12;
+/** Most topic reads in flight at once from the local clone (file reads; see src/upstream-clone.ts). */
+export const LOCAL_TOPIC_READ_CONCURRENCY = 32;
+
+/** Topic reads in flight at once for these options: the local limit when a local copy is given, else the GitHub one. */
+export function topicReadConcurrency(options: { readonly local?: LocalRoadmapSource }): number {
+  return options.local ? LOCAL_TOPIC_READ_CONCURRENCY : TOPIC_READ_CONCURRENCY;
+}
+
+/** A local copy of the topic files at the pinned commit. Reads return null when the copy cannot answer
+ * (not ready, the folder or file is missing, or the name is refused); the caller then uses GitHub. */
+export interface LocalRoadmapSource {
+  /** Names in roadmaps/<roadmap>/content, or null when that folder is not available locally. */
+  listFiles(roadmap: string): Promise<readonly string[] | null>;
+  /** Text of one file in that folder, or null when it is not available locally. */
+  readFile(roadmap: string, file: string): Promise<string | null>;
+}
+
+/** Runs `work` with at most `limit` in flight; the rest wait in order. */
+function createLimiter(limit: number): <T>(work: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  return async <T>(work: () => Promise<T>): Promise<T> => {
+    if (active >= limit) await new Promise<void>((resolve) => waiting.push(resolve));
+    active += 1;
+    try {
+      return await work();
+    } finally {
+      active -= 1;
+      waiting.shift()?.();
+    }
+  };
+}
+
+/** One GitHub gate per fetch function, so every GitHub request in the process stays under TOPIC_READ_CONCURRENCY. */
+const githubGates = new WeakMap<UpstreamFetch, ReturnType<typeof createLimiter>>();
+function githubGate(fetchFn: UpstreamFetch): ReturnType<typeof createLimiter> {
+  let gate = githubGates.get(fetchFn);
+  if (!gate) {
+    gate = createLimiter(TOPIC_READ_CONCURRENCY);
+    githubGates.set(fetchFn, gate);
+  }
+  return gate;
+}
 
 /** Wrap a real fetch so every request is bounded by `timeoutMs`. The caller's init is passed through unchanged. */
 export function withUpstreamTimeout(
@@ -59,6 +102,8 @@ export function withUpstreamTimeout(
 
 export interface UpstreamOptions {
   readonly fetch: UpstreamFetch;
+  /** Local copy of the pinned topic files (src/upstream-clone.ts). Tried first; any miss falls back to GitHub. */
+  readonly local?: LocalRoadmapSource;
   /** Topic listings already read, keyed by roadmap and commit. Optional: when given, a listing is fetched once
    * and reused, because a pinned commit never changes. A failed read is not kept, so the next call retries. */
   readonly listings?: Map<string, Promise<UpstreamTopicRef[]>>;
@@ -144,7 +189,7 @@ const HEADERS_RAW = { ...HEADERS_JSON, Accept: "application/vnd.github.raw" } as
 async function request(fetchFn: UpstreamFetch, url: string, headers: Readonly<Record<string, string>>, what: string): Promise<string> {
   let response: UpstreamResponse;
   try {
-    response = await fetchFn(url, { headers });
+    response = await githubGate(fetchFn)(() => fetchFn(url, { headers }));
   } catch {
     throw new UpstreamError("unreachable", `GitHub could not be reached while reading ${what}.`);
   }
@@ -157,7 +202,8 @@ async function request(fetchFn: UpstreamFetch, url: string, headers: Readonly<Re
   }
 }
 
-/** Topic files of one roadmap at one commit. With `options.listings`, the listing is read once per roadmap and commit. */
+/** Topic files of one roadmap at one commit. The local copy answers when it has the folder; otherwise GitHub does.
+ * With `options.listings`, a GitHub listing is read once per roadmap and commit. */
 export async function listRoadmapTopics(
   roadmapSlug: string,
   commit: string,
@@ -165,6 +211,12 @@ export async function listRoadmapTopics(
 ): Promise<UpstreamTopicRef[]> {
   const roadmap = assertSlug(roadmapSlug, "roadmapSlug");
   const sha = assertCommit(commit);
+  const local = await localTopicListing(roadmap, options);
+  if (local) return local;
+  return githubTopicListing(roadmap, sha, options);
+}
+
+function githubTopicListing(roadmap: string, sha: string, options: UpstreamOptions): Promise<UpstreamTopicRef[]> {
   const cache = options.listings;
   const key = `${roadmap}@${sha}`;
   const cached = cache?.get(key);
@@ -179,6 +231,30 @@ export async function listRoadmapTopics(
   return pending;
 }
 
+/** Topic refs from a folder's file names; names that are not topic files are ignored. */
+function topicRefsOf(names: readonly unknown[]): UpstreamTopicRef[] {
+  const topics: UpstreamTopicRef[] = [];
+  for (const name of names) {
+    if (typeof name !== "string") continue;
+    const match = TOPIC_FILE_PATTERN.exec(name);
+    if (match) topics.push({ slug: match[1] as string, file: name });
+  }
+  return topics;
+}
+
+/** The local listing, or null when the local copy does not have the folder (or it is empty): GitHub answers then. */
+async function localTopicListing(roadmap: string, options: UpstreamOptions): Promise<UpstreamTopicRef[] | null> {
+  if (!options.local) return null;
+  try {
+    const names = await options.local.listFiles(roadmap);
+    if (!names) return null;
+    const topics = topicRefsOf(names);
+    return topics.length > 0 ? topics : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchTopicListing(roadmap: string, sha: string, options: UpstreamOptions): Promise<UpstreamTopicRef[]> {
   const body = await request(options.fetch, contentsUrl(roadmap, sha), HEADERS_JSON, `roadmap "${roadmap}"`);
   let entries: unknown;
@@ -188,14 +264,7 @@ async function fetchTopicListing(roadmap: string, sha: string, options: Upstream
     throw new UpstreamError("unreachable", `GitHub returned an unreadable listing for roadmap "${roadmap}".`);
   }
   if (!Array.isArray(entries)) throw new UpstreamError("not_found", `Roadmap "${roadmap}" has no content folder.`);
-  const topics: UpstreamTopicRef[] = [];
-  for (const entry of entries) {
-    const name = (entry as { name?: unknown } | null)?.name;
-    if (typeof name !== "string") continue;
-    const match = TOPIC_FILE_PATTERN.exec(name);
-    if (match) topics.push({ slug: match[1] as string, file: name });
-  }
-  return topics;
+  return topicRefsOf(entries.map((entry) => (entry as { name?: unknown } | null)?.name));
 }
 
 /** Title, description and tagged resources of one topic, as the file writes them. */
@@ -268,17 +337,29 @@ async function readTopicCache(cache: TopicDiskCache | undefined, roadmap: string
   }
 }
 
+/** The topic file's text from the local copy, or null when any part of it is missing there. */
+async function readLocalTopic(roadmap: string, topic: string, options: UpstreamOptions): Promise<string | null> {
+  if (!options.local) return null;
+  const ref = (await localTopicListing(roadmap, options))?.find((candidate) => candidate.slug === topic);
+  if (!ref) return null;
+  try {
+    return await options.local.readFile(roadmap, ref.file);
+  } catch {
+    return null;
+  }
+}
+
+/** The topic file's text from GitHub at the pinned commit. */
+async function githubTopicMarkdown(roadmap: string, topic: string, sha: string, options: UpstreamOptions): Promise<string> {
+  const ref = (await githubTopicListing(roadmap, sha, options)).find((candidate) => candidate.slug === topic);
+  if (!ref) throw new UpstreamError("not_found", `Topic "${topic}" was not found in roadmap "${roadmap}".`);
+  return request(options.fetch, contentsUrl(roadmap, sha, ref.file), HEADERS_RAW, `topic "${topic}" of roadmap "${roadmap}"`);
+}
+
 async function loadTopic(roadmap: string, topic: string, sha: string, options: UpstreamOptions): Promise<UpstreamTopic> {
   const cached = await readTopicCache(options.topicCache, roadmap, topic, sha);
   if (cached) return cached;
-  const ref = (await listRoadmapTopics(roadmap, sha, options)).find((candidate) => candidate.slug === topic);
-  if (!ref) throw new UpstreamError("not_found", `Topic "${topic}" was not found in roadmap "${roadmap}".`);
-  const markdown = await request(
-    options.fetch,
-    contentsUrl(roadmap, sha, ref.file),
-    HEADERS_RAW,
-    `topic "${topic}" of roadmap "${roadmap}"`,
-  );
+  const markdown = (await readLocalTopic(roadmap, topic, options)) ?? (await githubTopicMarkdown(roadmap, topic, sha, options));
   if (markdown.length > MAX_TOPIC_CHARS) throw new UpstreamError("invalid", `Topic "${topic}" is larger than the reader accepts.`);
   const result: UpstreamTopic = {
     roadmap,
@@ -329,7 +410,7 @@ export async function prefetchRoadmapTopics(
   try {
     const roadmap = assertSlug(roadmapSlug, "roadmapSlug");
     const sha = assertCommit(commit);
-    await mapWithConcurrency(topicSlugs, TOPIC_READ_CONCURRENCY, (slug) =>
+    await mapWithConcurrency(topicSlugs, topicReadConcurrency(options), (slug) =>
       readTopic(roadmap, slug, sha, options).then(
         () => undefined,
         () => undefined,

@@ -46,10 +46,22 @@ import {
 import type { ArchitectRegistration } from "./architect-agent.ts";
 import { UPSTREAM_PINNED_COMMIT, withUpstreamTimeout } from "./upstream-roadmaps.ts";
 import { createTopicDiskCache } from "./topic-cache.ts";
+import { createLocalRoadmapCopy } from "./upstream-clone.ts";
+import type { LocalRoadmapCopy } from "./upstream-clone.ts";
 import type { UpstreamFetch } from "./upstream-roadmaps.ts";
 
 /** The only network seam of the Architect's upstream reads (issue #19). Tests inject their own. */
 const upstreamFetch: UpstreamFetch = withUpstreamTimeout((url, init) => fetch(url, init));
+
+/** The local clone of the pinned topic files, one per data folder: created once, so registrations share it. */
+let localRoadmaps: { readonly directory: string; readonly copy: LocalRoadmapCopy } | null = null;
+function localRoadmapCopy(dataDirectory: string): LocalRoadmapCopy {
+  const directory = nodePath.join(dataDirectory, "upstream", "developer-roadmap");
+  if (localRoadmaps?.directory !== directory) {
+    localRoadmaps = { directory, copy: createLocalRoadmapCopy({ directory, commit: UPSTREAM_PINNED_COMMIT }) };
+  }
+  return localRoadmaps.copy;
+}
 import type { GraphBrief } from "./graph-brief.ts";
 import { deriveMastery } from "./learner-map.ts";
 import { propositionsForChats } from "./node-propositions.ts";
@@ -514,6 +526,7 @@ export function activate(ctx: PluginBackendContext): void {
         fetch: upstreamFetch,
         commit: UPSTREAM_PINNED_COMMIT,
         topicCache: createTopicDiskCache(nodePath.join(ctx.dataDirectory, "topic-cache")),
+        local: localRoadmapCopy(ctx.dataDirectory),
         readGraph: () => learnerGraphBrief(ctx),
       },
       log: architectLog,
