@@ -236,6 +236,7 @@ export function mountPathHub(
       return unlinkSession(chatId);
     },
     knowledgeMastery: () => mastery,
+    showPatternHints: () => display.patternHints,
     chatStatus: chatStatuses,
     selectNode(nodeId) {
       selectNode(nodeId);

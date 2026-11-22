@@ -146,7 +146,7 @@ test("node marks, outcomes and resources validate, and bad links are refused", (
 test("display settings default sensibly and reject unknown values", () => {
   assert.deepEqual(parsePluginSettings({ artifactDefaults: {} }), { artifactDefaults: {} });
   const parsed = parsePluginSettings({ artifactDefaults: {}, display: { language: "ru" }, contentLanguage: "en" });
-  assert.deepEqual(parsed.display, { language: "ru", defaultView: "graph", showOptional: true });
+  assert.deepEqual(parsed.display, { language: "ru", defaultView: "graph", showOptional: true, patternHints: true });
   assert.equal(parsed.contentLanguage, "en");
   assert.throws(() => parsePluginSettings({ artifactDefaults: {}, display: { defaultView: "kanban" } }));
 });

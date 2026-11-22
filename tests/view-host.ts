@@ -224,7 +224,7 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
   const mastery = options.mastery ?? [];
   for (const path of options.paths ?? []) paths.set(path.id, structuredClone(path));
   // Tests pin English so assertions do not depend on the machine language.
-  let settingsState: PluginSettings = options.settings ?? { artifactDefaults: {}, display: { language: "en", defaultView: "graph", showOptional: true } };
+  let settingsState: PluginSettings = options.settings ?? { artifactDefaults: {}, display: { language: "en", defaultView: "graph", showOptional: true, patternHints: true } };
   // A fixture path normally points at live chats; tests delete one to model a
   // deleted native session instead of every fixture starting "missing".
   for (const path of paths.values()) {

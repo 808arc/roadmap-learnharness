@@ -1021,6 +1021,7 @@
 .rm-insp-foot {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 12px 18px 14px;
   border-top: 1px solid var(--rm-line);
@@ -1028,6 +1029,14 @@
 
 .rm-insp-foot .rm-push {
   margin-left: auto;
+}
+
+.rm-insp-foot .rm-insp-hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--rm-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 /* Errors ---------------------------------------------------------------- */

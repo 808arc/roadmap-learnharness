@@ -24,6 +24,7 @@ import { locale, t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import type { Mastery } from "../learner-map.ts";
 import { nodeEvidence } from "../node-evidence.ts";
+import { nodePatternHintKey } from "../pattern-hint.ts";
 import type { EvidenceSuggestion, NodeEvidence } from "../node-evidence.ts";
 import type { SessionStatus } from "../session-types.ts";
 import { button, el, shortDate } from "./dom.ts";
@@ -55,6 +56,8 @@ export interface NodeInspectorOptions {
   errorsContainer?: HTMLElement;
   /** Knowledge Graph mastery for "studied elsewhere" evidence, read on each render. Absent: no evidence block. */
   knowledgeMastery?(): readonly Mastery[];
+  /** Read on each render: whether the one-line question-template hint shows. Absent means shown. */
+  showPatternHints?(): boolean;
 }
 
 export interface NodeInspector {
@@ -363,6 +366,8 @@ export function createNodeInspector(
         }),
       );
     }
+    const hintKey = options.showPatternHints?.() === false ? null : nodePatternHintKey(node.type);
+    if (hintKey) footer.append(el(document, "p", "rm-insp-hint", t(hintKey)));
   };
 
   return {
