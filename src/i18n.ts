@@ -383,6 +383,15 @@ const en = {
   "s.defaultViewHelp": "Tree draws modules as blocks; Graph draws nodes and arrows only.",
   // Open a node as a chat (latest linked chat, or a new Lesson). New blocks go at the end of the table.
   "action.openNode": "Open",
+  // Architect build strip: the six steps of a roadmap build. New blocks go at the end of the table.
+  "archProgress.label": "Build progress",
+  "archProgress.readGraph": "Read graph",
+  "archProgress.findTopics": "Find topics",
+  "archProgress.readTopics": "Read topics",
+  "archProgress.research": "Research",
+  "archProgress.draft": "Draft",
+  "archProgress.save": "Save",
+  "archProgress.count": "{done}/{total}",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -764,6 +773,15 @@ const ru: Record<MessageKey, string> = {
   "s.defaultViewHelp": "Дерево рисует модули блоками; Граф — только узлы и стрелки.",
   // Открыть узел как чат (последний связанный чат или новый урок). Новые блоки добавляются в конец таблицы.
   "action.openNode": "Открыть",
+  // Полоса сборки Архитектора: шесть шагов построения дорожной карты. Новые блоки добавляются в конец таблицы.
+  "archProgress.label": "Ход сборки",
+  "archProgress.readGraph": "Граф знаний",
+  "archProgress.findTopics": "Поиск тем",
+  "archProgress.readTopics": "Чтение тем",
+  "archProgress.research": "Исследование",
+  "archProgress.draft": "Черновик",
+  "archProgress.save": "Сохранение",
+  "archProgress.count": "{done}/{total}",
 };
 
 export const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };
