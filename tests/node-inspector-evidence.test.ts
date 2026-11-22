@@ -18,7 +18,7 @@ const gitMastery: Mastery = {
 
 function mountInspector(mastery: Mastery[], progression: "unstarted" | "consolidated" = "unstarted") {
   const fixture = createViewFixture();
-  const node = makeNode("n-git", "concept", { progression, catalogTopic: { roadmap: "backend", slug: "git" } });
+  const node = makeNode("n-git", "concept", { progression, title: "Git" });
   const base = makePath();
   // The error ledger checks that the rendered node belongs to the path, so the node is added to the path.
   const path = { ...base, modules: base.modules.map((module, index) => (index === 0 ? { ...module, nodes: [...module.nodes, node] } : module)) };
@@ -103,7 +103,7 @@ test("practiced suggests Mark consolidated and mastered suggests Skip", () => {
   }
 });
 
-test("the panel shows no evidence block when there is no matching mastery", () => {
+test("the panel shows no evidence block when the title has no matching mastery", () => {
   const { fixture, path, node, inspector, updates } = mountInspector([]);
   try {
     inspector.render(path, node);

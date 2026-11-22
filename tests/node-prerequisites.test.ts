@@ -7,8 +7,8 @@ import { DRAFT_ID_PREFIX, completeDraft, replaceDraftIds } from "../src/architec
 import { nextUpForPath } from "../src/node-next.ts";
 import { parseLearningPath, validateLearningPath } from "../src/domain.ts";
 import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
-import { nodePrerequisites } from "../src/node-catalog-link.ts";
-import type { EdgeCatalogView, LinkedNode } from "../src/node-catalog-link.ts";
+import { nodePrerequisites } from "../src/node-prerequisites.ts";
+import type { LinkedNode } from "../src/node-prerequisites.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
 import { layoutRoadmap, buildDependencyGraph } from "../src/view/roadmap-layout.ts";
@@ -19,8 +19,6 @@ import { createHost } from "./host.ts";
 const { parseHTML } = createRequire(import.meta.url)("linkedom") as {
   parseHTML(html: string): { document: Document };
 };
-
-const NO_CATALOG: EdgeCatalogView = { roadmaps: [] };
 
 /** A path whose one module holds the given nodes. */
 function pathWith(nodes: readonly PathNode[]): LearningPath {
@@ -85,7 +83,7 @@ test("nodePrerequisites uses a node's own prerequisites, an empty list is a root
     { id: "n-root", prerequisites: [] },
     { id: "n-old" },
   ];
-  const byId = new Map(nodePrerequisites(nodes, NO_CATALOG).map((entry) => [entry.nodeId, entry]));
+  const byId = new Map(nodePrerequisites(nodes).map((entry) => [entry.nodeId, entry]));
   assert.deepEqual(byId.get("n-own"), { nodeId: "n-own", prerequisiteIds: ["n-first"], source: "node" });
   assert.deepEqual(byId.get("n-root"), { nodeId: "n-root", prerequisiteIds: [], source: "node" });
   assert.deepEqual(byId.get("n-old"), { nodeId: "n-old", prerequisiteIds: ["n-root"], source: "module-order" });

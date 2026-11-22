@@ -7,7 +7,7 @@
 import type { LearningPath, PathModule, PathNode } from "../domain.ts";
 import { locale, t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
-import type { NodePrerequisites } from "../node-catalog-link.ts";
+import type { NodePrerequisites } from "../node-prerequisites.ts";
 import { ICONS, setIcon, statusIcon } from "./icons.ts";
 import { buildDependencyGraph, isDone, layoutGraph, layoutRoadmap, moduleCounts } from "./roadmap-layout.ts";
 import type { PlacedModule, RoadmapLayout } from "./roadmap-layout.ts";
@@ -24,7 +24,7 @@ export interface CanvasState {
   readonly showOptional: boolean;
   /** The legend shows only when the side panel is closed, as in the mockups. */
   readonly showLegend: boolean;
-  /** Prerequisites per node. Absent: module order (the view has no catalog). */
+  /** Prerequisites per node. Absent: each node's own, else module order. */
   readonly prerequisites?: readonly NodePrerequisites[];
 }
 

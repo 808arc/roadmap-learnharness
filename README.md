@@ -95,8 +95,9 @@ points or deadlines.
   graph, it is optional and marked as a short review. The Architect never marks
   a node consolidated, matched or not.
 - **Studied elsewhere.** The node panel shows the study evidence for a node whose
-  catalog topic matches a topic in your Knowledge Graph. It only suggests a
-  status. Nothing changes until you confirm it.
+  title matches a topic name in your Knowledge Graph. The match compares the
+  node's title with the topic name, ignoring case and punctuation. It only
+  suggests a status. Nothing changes until you confirm it.
 - **Next up.** The roadmap lists up to three nodes to study next. It ranks them
   by prerequisites, open errors and your Knowledge Graph mastery. Nothing is
   gated: any node can still be opened.

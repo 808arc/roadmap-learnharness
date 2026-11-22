@@ -1,19 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { nodePrerequisites } from "../src/node-catalog-link.ts";
-import type { NodePrerequisites } from "../src/node-catalog-link.ts";
+import { nodePrerequisites } from "../src/node-prerequisites.ts";
+import type { NodePrerequisites } from "../src/node-prerequisites.ts";
 import { findNodeGaps, type GapNode } from "../src/node-gaps.ts";
 import type { Mastery } from "../src/learner-map.ts";
 
 const node = (id: string, progression: GapNode["progression"] = "unstarted", extra: Partial<GapNode> = {}): GapNode => ({
   id,
+  title: id,
   progression,
   ...extra,
 });
 
 /** Prerequisites from a map of node id to prerequisite ids. */
 const edges = (map: Record<string, string[]>): NodePrerequisites[] =>
-  Object.entries(map).map(([nodeId, prerequisiteIds]) => ({ nodeId, prerequisiteIds, source: "catalog" as const }));
+  Object.entries(map).map(([nodeId, prerequisiteIds]) => ({ nodeId, prerequisiteIds, source: "node" as const }));
 
 const known = (topicId: string): Mastery => ({
   topicId,
@@ -45,10 +46,10 @@ test("weak prerequisite: a finished node with an unseen prerequisite is blocked"
   ]);
 });
 
-test("knowledge graph mastery covers a linked node through its catalog topic", () => {
+test("knowledge graph mastery covers a node through the topic key of its title", () => {
   const nodes = [
-    node("css", "unstarted", { catalogTopic: { roadmap: "frontend", slug: "css" } }),
-    node("js", "consolidated", { catalogTopic: { roadmap: "frontend", slug: "javascript" } }),
+    node("css", "unstarted", { title: "CSS" }),
+    node("js", "consolidated", { title: "JavaScript" }),
   ];
   const prerequisites = edges({ js: ["css"] });
   // Without evidence css is unseen and blocks js.
@@ -56,7 +57,7 @@ test("knowledge graph mastery covers a linked node through its catalog topic", (
     { roadmap: "fe", nodeId: "css", kind: "missing", severity: 1 },
     { roadmap: "fe", nodeId: "js", kind: "weak_prereq", blockedBy: ["css"], severity: 1 },
   ]);
-  // Mastery for the css catalog topic covers it.
+  // Mastery for the topic key of the css title covers it.
   assert.deepEqual(run(nodes, prerequisites, [known("css")]), []);
 });
 
@@ -155,9 +156,9 @@ test("skipped counts as done", () => {
   ]);
 });
 
-test("without catalog links, prerequisites fall back to module order", () => {
+test("without prerequisites of its own, a node follows module order", () => {
   const nodes = [node("a"), node("b", "consolidated"), node("c")];
-  const prerequisites = nodePrerequisites(nodes, { roadmaps: [] });
+  const prerequisites = nodePrerequisites(nodes);
   assert.deepEqual(run(nodes, prerequisites), [
     { roadmap: "fe", nodeId: "a", kind: "missing", severity: 2 },
     { roadmap: "fe", nodeId: "b", kind: "weak_prereq", blockedBy: ["a"], severity: 1 },
