@@ -28,6 +28,7 @@ import { topicKey } from "./learner-map.ts";
 import { buildArchitectSystemPrompt } from "./framework.ts";
 import { StoreError } from "./store.ts";
 import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
+import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
 
 /** Stable definition id: conversations reference it across activations. */
 export const ARCHITECT_DEFINITION_ID = "path-architect";
@@ -49,6 +50,8 @@ export interface ArchitectAgentOptions {
   /** The learner's graph brief for the active conversation, when they chose to use it.
    * Null or absent: the draft is built exactly as without a graph. */
   readonly graphBrief?: () => GraphBrief | null;
+  /** Metadata-only step timings; the Architect behaves the same without it. */
+  readonly log?: PluginLog;
 }
 
 export interface ArchitectRegistration {
@@ -504,86 +507,161 @@ function saveLearningPathTool(
     // instead of failing validation before `execute` can explain anything.
     ...(jsonInput ? {} : { prepareArguments: (args: unknown) => normalizeDraftArguments(args) as never }),
     execute: async (_toolCallId, rawParams, signal) => {
-      assertLive(ctx, signal);
-      const chatId = options.activeChatId();
-      if (!chatId) {
-        return errorResult(
-          "No active Architect conversation. Open or create an Architect conversation before saving a path.",
-        );
-      }
-      let parsed: LearningPath;
+      const toolName = jsonInput ? "save_learning_path_json" : "save_learning_path";
+      const draft = options.log?.begin("draft", { tool: toolName });
       try {
-        let args = readObject(rawParams);
-        if (jsonInput) {
-          if (typeof args.draftJson !== "string" || args.draftJson.length > 200_000) {
-            return errorResult("draftJson must be a JSON string of at most 200000 characters.");
-          }
-          try {
-            args = readObject(JSON.parse(args.draftJson));
-          } catch {
-            return errorResult("draftJson must contain one valid JSON object (no code fences or tool-call tags).");
-          }
-        }
-        // The same healing as prepareArguments: a `{ path }` wrapper or string-encoded nesting.
-        args = readObject(normalizeDraftArguments(args));
-        const existing = typeof args.id === "string" ? options.store.path(args.id) : null;
-        const brief = options.graphBrief?.() ?? null;
-        const candidate = completeDraft(args, existing, chatId, brief ? graphBriefTopicKeys(brief) : null);
-        const now = new Date().toISOString();
-        // The store, not the model, owns identity and modification time.
-        candidate.createdAt = existing?.createdAt ?? candidate.createdAt ?? now;
-        candidate.updatedAt = now;
-        candidate.architectChatId = chatId;
-        parsed = parseLearningPath(candidate);
-        for (const source of uploadedSources(parsed)) {
-          if (options.store.readSource(source.sourceId) === null) {
-            return errorResult(
-              `Source spine references uploaded source "${source.sourceId}" (${source.name}), which is not stored. ` +
-                "Call list_uploaded_sources and use a real sourceId.",
-            );
-          }
-        }
-        assertLive(ctx, signal);
+        const result = await saveDraft(ctx, options, jsonInput, rawParams, signal, draft);
+        draft?.end({ outcome: result.isError ? "rejected" : "accepted", ok: !result.isError });
+        return result;
       } catch (error) {
-        if (error instanceof DomainValidationError) {
-          const issues = error.issues
-            .slice(0, 12)
-            .map((issue) => `${issue.path}: ${issue.message}`)
-            .join("; ");
-          return errorResult(`Learning path rejected; nothing was written. ${issues}`);
-        }
-        if (error instanceof StoreError) return errorResult(error.message);
-        if (error instanceof DraftError) return errorResult(error.message);
+        draft?.fail(error);
         throw error;
       }
-
-      const created = options.store.path(parsed.id) === null;
-      const saved = options.store.savePath(parsed);
-      options.onPathSaved?.(saved, created);
-      const nodes = saved.modules.reduce((total, module) => total + module.nodes.length, 0);
-      return textResult(
-        {
-          pathId: saved.id,
-          title: saved.title,
-          created,
-          modules: saved.modules.length,
-          nodes,
-          updatedAt: saved.updatedAt,
-        },
-        // The outline carries the server-generated ids the Architect needs to refine later.
-        `${created ? "Created" : "Updated"} learning path "${saved.title}" (${saved.id}) with ` +
-          `${saved.modules.length} module(s) and ${nodes} node(s). Outline with ids: ` +
-          JSON.stringify({
-            id: saved.id,
-            modules: saved.modules.map((module) => ({
-              id: module.id,
-              title: module.title,
-              nodes: module.nodes.map((node) => ({ id: node.id, title: node.title })),
-            })),
-          }),
-      );
     },
   };
+}
+
+/** The validation and write of one save call. `draft` is ended before the store write. */
+async function saveDraft(
+  ctx: PluginBackendContext,
+  options: ArchitectAgentOptions,
+  jsonInput: boolean,
+  rawParams: unknown,
+  signal: AbortSignal | undefined,
+  draft: LogStep | undefined,
+): Promise<AgentToolResult<unknown>> {
+  assertLive(ctx, signal);
+  const chatId = options.activeChatId();
+  if (!chatId) {
+    return errorResult(
+      "No active Architect conversation. Open or create an Architect conversation before saving a path.",
+    );
+  }
+  let parsed: LearningPath;
+  try {
+    let args = readObject(rawParams);
+    if (jsonInput) {
+      if (typeof args.draftJson !== "string" || args.draftJson.length > 200_000) {
+        return errorResult("draftJson must be a JSON string of at most 200000 characters.");
+      }
+      try {
+        args = readObject(JSON.parse(args.draftJson));
+      } catch {
+        return errorResult("draftJson must contain one valid JSON object (no code fences or tool-call tags).");
+      }
+    }
+    // The same healing as prepareArguments: a `{ path }` wrapper or string-encoded nesting.
+    args = readObject(normalizeDraftArguments(args));
+    const existing = typeof args.id === "string" ? options.store.path(args.id) : null;
+    const brief = options.graphBrief?.() ?? null;
+    const candidate = completeDraft(args, existing, chatId, brief ? graphBriefTopicKeys(brief) : null);
+    const now = new Date().toISOString();
+    // The store, not the model, owns identity and modification time.
+    candidate.createdAt = existing?.createdAt ?? candidate.createdAt ?? now;
+    candidate.updatedAt = now;
+    candidate.architectChatId = chatId;
+    parsed = parseLearningPath(candidate);
+    for (const source of uploadedSources(parsed)) {
+      if (options.store.readSource(source.sourceId) === null) {
+        return errorResult(
+          `Source spine references uploaded source "${source.sourceId}" (${source.name}), which is not stored. ` +
+            "Call list_uploaded_sources and use a real sourceId.",
+        );
+      }
+    }
+    assertLive(ctx, signal);
+  } catch (error) {
+    if (error instanceof DomainValidationError) {
+      const issues = error.issues
+        .slice(0, 12)
+        .map((issue) => `${issue.path}: ${issue.message}`)
+        .join("; ");
+      return errorResult(`Learning path rejected; nothing was written. ${issues}`);
+    }
+    if (error instanceof StoreError) return errorResult(error.message);
+    if (error instanceof DraftError) return errorResult(error.message);
+    throw error;
+  }
+
+  draft?.end({ outcome: "accepted", modules: parsed.modules.length, nodes: countNodes(parsed) });
+  const created = options.store.path(parsed.id) === null;
+  const save = options.log?.begin("save", { modules: parsed.modules.length, nodes: countNodes(parsed), created });
+  let saved: LearningPath;
+  try {
+    saved = options.store.savePath(parsed);
+  } catch (error) {
+    save?.fail(error);
+    throw error;
+  }
+  save?.end();
+  options.onPathSaved?.(saved, created);
+  const nodes = countNodes(saved);
+  return textResult(
+    {
+      pathId: saved.id,
+      title: saved.title,
+      created,
+      modules: saved.modules.length,
+      nodes,
+      updatedAt: saved.updatedAt,
+    },
+    // The outline carries the server-generated ids the Architect needs to refine later.
+    `${created ? "Created" : "Updated"} learning path "${saved.title}" (${saved.id}) with ` +
+      `${saved.modules.length} module(s) and ${nodes} node(s). Outline with ids: ` +
+      JSON.stringify({
+        id: saved.id,
+        modules: saved.modules.map((module) => ({
+          id: module.id,
+          title: module.title,
+          nodes: module.nodes.map((node) => ({ id: node.id, title: node.title })),
+        })),
+      }),
+  );
+}
+
+function countNodes(path: LearningPath): number {
+  return path.modules.reduce((total, module) => total + module.nodes.length, 0);
+}
+
+/** Token counts the run's assistant messages report, from `messages[from]` on. Empty when none are reported. */
+export function usageSince(messages: readonly unknown[], from: number): LogFields {
+  const totals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  let reported = false;
+  for (const raw of messages.slice(from)) {
+    if (!isRecord(raw) || raw.role !== "assistant" || !isRecord(raw.usage)) continue;
+    const usage = raw.usage;
+    if (typeof usage.input === "number") {
+      totals.inputTokens += usage.input;
+      reported = true;
+    }
+    if (typeof usage.output === "number") {
+      totals.outputTokens += usage.output;
+      reported = true;
+    }
+    if (typeof usage.cacheRead === "number") totals.cacheReadTokens += usage.cacheRead;
+    if (typeof usage.cacheWrite === "number") totals.cacheWriteTokens += usage.cacheWrite;
+  }
+  return reported ? { ...totals } : {};
+}
+
+/** Time each research tool call as a `research` step. Tools without a server execute pass through. */
+function timedResearchTool(tool: PluginAgentTool, log: PluginLog | undefined): PluginAgentTool {
+  if (!log || tool.kind === "input" || !tool.execute) return tool;
+  const execute = tool.execute;
+  return {
+    ...tool,
+    execute: async (...args: Parameters<typeof execute>) => {
+      const step: LogStep = log.begin("research", { tool: tool.name });
+      try {
+        const result = await execute(...args);
+        step.end({ outcome: result.isError ? "rejected" : "accepted", ok: !result.isError });
+        return result;
+      } catch (error) {
+        step.fail(error);
+        throw error;
+      }
+    },
+  } as PluginAgentTool;
 }
 
 function uploadedSources(path: LearningPath): readonly UploadedSourceReference[] {
@@ -611,7 +689,7 @@ export function buildArchitectDefinition(
       getLearningPathTool(ctx, options),
       saveLearningPathTool(ctx, options),
       saveLearningPathTool(ctx, options, true),
-      ...(options.researchTools ?? []),
+      ...(options.researchTools ?? []).map((tool) => timedResearchTool(tool, options.log)),
     ],
   };
 }

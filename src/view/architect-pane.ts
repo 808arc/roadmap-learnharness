@@ -169,8 +169,14 @@ export function createArchitectPane(
   card.append(sourcesRow, composerHost, bar);
   const dropHint = element(document, "div", "rm-drop-hint", t("a.dropHint"));
   dropHint.hidden = true;
-  root.append(card, modelHint, dropHint);
+  const logLine = element(document, "p", "lp-architect-log");
+  root.append(card, modelHint, logLine, dropHint);
   container.append(root);
+  // The Architect's timing log lives in the plugin data folder; show where to find it.
+  ctx.call("architect.logPath", {}).then((result) => {
+    const path = (result as { path?: unknown } | null)?.path;
+    if (!signal.aborted && typeof path === "string") logLine.textContent = t("a.logPath", { path });
+  }).catch(() => undefined);
 
   let conversation: PluginAgentSnapshot | null = null;
   let draft = "";
