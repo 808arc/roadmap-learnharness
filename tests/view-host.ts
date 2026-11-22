@@ -192,6 +192,8 @@ export interface FixtureOptions {
   conversations?: readonly PluginAgentSnapshot[];
   nativeChats?: readonly NativeChatFixture[];
   settings?: PluginSettings;
+  /** Topics in the learner's graph, as the backend brief counts them (`graph.topicCount`). */
+  graphTopics?: number;
 }
 
 export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
@@ -213,6 +215,7 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
   const nativeChats = new Map<string, NativeChatFixture>();
   for (const chat of options.nativeChats ?? []) nativeChats.set(chat.id, { ...chat });
   const paths = new Map<string, LearningPath>();
+  const graphTopics = options.graphTopics ?? 0;
   for (const path of options.paths ?? []) paths.set(path.id, structuredClone(path));
   // Tests pin English so assertions do not depend on the machine language.
   let settingsState: PluginSettings = options.settings ?? { artifactDefaults: {}, display: { language: "en", defaultView: "graph", showOptional: true } };
@@ -407,6 +410,8 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
     calls.push({ name, input });
     const value = (input ?? {}) as AnyProps;
     switch (name) {
+      case "graph.topicCount":
+        return Promise.resolve({ topics: graphTopics } as T);
       case "paths.list":
         return Promise.resolve({
           paths: [...paths.values()].map(summarize),

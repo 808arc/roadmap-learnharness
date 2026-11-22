@@ -28,6 +28,8 @@ import { createResearchChats, registerResearchSessions, researchBrief } from "./
 import { buildResearchTools } from "./research/tools.ts";
 import { applyMisconceptionsTool, buildMessage, createDeclinedChats, registerProposals } from "./diagnostic.ts";
 import { sessionMetrics } from "./session-metrics.ts";
+import { buildGraphBrief } from "./graph-brief.ts";
+import type { BriefGraph } from "./graph-brief.ts";
 import { randomUUID } from "node:crypto";
 import type {
   ModelCatalogResponse,
@@ -41,7 +43,6 @@ import {
   registerArchitect,
 } from "./architect-agent.ts";
 import type { ArchitectRegistration } from "./architect-agent.ts";
-import { buildGraphBrief } from "./graph-brief.ts";
 import type { GraphBrief } from "./graph-brief.ts";
 import {
   ARTIFACT_TYPES,
@@ -257,6 +258,11 @@ function updateNodeInPath(
     updatedAt: new Date().toISOString(),
     modules,
   };
+}
+
+/** Number of graph topics the learner has studied, read through the same brief the Architect gets (read-only). */
+export function readGraphTopicCount(learning: { graph(): BriefGraph }): number {
+  return buildGraphBrief(learning.graph()).counts.topics;
 }
 
 export function activate(ctx: PluginBackendContext): void {
@@ -591,6 +597,8 @@ export function activate(ctx: PluginBackendContext): void {
   }));
 
   handle("paths.list", () => ({ paths: store.paths().map(summarize) }));
+
+  handle("graph.topicCount", () => ({ topics: readGraphTopicCount(ctx.learning) }));
 
   handle("paths.get", (input) => {
     const id = readText(object(input, "paths.get").id, "id", { max: 128 });

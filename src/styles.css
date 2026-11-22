@@ -294,6 +294,15 @@
   font-weight: 600;
 }
 
+.rm-empty-actions {
+  margin-top: 16px;
+}
+
+.rm-empty-hint {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
 .rm-canvas {
   position: absolute;
   inset: 0;
