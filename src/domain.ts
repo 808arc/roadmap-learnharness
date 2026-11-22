@@ -287,6 +287,14 @@ export interface PathNode {
   /** Concrete abilities after the node ("After this node I can …"). */
   readonly outcomes?: readonly string[];
   readonly resources?: readonly NodeResource[];
+  /** The roadmap.sh catalog topic this node covers. Absent on nodes linked before issue #6. */
+  readonly catalogTopic?: CatalogTopicLink;
+}
+
+/** A node's link to one catalog topic, by roadmap slug and topic slug. */
+export interface CatalogTopicLink {
+  readonly roadmap: string;
+  readonly slug: string;
 }
 
 export interface PathModule {
@@ -639,6 +647,18 @@ function readPivotSuggestion(value: unknown, path: string): PivotSuggestion {
   };
 }
 
+const CATALOG_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+function readCatalogTopicLink(value: unknown, path: string): CatalogTopicLink {
+  const record = readObject(value, path);
+  const slugOf = (field: unknown, name: string): string => {
+    const slug = readString(field, `${path}.${name}`, { max: 120 });
+    if (!CATALOG_SLUG_PATTERN.test(slug)) fail(`${path}.${name}`, "must be a lowercase-hyphen catalog slug");
+    return slug;
+  };
+  return { roadmap: slugOf(record.roadmap, "roadmap"), slug: slugOf(record.slug, "slug") };
+}
+
 function readPathNode(value: unknown, path: string): PathNode {
   const record = readObject(value, path);
   return {
@@ -705,6 +725,9 @@ function readPathNode(value: unknown, path: string): PathNode {
             .map((entry, index) => readNodeResource(entry, `${path}.resources[${index}]`))
             .slice(0, 8),
         }),
+    ...(record.catalogTopic === undefined
+      ? {}
+      : { catalogTopic: readCatalogTopicLink(record.catalogTopic, `${path}.catalogTopic`) }),
   };
 }
 
