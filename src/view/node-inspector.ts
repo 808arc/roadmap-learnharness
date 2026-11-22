@@ -22,6 +22,9 @@ import type {
 } from "../domain.ts";
 import { locale, t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
+import type { Mastery } from "../learner-map.ts";
+import { nodeEvidence } from "../node-evidence.ts";
+import type { EvidenceSuggestion, NodeEvidence } from "../node-evidence.ts";
 import type { SessionStatus } from "../session-types.ts";
 import { button, el, shortDate } from "./dom.ts";
 import { createErrorLedger } from "./error-ledger.ts";
@@ -50,6 +53,8 @@ export interface NodeInspectorOptions {
   findResources?(node: PathNode): void | Promise<void>;
   /** Where the error ledger renders (the "Errors" tab); defaults to the node panel. */
   errorsContainer?: HTMLElement;
+  /** Knowledge Graph mastery for "studied elsewhere" evidence, read on each render. Absent: no evidence block. */
+  knowledgeMastery?(): readonly Mastery[];
 }
 
 export interface NodeInspector {
@@ -163,6 +168,30 @@ export function createNodeInspector(
     return row;
   };
 
+  /** Evidence from the Knowledge Graph. Each choice goes through the same status path as the status menu. */
+  const evidenceSection = (node: PathNode, evidence: NodeEvidence): void => {
+    const wrapper = section(t("evi.title"));
+    const level = t(`evi.${evidence.level}` as MessageKey);
+    const first = shortDate(evidence.firstAt, localeTag());
+    const last = shortDate(evidence.lastAt, localeTag());
+    wrapper.append(el(document, "p", "rm-why", t("evi.summary", { level, n: evidence.sessionCount, first, last })));
+    wrapper.append(el(document, "p", "rm-muted", t("evi.note")));
+
+    const choices = el(document, "div", "rm-chips");
+    const offer = (target: EvidenceSuggestion, label: string): void => {
+      const suggested = evidence.suggestion === target;
+      if (suggested) choices.append(el(document, "span", "rm-tag", t("evi.suggested")));
+      const choice = button(document, label, () => void options.updateNode({ progression: target }), scoped(), {
+        variant: suggested ? "primary" : "outline",
+      });
+      choice.disabled = node.progression === target;
+      choices.append(choice);
+    };
+    offer("consolidated", t("evi.markConsolidated"));
+    offer("skipped", t("evi.skip"));
+    wrapper.append(choices);
+  };
+
   const renderSelected = (path: LearningPath, node: PathNode): void => {
     root.dataset.nodeId = node.id;
     body.append(el(document, "h2", "rm-insp-title", node.title));
@@ -196,6 +225,8 @@ export function createNodeInspector(
     );
     body.append(meta);
     body.append(el(document, "p", "rm-insp-goal", node.goal));
+    const evidence = nodeEvidence(node, options.knowledgeMastery?.() ?? []);
+    if (evidence) evidenceSection(node, evidence);
     body.append(pivotContainer);
     pivotBanner.render(path, node);
 
