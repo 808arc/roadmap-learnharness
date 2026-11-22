@@ -4,18 +4,16 @@
 // partial or fabricated list.
 import { validateLearningPath, type LearningPath, type PathNode } from "./domain.ts";
 import type { Mastery, MasteryLevel } from "./learner-map.ts";
-import { nodePrerequisites, type EdgeCatalogView, type NodePrerequisites } from "./node-catalog-link.ts";
+import { nodePrerequisites, type NodePrerequisites } from "./node-prerequisites.ts";
 import { findNodeGaps, type NodeGap } from "./node-gaps.ts";
 import { rankNextNodes, type NextReason } from "./node-next.ts";
 
-/** The input both tools read: a roadmap, the learner's mastery, and an optional catalog for edges. */
+/** The input both tools read: a roadmap and the learner's mastery. */
 export type AgentGapsInput = {
   /** A learning path as stored (validated on read). */
   path: unknown;
   /** Knowledge Graph mastery, as deriveMastery() returns it. */
   mastery: unknown;
-  /** Optional roadmap.sh catalog with topic prerequisites. Without it, order follows the modules. */
-  catalog?: unknown;
 };
 
 export type AgentReadError = { isError: true; error: string };
@@ -77,24 +75,6 @@ function readMastery(value: unknown): Mastery[] {
   });
 }
 
-function readCatalog(value: unknown): EdgeCatalogView {
-  const record = objectOf(value, "catalog");
-  const roadmaps = arrayOf(record.roadmaps, "catalog.roadmaps").map((entry, index) => {
-    const path = `catalog.roadmaps[${index}]`;
-    const roadmap = objectOf(entry, path);
-    const topics = arrayOf(roadmap.topics, `${path}.topics`).map((topic, topicIndex) => {
-      const topicPath = `${path}.topics[${topicIndex}]`;
-      const item = objectOf(topic, topicPath);
-      const prerequisites = arrayOf(item.prerequisites ?? [], `${topicPath}.prerequisites`).map(prerequisite =>
-        stringOf(prerequisite, `${topicPath}.prerequisites[]`),
-      );
-      return { slug: stringOf(item.slug, `${topicPath}.slug`), prerequisites };
-    });
-    return { slug: stringOf(roadmap.slug, `${path}.slug`), topics };
-  });
-  return { roadmaps };
-}
-
 /**
  * Validates the input and computes the gaps for the roadmap. Throws on any malformed input or data
  * error (including a prerequisite cycle); the public functions turn the throw into isError.
@@ -120,7 +100,6 @@ function emptyRoadmapId(value: unknown): string | undefined {
 function analyse(input: unknown): Analysis {
   const record = objectOf(input, "input");
   const mastery = readMastery(record.mastery);
-  const catalog: EdgeCatalogView = record.catalog === undefined ? { roadmaps: [] } : readCatalog(record.catalog);
 
   const emptyId = emptyRoadmapId(record.path);
   if (emptyId !== undefined) return { roadmap: emptyId, nodes: [], prerequisites: [], gaps: [] };
@@ -132,7 +111,7 @@ function analyse(input: unknown): Analysis {
   }
   const path: LearningPath = validated.value;
   const nodes = path.modules.flatMap(module => module.nodes);
-  const prerequisites = nodePrerequisites(nodes, catalog);
+  const prerequisites = nodePrerequisites(nodes);
   const gaps = findNodeGaps({ roadmap: path.id, nodes, prerequisites, mastery });
   return { roadmap: path.id, nodes: [...nodes], prerequisites, gaps };
 }

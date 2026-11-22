@@ -4,7 +4,7 @@
 import type { LearningPath, PathNode } from "./domain.ts";
 import type { MessageKey } from "./i18n.ts";
 import type { Mastery } from "./learner-map.ts";
-import { nodePrerequisites, type NodePrerequisites } from "./node-catalog-link.ts";
+import { nodePrerequisites, type NodePrerequisites } from "./node-prerequisites.ts";
 import { findNodeGaps, type NodeGap } from "./node-gaps.ts";
 
 /** How many nodes the "Next up" list shows at most. */
@@ -21,7 +21,7 @@ export const NEXT_REASON_KEYS: readonly MessageKey[] = [
 ];
 
 /** The part of a path node the ranking reads. */
-export type NextNode = Pick<PathNode, "id" | "progression" | "optional" | "alternativeGroup" | "errors">;
+export type NextNode = Pick<PathNode, "id" | "title" | "progression" | "optional" | "alternativeGroup" | "errors">;
 
 export type NextReason = { key: MessageKey; vars?: Record<string, number> };
 
@@ -153,13 +153,13 @@ export function rankNextNodes(input: NextInput): NextRecommendation[] {
 }
 
 /**
- * Next nodes for a roadmap as the view has it. The view has no catalog, so prerequisites are each
- * node's own (issue #44), else module order (nodePrerequisites with an empty catalog). `mastery` is
+ * Next nodes for a roadmap as the view has it. Prerequisites are each node's own (issue #44), else
+ * module order (nodePrerequisites). `mastery` is
  * the Knowledge Graph mastery (default empty). Throws on the same data errors as findNodeGaps.
  */
 export function nextUpForPath(path: LearningPath, limit: number = NEXT_LIMIT, mastery: readonly Mastery[] = []): NextRecommendation[] {
   const nodes = path.modules.flatMap(module => module.nodes);
-  const prerequisites = nodePrerequisites(nodes, { roadmaps: [] });
+  const prerequisites = nodePrerequisites(nodes);
   const gaps = findNodeGaps({ roadmap: path.id, nodes, prerequisites, mastery });
   return rankNextNodes({ nodes, prerequisites, gaps, limit });
 }

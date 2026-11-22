@@ -69,7 +69,6 @@ test("malformed input returns isError and no list", () => {
     { path: rawPath() },
     { path: rawPath(), mastery: "none" },
     { path: rawPath(), mastery: [{ topicId: "linear-maps", level: "expert", evidence: [] }] },
-    { path: rawPath(), mastery: [], catalog: { roadmaps: [{ slug: "x", topics: [{ prerequisites: [] }] }] } },
   ];
 
   for (const input of cases) {
@@ -86,20 +85,9 @@ test("a prerequisite cycle returns isError rather than a partial list", () => {
   const path = rawPath();
   const concept = path.modules[0].nodes.find((node: { id: string }) => node.id === "n-concept");
   const skill = path.modules[0].nodes.find((node: { id: string }) => node.id === "n-skill");
-  concept.catalogTopic = { roadmap: "algebra", slug: "topic-a" };
-  skill.catalogTopic = { roadmap: "algebra", slug: "topic-b" };
-  const catalog = {
-    roadmaps: [
-      {
-        slug: "algebra",
-        topics: [
-          { slug: "topic-a", prerequisites: ["topic-b"] },
-          { slug: "topic-b", prerequisites: ["topic-a"] },
-        ],
-      },
-    ],
-  };
-  const input = { path, mastery: [], catalog };
+  concept.prerequisites = ["n-skill"];
+  skill.prerequisites = ["n-concept"];
+  const input = { path, mastery: [] };
 
   const gaps = readNodeGaps(input);
   const next = readNextNode(input);

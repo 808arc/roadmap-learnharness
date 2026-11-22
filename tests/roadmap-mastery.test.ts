@@ -50,13 +50,13 @@ function pathWith(nodes: PathNode[]): LearningPath {
 /** Alpha depends on nothing; Beta follows Alpha in module order, so Alpha blocks one node. */
 function twoNodePath(): LearningPath {
   return pathWith([
-    makeNode("node-alpha", "concept", { title: "Alpha", catalogTopic: { roadmap: "linear-algebra", slug: "alpha-topic" } }),
+    makeNode("node-alpha", "concept", { title: "Alpha" }),
     makeNode("node-beta", "concept", { title: "Beta" }),
   ]);
 }
 
 const alphaPracticed: Mastery = {
-  topicId: "alpha-topic",
+  topicId: "alpha",
   level: "practiced",
   evidence: [{ sessionId: "s1", at: "2026-03-01T10:00:00Z" }],
 };
@@ -105,7 +105,7 @@ test("a failing mastery read gives no evidence and no next-up list", async (t) =
   assert.doesNotMatch(nextWhy(container), /Downstream nodes it blocks/);
 });
 
-test("a matched catalog topic with practiced mastery shows the evidence block in the node panel", async (t) => {
+test("a node whose title matches a practiced topic shows the evidence block in the node panel", async (t) => {
   const fixture = createViewFixture({ paths: [twoNodePath()], mastery: [alphaPracticed] });
   t.after(() => fixture.controller.abort());
   const container = await mountHub(fixture);

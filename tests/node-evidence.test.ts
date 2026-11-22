@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { nodeEvidence } from "../src/node-evidence.ts";
 import type { Mastery } from "../src/learner-map.ts";
 
-const linked = { catalogTopic: { roadmap: "backend", slug: "git" } };
+const linked = { title: "Git" };
 
 function mastery(topicId: string, level: Mastery["level"], sessionIds: string[]): Mastery {
   return {
@@ -13,11 +13,18 @@ function mastery(topicId: string, level: Mastery["level"], sessionIds: string[])
   };
 }
 
-test("a node without a catalog link has no evidence, even when a mastery topic exists", () => {
-  assert.equal(nodeEvidence({}, [mastery("git", "mastered", ["s1", "s2", "s3"])]), null);
+test("a title whose topic key is empty has no evidence, even when a mastery topic exists", () => {
+  assert.equal(nodeEvidence({ title: "" }, [mastery("", "mastered", ["s1", "s2", "s3"])]), null);
+  assert.equal(nodeEvidence({ title: "!!!" }, [mastery("git", "mastered", ["s1", "s2", "s3"])]), null);
 });
 
-test("a linked node with no matching mastery topic has no evidence", () => {
+test("a title matches a mastery topic by its topic key: Git matches git, C++ matches c-plus-plus", () => {
+  assert.equal(nodeEvidence({ title: "Git" }, [mastery("git", "practiced", ["s1"])])?.topicId, "git");
+  assert.equal(nodeEvidence({ title: "C++" }, [mastery("c-plus-plus", "practiced", ["s1"])])?.topicId, "c-plus-plus");
+  assert.equal(nodeEvidence({ title: "C++" }, [mastery("c", "practiced", ["s1"])]), null);
+});
+
+test("a node whose title matches no mastery topic has no evidence", () => {
   assert.equal(nodeEvidence(linked, []), null);
   assert.equal(nodeEvidence(linked, [mastery("docker", "practiced", ["s1"])]), null);
 });
@@ -62,7 +69,7 @@ test("mastered evidence suggests skipping the node", () => {
 });
 
 test("the function does not modify the node or the mastery", () => {
-  const node = { catalogTopic: { roadmap: "backend", slug: "git" } };
+  const node = { title: "Git" };
   const input = [mastery("git", "mastered", ["s1", "s2", "s3"])];
   const before = JSON.stringify({ node, input });
   nodeEvidence(node, input);

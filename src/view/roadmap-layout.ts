@@ -10,7 +10,7 @@
  * depend on the same prerequisites and never on each other.
  */
 import type { LearningPath, PathModule, PathNode } from "../domain.ts";
-import { nodePrerequisites, type NodePrerequisites } from "../node-catalog-link.ts";
+import { nodePrerequisites, type NodePrerequisites } from "../node-prerequisites.ts";
 
 export const SUB_W = 200;
 export const SUB_H = 28;
@@ -161,7 +161,7 @@ const pairKey = (from: string, to: string): string => `${from}\u0000${to}`;
 /** Dependency depth for every shown node, the arrows between them and the tree parents.
  *
  * Prerequisites come from `prerequisites` (default: nodePrerequisites, which uses each node's own
- * prerequisites, then catalog edges, then module order).
+ * prerequisites, then module order).
  * A hidden optional node is passed through: its prerequisites stand in for it.
  *
  * Cycles: units are walked depth-first in path order, following prerequisites. When the
@@ -175,7 +175,7 @@ export function buildDependencyGraph(
   const all = path.modules.flatMap((module) => module.nodes);
   const flatIndex = new Map(all.map((node, index) => [node.id, index]));
   const prerequisiteOf = new Map(
-    (options.prerequisites ?? nodePrerequisites(all, { roadmaps: [] })).map((entry) => [entry.nodeId, entry.prerequisiteIds]),
+    (options.prerequisites ?? nodePrerequisites(all)).map((entry) => [entry.nodeId, entry.prerequisiteIds]),
   );
   const shown = all.filter((node) => options.showOptional || !node.optional);
   const shownIds = new Set(shown.map((node) => node.id));

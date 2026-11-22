@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import { locale, setLocale, t } from "../src/i18n.ts";
 import type { MessageKey } from "../src/i18n.ts";
-import type { NodePrerequisites } from "../src/node-catalog-link.ts";
+import type { NodePrerequisites } from "../src/node-prerequisites.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
 import { DEFAULT_DISPLAY, VIEW_MODES, parsePluginSettings, validatePluginSettings } from "../src/domain.ts";
@@ -26,7 +26,7 @@ function pathWith(nodes: readonly PathNode[]): LearningPath {
 
 /** Explicit prerequisites: `after` maps a node id to the ids it depends on. */
 function prerequisites(after: Record<string, string[]>, nodes: readonly PathNode[]): NodePrerequisites[] {
-  return nodes.map((node) => ({ nodeId: node.id, prerequisiteIds: after[node.id] ?? [], source: "catalog" as const }));
+  return nodes.map((node) => ({ nodeId: node.id, prerequisiteIds: after[node.id] ?? [], source: "node" as const }));
 }
 
 test("a prerequisite chain gets arrows from each prerequisite to its dependent, pointing right", () => {

@@ -1,14 +1,14 @@
 // Gap engine on roadmap nodes (issue #7), ported from the roadmap plugin's gap-engine. Pure: no
-// I/O. A node is a topic; its prerequisites come from node-catalog-link (issue #6); "covered" means
-// the learner finished the node (consolidated or skipped) or the Knowledge Graph has mastery for its
-// catalog topic. Fork rules: optional nodes are never gaps and never block; a group of alternatives
-// (alternativeGroup) counts once; skipped counts as done.
+// I/O. A node is a topic; its prerequisites come from node-prerequisites (issue #44); "covered" means
+// the learner finished the node (consolidated or skipped) or the Knowledge Graph has mastery for the
+// node's title (topicKey). Fork rules: optional nodes are never gaps and never block; a group of
+// alternatives (alternativeGroup) counts once; skipped counts as done.
 import type { PathNode } from "./domain.ts";
-import type { Mastery } from "./learner-map.ts";
-import type { NodePrerequisites } from "./node-catalog-link.ts";
+import { topicKey, type Mastery } from "./learner-map.ts";
+import type { NodePrerequisites } from "./node-prerequisites.ts";
 
 /** The part of a path node the gap engine reads. */
-export type GapNode = Pick<PathNode, "id" | "progression" | "optional" | "alternativeGroup" | "catalogTopic">;
+export type GapNode = Pick<PathNode, "id" | "progression" | "optional" | "alternativeGroup" | "title">;
 
 export type NodeGapInput = {
   /** The roadmap (learning path) the nodes belong to. Copied onto each gap. */
@@ -17,7 +17,7 @@ export type NodeGapInput = {
   nodes: readonly GapNode[];
   /** Prerequisites per node, from nodePrerequisites(). A node with no entry has none. */
   prerequisites: readonly NodePrerequisites[];
-  /** Knowledge Graph evidence. A node is covered when a mastery entry carries its catalog topic slug. */
+  /** Knowledge Graph evidence. A node is covered when a mastery entry's topicId is its title's topicKey. */
   mastery: readonly Mastery[];
 };
 
@@ -118,8 +118,7 @@ export function findNodeGaps(input: NodeGapInput): NodeGap[] {
   const ancestors = closure(units, unit => unitPrerequisites.get(unit) ?? []);
 
   const masteredTopics = new Set(input.mastery.map(entry => entry.topicId));
-  const isDone = (node: GapNode) =>
-    DONE_STATES.has(node.progression) || (node.catalogTopic !== undefined && masteredTopics.has(node.catalogTopic.slug));
+  const isDone = (node: GapNode) => DONE_STATES.has(node.progression) || masteredTopics.has(topicKey(node.title));
   const covered = new Set(units.filter(unit => members.get(unit)!.some(isDone)));
   const candidate = new Set(units.filter(unit => members.get(unit)!.some(node => node.optional !== true)));
   const unseen = (unit: string) => candidate.has(unit) && !covered.has(unit);

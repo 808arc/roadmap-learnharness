@@ -1,8 +1,9 @@
 // "Studied elsewhere" evidence for one roadmap node (issue #8). Pure: no I/O, no status writes.
-// The node's catalog topic link (issue #6) is matched against the Knowledge Graph mastery (issue #3).
-// The result only suggests a status; the learner decides in the node panel.
+// The node's title is matched against the Knowledge Graph mastery (issue #3) by topicKey, the same
+// rule the Architect uses for the short-review mark. The result only suggests a status; the learner
+// decides in the node panel.
 import type { PathNode } from "./domain.ts";
-import type { Mastery, MasteryLevel } from "./learner-map.ts";
+import { topicKey, type Mastery, type MasteryLevel } from "./learner-map.ts";
 
 /** The status the panel offers for the learner to confirm. Nothing is changed here. */
 export type EvidenceSuggestion = "consolidated" | "skipped";
@@ -20,13 +21,13 @@ export type NodeEvidence = {
 };
 
 /**
- * The evidence for a node's topic, or null when the node has no catalog link or the link matches
- * no mastery topic. The link's topic slug is matched to the mastery topicId.
+ * The evidence for a node's topic, or null when the node's title has no topic key, or no mastery
+ * topic carries that key. The title's topicKey is matched to the mastery topicId.
  */
-export function nodeEvidence(node: Pick<PathNode, "catalogTopic">, mastery: readonly Mastery[]): NodeEvidence | null {
-  const link = node.catalogTopic;
-  if (link === undefined) return null;
-  const match = mastery.find((entry) => entry.topicId === link.slug);
+export function nodeEvidence(node: Pick<PathNode, "title">, mastery: readonly Mastery[]): NodeEvidence | null {
+  const key = topicKey(node.title);
+  if (key === "") return null;
+  const match = mastery.find((entry) => entry.topicId === key);
   if (match === undefined || match.evidence.length === 0) return null;
 
   const dates = match.evidence.map((entry) => entry.at).sort();

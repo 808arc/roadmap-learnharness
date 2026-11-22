@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NEXT_REASON_KEYS, rankNextNodes, type NextNode } from "../src/node-next.ts";
 import { findNodeGaps } from "../src/node-gaps.ts";
-import type { NodePrerequisites } from "../src/node-catalog-link.ts";
+import type { NodePrerequisites } from "../src/node-prerequisites.ts";
 import { setLocale, t } from "../src/i18n.ts";
 
 const node = (id: string, progression: NextNode["progression"] = "unstarted", extra: Partial<NextNode> = {}): NextNode => ({
   id,
+  title: id,
   progression,
   errors: [],
   ...extra,
@@ -14,7 +15,7 @@ const node = (id: string, progression: NextNode["progression"] = "unstarted", ex
 
 /** Prerequisites from a map of node id to prerequisite ids. */
 const edges = (map: Record<string, string[]>): NodePrerequisites[] =>
-  Object.entries(map).map(([nodeId, prerequisiteIds]) => ({ nodeId, prerequisiteIds, source: "catalog" as const }));
+  Object.entries(map).map(([nodeId, prerequisiteIds]) => ({ nodeId, prerequisiteIds, source: "node" as const }));
 
 /** Gaps as the view computes them: findNodeGaps on the same nodes, with no mastery. */
 const rank = (nodes: NextNode[], prerequisites: NodePrerequisites[] = [], limit?: number) => {
