@@ -14,6 +14,8 @@
  *   that produced it.
  */
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import nodePath from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type {
   PluginAgentDefinition,
@@ -21,13 +23,13 @@ import type {
   PluginBackendContext,
   PluginModelSpec,
 } from "learnharness-plugin-api";
-import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, parseLearningPath } from "./domain.ts";
+import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, isSourceId, parseLearningPath } from "./domain.ts";
 import type { LearningPath, UploadedSourceReference } from "./domain.ts";
 import { buildGraphBrief } from "./graph-brief.ts";
 import type { GraphBrief } from "./graph-brief.ts";
 import { topicKey } from "./learner-map.ts";
 import { buildArchitectSystemPrompt } from "./framework.ts";
-import { StoreError } from "./store.ts";
+import { SOURCES_DIRECTORY, StoreError } from "./store.ts";
 import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
 import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
 import { UpstreamError, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
@@ -464,13 +466,10 @@ async function saveDraft(
     candidate.updatedAt = now;
     candidate.architectChatId = chatId;
     parsed = parseLearningPath(candidate);
-    // Existence is what the check needs, so the listing answers it; a source the listing does not show
-    // (a symlink, a non-file) still goes through readSource, which refuses or reports it as before.
-    const sources = uploadedSources(parsed);
-    const listed = sources.length > 0 ? new Set(options.store.listSourceIds()) : null;
-    for (const source of sources) {
-      if (listed?.has(source.sourceId.toLowerCase())) continue;
-      if (options.store.readSource(source.sourceId) === null) {
+    for (const source of uploadedSources(parsed)) {
+      const check = checkStoredSource(options.store, source.sourceId);
+      if (check.status === "refused") return errorResult(check.message);
+      if (check.status === "missing") {
         return errorResult(
           `Source spine references uploaded source "${source.sourceId}" (${source.name}), which is not stored. ` +
             "Call list_uploaded_sources and use a real sourceId.",
@@ -525,6 +524,36 @@ async function saveDraft(
         })),
       }),
   );
+}
+
+export type StoredSourceCheck =
+  | { readonly status: "ok" }
+  | { readonly status: "missing" }
+  | { readonly status: "refused"; readonly message: string };
+
+/** Whether an uploaded source can be read, decided from its file's metadata: the text is never loaded.
+ * Refuses what readSource refuses (a symlink, a non-file, a missing file) and what cannot be read (no
+ * read permission). The file is looked up by its exact id first, then by its lowercase id, as readSource
+ * always did; the id is never lowercased before the lookup, so a file with capitals in its name is found. */
+export function checkStoredSource(store: LearningPathStore, sourceId: string): StoredSourceCheck {
+  if (!isSourceId(sourceId)) return { status: "refused", message: "Invalid source ID: expected a UUID." };
+  const directory = nodePath.join(store.directory, SOURCES_DIRECTORY);
+  for (const name of new Set([sourceId, sourceId.toLowerCase()])) {
+    const filename = nodePath.join(directory, `${name}.md`);
+    const stat = fs.lstatSync(filename, { throwIfNoEntry: false });
+    if (!stat) continue;
+    if (stat.isSymbolicLink()) {
+      return { status: "refused", message: `Refusing to follow symlinked source file: ${filename}.` };
+    }
+    if (!stat.isFile()) return { status: "refused", message: `Source path is not a regular file: ${filename}.` };
+    try {
+      fs.accessSync(filename, fs.constants.R_OK);
+    } catch {
+      return { status: "refused", message: `Source file cannot be read: ${filename}.` };
+    }
+    return { status: "ok" };
+  }
+  return { status: "missing" };
 }
 
 function countNodes(path: LearningPath): number {

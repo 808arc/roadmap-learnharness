@@ -223,47 +223,88 @@ test("a failed listing is not kept: the next call asks GitHub again", async () =
   assert.equal(calls.length, 2);
 });
 
-test("a save checks that an uploaded source exists without reading its text, and still refuses a missing or symlinked one", async (t) => {
-  const { fetch } = fakeFetch({});
-  const { store, tool } = upstreamDefinition(t, fetch);
-  const STORED = "0f8fad5b-d9cb-469f-a165-70867728950e";
-  const MISSING = "1a9bbe6c-e0da-47aa-b276-81978839a61f";
-  const LINKED = "2bacd17d-f1eb-48bb-8387-92089940b72a";
-  store.writeSource(STORED, "# Stored source\n\nSynthetic text.");
-  const target = path.join(store.directory, "outside.md");
-  fs.writeFileSync(target, "# Outside");
-  fs.symlinkSync(target, path.join(store.directory, "sources", `${LINKED}.md`));
+/** A save whose only source is `sourceId`; resources are removed so the upstream link guard does not apply. */
+function uploadedDraft(sourceId: string, id = `path-${sourceId.slice(0, 8).toLowerCase()}`) {
+  const draft = rawPath();
+  draft.id = id;
+  draft.sourceSpine = {
+    mode: "uploaded",
+    references: [{ title: "Synthetic corpus", kind: "textbook" }],
+    sources: [{ sourceId, name: "corpus.md", uploadedAt: "2026-01-31T09:30:00.000Z" }],
+  } as typeof draft.sourceSpine;
+  for (const module of draft.modules) for (const node of module.nodes) delete node.resources;
+  return draft;
+}
 
+const SOURCE_UUID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+const CAPITAL_UUID = "AB12CD34-EF56-4789-9ABC-DEF012345678";
+const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+
+test("a normal readable uploaded source is accepted, and its text is not loaded to check it", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  store.writeSource(SOURCE_UUID, "# Stored source\n\nSynthetic text.");
   const reads: string[] = [];
   const readSource = store.readSource;
   store.readSource = (sourceId: string) => {
     reads.push(sourceId);
     return readSource(sourceId);
   };
-  const draftWith = (sourceId: string) => {
-    const draft = rawPath();
-    draft.id = `path-${sourceId.slice(0, 8)}`;
-    draft.sourceSpine = {
-      mode: "uploaded",
-      references: [{ title: "Synthetic corpus", kind: "textbook" }],
-      sources: [{ sourceId, name: "corpus.md", uploadedAt: "2026-01-31T09:30:00.000Z" }],
-    } as typeof draft.sourceSpine;
-    for (const module of draft.modules) for (const node of module.nodes) delete node.resources;
-    return draft;
-  };
-
-  const saved = await tool("save_learning_path").execute("c1", draftWith(STORED), undefined);
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
   assert.equal(saved.isError, undefined, saved.content[0]?.text);
-  assert.deepEqual(reads, [], "a stored source is confirmed from the listing, not read");
+  assert.deepEqual(reads, [], "the stored source is confirmed from its metadata");
+});
 
-  const missing = await tool("save_learning_path").execute("c2", draftWith(MISSING), undefined);
-  assert.equal(missing.isError, true);
-  assert.match(missing.content[0]?.text ?? "", /not stored/);
-  assert.deepEqual(reads, [MISSING], "a source the listing does not show is still checked with readSource");
+test("a missing uploaded source is refused and no path is written", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+  assert.equal(saved.isError, true);
+  assert.match(saved.content[0]?.text ?? "", /not stored/);
+  assert.equal(store.paths().length, 0);
+});
 
-  const linked = await tool("save_learning_path").execute("c3", draftWith(LINKED), undefined);
-  assert.equal(linked.isError, true);
-  assert.match(linked.content[0]?.text ?? "", /symlinked/, "a symlinked source is refused as before");
+test("a symlinked uploaded source is refused and no path is written", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  fs.mkdirSync(path.join(store.directory, "sources"), { recursive: true });
+  const target = path.join(store.directory, "outside.md");
+  fs.writeFileSync(target, "# Outside");
+  fs.symlinkSync(target, path.join(store.directory, "sources", `${SOURCE_UUID}.md`));
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+  assert.equal(saved.isError, true);
+  assert.match(saved.content[0]?.text ?? "", /symlinked/);
+  assert.equal(store.paths().length, 0);
+});
+
+test("a directory named like an uploaded source is refused and no path is written", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  fs.mkdirSync(path.join(store.directory, "sources", `${SOURCE_UUID}.md`), { recursive: true });
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+  assert.equal(saved.isError, true);
+  assert.match(saved.content[0]?.text ?? "", /not a regular file/);
+  assert.equal(store.paths().length, 0);
+});
+
+test("an uploaded source with mode 000 is refused and no path is written", { skip: isRoot ? "root reads any file" : false }, async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  const file = path.join(store.directory, "sources", `${SOURCE_UUID}.md`);
+  store.writeSource(SOURCE_UUID, "# Locked source");
+  fs.chmodSync(file, 0o000);
+  try {
+    const saved = await tool("save_learning_path").execute("c1", uploadedDraft(SOURCE_UUID), undefined);
+    assert.equal(saved.isError, true);
+    assert.match(saved.content[0]?.text ?? "", /cannot be read/);
+    assert.equal(store.paths().length, 0);
+  } finally {
+    fs.chmodSync(file, 0o600);
+  }
+});
+
+test("an id with capital letters matches the file whose name has those capitals", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  fs.mkdirSync(path.join(store.directory, "sources"), { recursive: true });
+  fs.writeFileSync(path.join(store.directory, "sources", `${CAPITAL_UUID}.md`), "# Capital source");
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(CAPITAL_UUID), undefined);
+  assert.equal(saved.isError, undefined, saved.content[0]?.text);
+  assert.equal(store.paths().length, 1);
 });
 
 /** A learner whose graph holds distinctive synthetic text, to prove none of it leaves the plugin. */
