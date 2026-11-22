@@ -238,20 +238,21 @@ test("a node with no unresolved errors still tells the session to probe", () => 
 });
 
 /** Issue #41: the one upstream source is named by its constant, and no repo path is written from memory. */
-test("the Architect prompts name the upstream constant and forbid repo paths from memory", () => {
-  // The offline default has no research tools and so no research instructions; it is not checked here.
-  const variants = [
-    buildArchitectSystemPrompt({ upstream: true }),
-    buildArchitectSystemPrompt({ upstream: true, researchTools: ["web_search", "deep_research", "read_page"] }),
-    buildArchitectSystemPrompt({ researchTools: ["web_search", "deep_research"], existingPath: makePath() }),
-  ];
-  for (const prompt of variants) {
-    assert.ok(prompt.includes(UPSTREAM_REPOSITORY), `names ${UPSTREAM_REPOSITORY}`);
-    assert.match(prompt, /Roadmap structure comes only from list_roadmap_topics and read_roadmap_topic/);
-    assert.match(prompt, /Never write a repo URL or path from memory/);
-    assert.doesNotMatch(prompt, /kamranahmedse/);
-    assert.doesNotMatch(prompt, /src\/data\/roadmaps/);
+test("every Architect prompt names the upstream constant and forbids repo paths from memory", () => {
+  const variants = {
+    "offline": buildArchitectSystemPrompt(),
+    "offline, deep_research only": buildArchitectSystemPrompt({ researchTools: ["deep_research"] }),
+    "web": buildArchitectSystemPrompt({ researchTools: ["web_search", "deep_research"], existingPath: makePath() }),
+    "upstream": buildArchitectSystemPrompt({ upstream: true }),
+    "upstream with web": buildArchitectSystemPrompt({ upstream: true, researchTools: ["web_search", "deep_research", "read_page"] }),
+  };
+  for (const [name, prompt] of Object.entries(variants)) {
+    assert.ok(prompt.includes(UPSTREAM_REPOSITORY), `${name}: names ${UPSTREAM_REPOSITORY}`);
+    assert.match(prompt, /Roadmap structure comes only from list_roadmap_topics and read_roadmap_topic/, name);
+    assert.match(prompt, /Never write a repo URL or path from memory/, name);
+    assert.match(prompt, /A research question may name a repo only if a tool result in this conversation gave that name/, name);
+    assert.equal(prompt.split("Never write a repo URL or path from memory").length, 2, `${name}: the rule is stated once`);
+    assert.doesNotMatch(prompt, /kamranahmedse/, name);
+    assert.doesNotMatch(prompt, /data\/roadmaps/, name);
   }
-  const withWeb = buildArchitectSystemPrompt({ researchTools: ["web_search", "deep_research"] });
-  assert.match(withWeb, /A research question may name a repo only if a tool result in this conversation gave that name/);
 });
