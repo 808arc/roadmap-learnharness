@@ -2,6 +2,16 @@
  * Scoped to this plugin's roots. Surfaces, borders and text follow the host
  * theme tokens; the accent, type and layout follow the Learny mockups. */
 
+/* Font scale. Defined on :root so every plugin root (view, settings, dialogs
+ * opened through the host, proposal card, research settings) inherits it. */
+:root {
+  --rm-font-xs: 11px;
+  --rm-font-sm: 12px;
+  --rm-font-md: 13px;
+  --rm-font-lg: 15px;
+  --rm-font-xl: 18px;
+}
+
 .roadmap-view {
   --rm-bg: var(--background, #141414);
   --rm-panel: var(--card, #1a1a1c);
@@ -18,11 +28,6 @@
   --rm-ok: #7fbf8a;
   --rm-warn: #d9a441;
   --rm-font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --rm-font-xs: 11px;
-  --rm-font-sm: 12px;
-  --rm-font-md: 13px;
-  --rm-font-lg: 15px;
-  --rm-font-xl: 18px;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
