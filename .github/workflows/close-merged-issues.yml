@@ -1,0 +1,24 @@
+name: Close merged issues
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Close issues named by pushed commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: node scripts/close-merged-issues.mjs "$BEFORE" "$AFTER"
