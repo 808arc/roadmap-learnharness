@@ -19,12 +19,15 @@ Russian (Settings → Roadmap → Interface language; *Auto* follows the system)
 
 ## What it looks like
 
-- **Graph view.** Modules form the main line from bottom to top; each module's
-  nodes hang off a bracket. The module you are working on opens as a box with
-  *In order*, *Additional* and *Consolidation* columns. Interchangeable choices
-  (GCC *or* Clang) sit on the left marked `alt.`; optional nodes are dashed.
-  Drag to pan, Ctrl + wheel or the zoom control to zoom.
-- **Tree view.** The same roadmap as a compact list.
+- **Tree view** (default). Modules are frames stacked from the first module at
+  the bottom to the goal at the top. Inside each frame, nodes sit in columns by
+  dependency depth, and arrows run from each prerequisite to the node that needs
+  it. Interchangeable choices (GCC *or* Clang) are bracketed and marked `alt.`;
+  optional nodes are dashed. Drag to pan, Ctrl + wheel or the zoom control to zoom.
+- **Graph view.** Only the nodes and their prerequisite arrows, in columns by
+  dependency depth, with no module frames. Pan and zoom work the same way.
+- **List view.** The roadmap as a nested text list: each node sits under its
+  deepest prerequisite, and a row's children can be collapsed.
 - **Node panel** (Node / Errors / Architect tabs): status, type, the goal,
   *After this node I can…*, the source anchor with a pre-reading pointer, typed
   resources (book, article, video, course, docs, exercises; free or not), the
@@ -153,7 +156,7 @@ Settings → Roadmap:
 | --- | --- |
 | Interface language | Auto (system language) |
 | Architect writes in | Auto (the language you write in) |
-| Default view | Graph |
+| Default view | Tree |
 | Show optional nodes | On |
 | Artifact defaults per node type | Framework recommendation |
 | Architect model | Follow the host's strong model, or choose one |

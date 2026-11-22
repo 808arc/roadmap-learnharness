@@ -633,7 +633,7 @@
   font-size: 12px;
 }
 
-.rm-canvas[data-view="tree"] .rm-legend {
+.rm-canvas[data-view="list"] .rm-legend {
   display: none;
 }
 

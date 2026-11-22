@@ -235,7 +235,8 @@ export function mountPathHub(
     },
     toggleModule(moduleId) {
       if (disposed || signal.aborted) return;
-      expandedModuleId = expandedModuleId === moduleId && view === "tree" ? null : moduleId;
+      // A module head always focuses its module; it never unfocuses (as in the module drawing before).
+      expandedModuleId = moduleId;
       renderCanvas();
     },
   });
