@@ -165,7 +165,7 @@ test("the brief carries content only and leaves question format to the session",
   assert.match(brief.text, /Question format \(count, type, answer form\) is not set here\./);
   assert.match(brief.text, /the hook below is only a default for when none is set/);
   for (const type of ["holistic", "concept", "contrast", "skill", "checkpoint", "bridge"] as const) {
-    assert.match(microPrimingHookFor(type), /^Default way in, when no question format is set: /, type);
+    assert.match(microPrimingHookFor(type), /^Default way in \(no question format set\): /, type);
   }
   assert.doesNotMatch(brief.text, /check them in the form they are applied\.$/m);
 });
