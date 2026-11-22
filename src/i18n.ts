@@ -360,6 +360,10 @@ const en = {
 
   // Code repository on a node (issue #32). Keep after the issue #35 block; new blocks go at the end of the table.
   "insp.codeRepo": "Code repository",
+
+  // Roadmap files changed by Git sync (issue #29). Keep after the issue #32 block; new blocks go at the end of the table.
+  "error.refused": "Roadmap file {file} could not be read, so it is hidden and nothing is written to it. Resolve it in the Git view.",
+  "error.refusedNewer": "Roadmap file {file} was saved by a newer version of this plugin, so it is hidden and never overwritten. Update the plugin.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -718,6 +722,10 @@ const ru: Record<MessageKey, string> = {
 
   // Code repository on a node (issue #32). Keep after the issue #35 block; new blocks go at the end of the table.
   "insp.codeRepo": "Репозиторий кода",
+
+  // Roadmap files changed by Git sync (issue #29). Keep after the issue #32 block; new blocks go at the end of the table.
+  "error.refused": "Файл дорожной карты {file} не читается, поэтому он скрыт и в него ничего не записывается. Разрешите это во вкладке Git.",
+  "error.refusedNewer": "Файл дорожной карты {file} сохранён более новой версией плагина, поэтому он скрыт и никогда не перезаписывается. Обновите плагин.",
 };
 
 export const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };

@@ -659,7 +659,11 @@ export function activate(ctx: PluginBackendContext): void {
     active: !ctx.signal.aborted,
   }));
 
-  handle("paths.list", () => ({ paths: store.paths().map(summarize) }));
+  // Refused roadmap files (for example conflict markers after a Git pull) are listed so the hub can name them.
+  handle("paths.list", () => ({
+    paths: store.paths().map(summarize),
+    refused: store.refusals().map(({ filename, code }) => ({ filename, code })),
+  }));
 
   handle("graph.topicCount", () => ({ topics: readGraphTopicCount(ctx.learning) }));
 

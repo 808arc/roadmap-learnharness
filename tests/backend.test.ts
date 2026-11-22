@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ARCHITECT_DEFINITION_ID } from "../src/architect-agent.ts";
-import { ARCHITECT_FILE, SOURCES_DIRECTORY } from "../src/store.ts";
+import { ARCHITECT_FILE, ROADMAPS_DIRECTORY, SOURCES_DIRECTORY } from "../src/store.ts";
 import { AT, makePath, rawPath } from "./fixtures.ts";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import type { PluginAgentTool } from "learnharness-plugin-api";
@@ -666,4 +666,21 @@ test("the Architect saves roadmap marks, outcomes and resources, and refinement 
   assert.equal(after[2].title, "Pointers!");
   assert.deepEqual(after[2].outcomes, pointers.outcomes);
   assert.equal(after[3].optional, true);
+});
+
+test("paths.list names a roadmap file the store refused, so the hub can show it", async (t) => {
+  const directory = temporaryDirectory(t);
+  const first = host(t, directory);
+  await createConversation(first);
+  await first.runTool("save_learning_path", rawPath());
+  first.close();
+  const roadmaps = path.join(directory, ROADMAPS_DIRECTORY);
+  const [file] = fs.readdirSync(roadmaps);
+  const filename = path.join(roadmaps, file!);
+  fs.writeFileSync(filename, "<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> origin/main\n");
+
+  const reopened = host(t, directory);
+  const result = await reopened.call<{ paths: unknown[]; refused: { filename: string; code: string }[] }>("paths.list");
+  assert.deepEqual(result.paths, []);
+  assert.deepEqual(result.refused, [{ filename, code: "corrupt" }]);
 });

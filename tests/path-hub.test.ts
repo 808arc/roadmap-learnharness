@@ -528,3 +528,18 @@ test("an empty view opens the Architect and does not invent a map or a node", as
     fixture.restore();
   }
 });
+
+test("a refused roadmap file is named in the hub banner with the Git view to resolve it", async () => {
+  const filename = "/data/roadmaps/abc.json";
+  const fixture = createViewFixture({ paths: [makePath()], refused: [{ filename, code: "corrupt" }] });
+  try {
+    await mounted(fixture);
+    await fixture.flush();
+    const banner = fixture.root.querySelector<HTMLElement>(".rm-hub-error")!;
+    assert.equal(banner.hidden, false);
+    assert.match(banner.textContent ?? "", /\/data\/roadmaps\/abc\.json/);
+    assert.match(banner.textContent ?? "", /Resolve it in the Git view/);
+  } finally {
+    fixture.restore();
+  }
+});

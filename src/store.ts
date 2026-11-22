@@ -70,7 +70,8 @@ export interface SavedSource {
 /** Host services own these; the plugin must never touch them. */
 export const HOST_RESERVED_ENTRIES = ["agents", "tasks", "usage.jsonl"] as const;
 
-export type StoreErrorCode = "corrupt" | "newer-schema" | "unsupported-schema" | "unsafe" | "io";
+/** `stale` means the file changed on disk: the store reloaded it and the save was not written. */
+export type StoreErrorCode = "corrupt" | "newer-schema" | "unsupported-schema" | "unsafe" | "io" | "stale";
 
 export class StoreError extends Error {
   readonly code: StoreErrorCode;
@@ -119,7 +120,8 @@ function asRecord(value: unknown, filename: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function readJsonFile(filename: string): unknown | undefined {
+/** Text of a managed file; `undefined` when it does not exist. Symlinks and non-files are refused. */
+function readTextFile(filename: string): string | undefined {
   const stat = fs.lstatSync(filename, { throwIfNoEntry: false });
   if (!stat) return undefined;
   if (stat.isSymbolicLink()) {
@@ -128,12 +130,25 @@ function readJsonFile(filename: string): unknown | undefined {
   if (!stat.isFile()) {
     throw new StoreError("corrupt", `Learning Path path is not a regular file: ${filename}. No data was changed.`);
   }
-  const text = fs.readFileSync(filename, "utf8");
+  return fs.readFileSync(filename, "utf8");
+}
+
+function parseJsonText(text: string, filename: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
     throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: invalid JSON. No data was changed.`);
   }
+}
+
+function readJsonFile(filename: string): unknown | undefined {
+  const text = readTextFile(filename);
+  return text === undefined ? undefined : parseJsonText(text, filename);
+}
+
+/** SHA-256 of the exact bytes of a managed file; the store compares it with what is on disk before writing. */
+function digestOf(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
 function readSchemaVersion(record: Record<string, unknown>, filename: string): number {
@@ -281,11 +296,9 @@ function indexEnvelope(ids: readonly string[], revision: number, migration: Road
   return { schemaVersion: STORE_SCHEMA_VERSION, revision, roadmaps: ids, migration };
 }
 
-/** Parse the roadmap index; `null` when it does not exist yet. */
-function loadRoadmapIndex(filename: string): { ids: string[]; revision: number; migration: RoadmapMigrationMarker | null } | null {
-  const raw = readJsonFile(filename);
-  if (raw === undefined) return null;
-  const record = asRecord(raw, filename);
+/** Parse the roadmap index text; throws `StoreError` to refuse it. */
+function parseRoadmapIndexText(text: string, filename: string): { ids: string[]; revision: number; migration: RoadmapMigrationMarker | null } {
+  const record = asRecord(parseJsonText(text, filename), filename);
   readSchemaVersion(record, filename);
   const revision = readRevision(record, filename);
   if (!Array.isArray(record.roadmaps)) {
@@ -318,13 +331,15 @@ function loadRoadmapIndex(filename: string): { ids: string[]; revision: number; 
   return { ids, revision, migration };
 }
 
-/** Parse one roadmap file and check it holds the roadmap its name says. Throws `StoreError` to refuse it. */
-function loadRoadmapFile(filename: string, id: string): { roadmap: LearningPath; revision: number } {
-  const raw = readJsonFile(filename);
-  if (raw === undefined) {
-    throw new StoreError("corrupt", `Roadmap file ${filename} is missing. No data was changed.`);
-  }
-  const record = asRecord(raw, filename);
+/** Parse the roadmap index; `null` when it does not exist yet. */
+function loadRoadmapIndex(filename: string): { ids: string[]; revision: number; migration: RoadmapMigrationMarker | null } | null {
+  const text = readTextFile(filename);
+  return text === undefined ? null : parseRoadmapIndexText(text, filename);
+}
+
+/** Parse one roadmap file's text and check it holds the roadmap its name says. Throws `StoreError` to refuse it. */
+function parseRoadmapText(text: string, filename: string, id: string): { roadmap: LearningPath; revision: number } {
+  const record = asRecord(parseJsonText(text, filename), filename);
   readSchemaVersion(record, filename);
   const revision = readRevision(record, filename);
   const result = validateLearningPath(record.roadmap);
@@ -342,6 +357,15 @@ function loadRoadmapFile(filename: string, id: string): { roadmap: LearningPath;
     );
   }
   return { roadmap: result.value, revision };
+}
+
+/** Parse one roadmap file; a missing file is an error here (the caller decides what absence means). */
+function loadRoadmapFile(filename: string, id: string): { roadmap: LearningPath; revision: number } {
+  const text = readTextFile(filename);
+  if (text === undefined) {
+    throw new StoreError("corrupt", `Roadmap file ${filename} is missing. No data was changed.`);
+  }
+  return parseRoadmapText(text, filename, id);
 }
 
 /** One-time move of the legacy `learning-paths.json` into `roadmaps/`.
@@ -632,25 +656,101 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
   if (!pathExists(roadmapIndexFilename) && pathExists(path.join(directory, LEARNING_PATHS_FILE))) {
     migrateLegacyPaths(directory);
   }
-  const roadmapIndex = loadRoadmapIndex(roadmapIndexFilename);
-  let order: string[] = roadmapIndex?.ids ?? [];
-  let indexState: { revision: number; migration: RoadmapMigrationMarker | null } = {
-    revision: roadmapIndex?.revision ?? 0,
-    migration: roadmapIndex?.migration ?? null,
-  };
-  // Each roadmap file is loaded on its own: one bad file is refused without blocking the others.
+  let order: string[] = [];
+  let indexState: { revision: number; migration: RoadmapMigrationMarker | null } = { revision: 0, migration: null };
+  /** Digest of the index bytes the store last read or wrote; null when the index was absent. */
+  let indexDigest: string | null = null;
   const roadmapState = new Map<string, { roadmap: LearningPath; revision: number }>();
   const refusals = new Map<string, RoadmapRefusal>();
-  for (const id of order) {
+  /** Digest of each roadmap file's bytes as the store last read or wrote it (null when absent or unreadable). */
+  const fileDigests = new Map<string, string | null>();
+
+  type RoadmapOnDisk =
+    | { readonly kind: "absent" }
+    | { readonly kind: "valid"; readonly digest: string; readonly roadmap: LearningPath; readonly revision: number }
+    | { readonly kind: "invalid"; readonly digest: string | null; readonly problem: StoreError };
+
+  /** Read one roadmap file as it is on disk now. Never writes. */
+  const inspectRoadmap = (id: string): RoadmapOnDisk => {
     const filename = roadmapFilename(directory, id);
-    if (!pathExists(filename)) continue; // Listed but missing: nothing to refuse and nothing to lose.
+    let text: string | undefined;
     try {
-      roadmapState.set(id, loadRoadmapFile(filename, id));
+      text = readTextFile(filename);
     } catch (problem) {
       if (!(problem instanceof StoreError)) throw problem;
-      refusals.set(id, { id, filename, code: problem.code, message: problem.message });
+      return { kind: "invalid", digest: null, problem };
     }
-  }
+    if (text === undefined) return { kind: "absent" };
+    const digest = digestOf(text);
+    try {
+      return { kind: "valid", digest, ...parseRoadmapText(text, filename, id) };
+    } catch (problem) {
+      if (!(problem instanceof StoreError)) throw problem;
+      return { kind: "invalid", digest, problem };
+    }
+  };
+
+  /** The refusal for a file that cannot be read. Git-caused damage points the learner at the Git view. */
+  const refusalFor = (id: string, filename: string, problem: StoreError, prefix = ""): RoadmapRefusal => ({
+    id,
+    filename,
+    code: problem.code,
+    message:
+      problem.code === "newer-schema"
+        ? `${prefix}${problem.message}`
+        : `${prefix}${problem.message} Resolve it in the Git view; nothing is written to this roadmap until the file reads cleanly.`,
+  });
+
+  /** Read the index and every roadmap file from disk, replacing what the store holds in memory.
+   * Each roadmap file is loaded on its own: one bad file is refused without blocking the others. */
+  const loadRoadmapState = (): void => {
+    const indexText = readTextFile(roadmapIndexFilename);
+    const index = indexText === undefined ? null : parseRoadmapIndexText(indexText, roadmapIndexFilename);
+    order = index?.ids ?? [];
+    indexState = { revision: index?.revision ?? 0, migration: index?.migration ?? null };
+    indexDigest = indexText === undefined ? null : digestOf(indexText);
+    roadmapState.clear();
+    refusals.clear();
+    fileDigests.clear();
+    for (const id of order) {
+      const disk = inspectRoadmap(id);
+      const filename = roadmapFilename(directory, id);
+      if (disk.kind === "absent") {
+        fileDigests.set(id, null); // Listed but missing: nothing to refuse and nothing to lose.
+      } else if (disk.kind === "valid") {
+        roadmapState.set(id, { roadmap: disk.roadmap, revision: disk.revision });
+        fileDigests.set(id, disk.digest);
+      } else {
+        refusals.set(id, refusalFor(id, filename, disk.problem));
+        fileDigests.set(id, disk.digest);
+      }
+    }
+  };
+  loadRoadmapState();
+
+  /** Before any write, the index on disk must still be the one the store last read or wrote. */
+  const ensureIndexFresh = (): void => {
+    const text = readTextFile(roadmapIndexFilename);
+    const digest = text === undefined ? null : digestOf(text);
+    if (digest === indexDigest) return;
+    if (text !== undefined) {
+      try {
+        parseRoadmapIndexText(text, roadmapIndexFilename);
+      } catch (problem) {
+        if (!(problem instanceof StoreError)) throw problem;
+        throw new StoreError(
+          problem.code,
+          `Roadmap index ${roadmapIndexFilename} changed on disk and no longer reads cleanly. ${problem.code === "newer-schema" ? problem.message : `${problem.message} Resolve it in the Git view.`} Nothing was written.`,
+          { cause: problem },
+        );
+      }
+    }
+    loadRoadmapState();
+    throw new StoreError(
+      "stale",
+      `Roadmap index ${roadmapIndexFilename} changed on disk after the store last read it. The roadmap list was reloaded and your change was NOT saved; review it and save again.`,
+    );
+  };
 
   let settingsState = loadSettingsFile(settingsFilename);
   let architectState = loadArchitectFile(architectFilename);
@@ -728,22 +828,68 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
   const assertNotRefused = (id: string): void => {
     const refusal = refusals.get(id);
     if (refusal) {
-      throw new StoreError(refusal.code, `Roadmap "${id}" was refused on open and was not changed. ${refusal.message}`);
+      throw new StoreError(refusal.code, `Roadmap "${id}" was refused and was not changed. ${refusal.message}`);
     }
+  };
+
+  /** Before a write touches roadmap `id`, its file on disk must be the one the store last read or wrote.
+   * A changed file is reloaded and the save refused; an invalid one is refused; a newer one is refused. */
+  const ensureRoadmapFresh = (id: string): void => {
+    const filename = roadmapFilename(directory, id);
+    const disk = inspectRoadmap(id);
+    const known = roadmapState.has(id);
+    if (disk.kind === "invalid") {
+      if (refusals.has(id) && fileDigests.get(id) === disk.digest) assertNotRefused(id);
+      roadmapState.delete(id);
+      const refusal = refusalFor(id, filename, disk.problem, `Roadmap file ${filename} changed on disk. `);
+      refusals.set(id, refusal);
+      fileDigests.set(id, disk.digest);
+      throw new StoreError(refusal.code, `Roadmap "${id}" was not saved. ${refusal.message}`, { cause: disk.problem });
+    }
+    if (disk.kind === "absent") {
+      if (known) {
+        // The removal may be deliberate (a Git pull, or the learner), so the roadmap is never silently recreated.
+        roadmapState.delete(id);
+        fileDigests.set(id, null);
+        throw new StoreError(
+          "stale",
+          `Roadmap file ${filename} was removed on disk after the store last read it. The roadmap was dropped from memory and your change was NOT saved. If it was removed by mistake, restore it in the Git view.`,
+        );
+      }
+      if (refusals.has(id)) {
+        // The refused file is gone from disk, so there is nothing left to protect.
+        refusals.delete(id);
+        fileDigests.set(id, null);
+      }
+      return;
+    }
+    if (known && fileDigests.get(id) === disk.digest) return;
+    // Changed (or unknown to memory): reload it and refuse this save, so the external change is never overwritten.
+    roadmapState.set(id, { roadmap: disk.roadmap, revision: disk.revision });
+    refusals.delete(id);
+    fileDigests.set(id, disk.digest);
+    throw new StoreError(
+      "stale",
+      `Roadmap file ${filename} changed on disk after the store last read it. The roadmap was reloaded from disk and your change was NOT saved; review the reloaded roadmap and save again.`,
+    );
   };
 
   /** Rewrite the index only when the order or the membership changed. */
   const writeRoadmapIndex = (ids: string[]): void => {
     fs.mkdirSync(roadmapsDirectory, { recursive: true, mode: 0o700 });
     const migration = indexState.migration ?? { version: ROADMAP_MIGRATION_VERSION, from: null };
-    atomicWrite(roadmapIndexFilename, serialize(indexEnvelope(ids, indexState.revision + 1, migration)));
+    const content = serialize(indexEnvelope(ids, indexState.revision + 1, migration));
+    atomicWrite(roadmapIndexFilename, content);
     indexState = { revision: indexState.revision + 1, migration };
+    indexDigest = digestOf(content);
     order = ids;
   };
 
   const writeRoadmapFile = (roadmap: LearningPath, revision: number): void => {
     fs.mkdirSync(roadmapsDirectory, { recursive: true, mode: 0o700 });
-    atomicWrite(roadmapFilename(directory, roadmap.id), serialize(roadmapEnvelope(roadmap, revision)));
+    const content = serialize(roadmapEnvelope(roadmap, revision));
+    atomicWrite(roadmapFilename(directory, roadmap.id), content);
+    fileDigests.set(roadmap.id, digestOf(content));
   };
 
   return {
@@ -759,7 +905,10 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
 
     savePath(value) {
       const parsed = parseLearningPath(value);
-      assertNotRefused(parsed.id);
+      ensureIndexFresh();
+      if (order.includes(parsed.id) || roadmapState.has(parsed.id) || refusals.has(parsed.id)) {
+        ensureRoadmapFresh(parsed.id);
+      }
       const current = roadmapState.get(parsed.id);
       if (current) {
         // Unchanged data writes nothing; a change rewrites only this roadmap's file.
@@ -786,12 +935,14 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
     },
 
     deletePath(id) {
-      assertNotRefused(id);
+      ensureIndexFresh();
+      if (order.includes(id) || roadmapState.has(id) || refusals.has(id)) ensureRoadmapFresh(id);
       const current = roadmapState.get(id);
       if (!current && !order.includes(id)) return false;
       // The index goes first, so a crash never leaves an index entry pointing at a deleted file.
       if (order.includes(id)) writeRoadmapIndex(order.filter((candidate) => candidate !== id));
       roadmapState.delete(id);
+      fileDigests.delete(id);
       try {
         fs.unlinkSync(roadmapFilename(directory, id));
       } catch (error) {
