@@ -84,12 +84,13 @@ function countByDay(days: readonly string[]): DayCount[] {
 }
 
 /** Action days and latest activity day of one native session. */
-interface SessionActivity {
+export interface SessionActivity {
   readonly days: readonly string[];
   readonly lastDay: string;
 }
 
-function sessionActivity(session: NativeSessionActivity): SessionActivity | null {
+/** The study-day rule for one session: its sorted local action days, or null when it has no valid timestamp. */
+export function sessionActivity(session: NativeSessionActivity): SessionActivity | null {
   const raw = session.actionTimes && session.actionTimes.length > 0
     ? session.actionTimes.map((time) => Date.parse(time))
     : [Date.parse(session.createdAt), Date.parse(session.updatedAt)];
