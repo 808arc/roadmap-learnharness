@@ -352,6 +352,8 @@ export function mountPathHub(
     if (disposed || signal.aborted) return;
     const node = path ? nodeById(path, selectedNodeId) : null;
     const errors = node ? node.errors.filter((entry) => !entry.resolved).length : 0;
+    if (errors === 0 && tab === "errors") tab = "node";
+    errorsTabButton.hidden = errors === 0;
     nodeTabButton.textContent = t("tab.node");
     errorsTabButton.textContent = errors > 0 ? `${t("tab.errors")} · ${errors}` : t("tab.errors");
     architectTabButton.textContent = t("tab.architect");
