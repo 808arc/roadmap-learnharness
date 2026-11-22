@@ -160,3 +160,23 @@ test("only the non-empty subsection is shown, and clicking a linked node selects
     fixture.restore();
   }
 });
+
+test("the interleaved label differs from Builds on, so a node with both shows Builds on once", () => {
+  const path = syntheticRoadmap();
+  const c = nodeById(path, "n-c");
+  const interleaved: PathNode = { ...c, interleavesNodeIds: ["n-a", "n-b"] };
+  const full: LearningPath = {
+    ...path,
+    modules: path.modules.map((module) => ({ ...module, nodes: module.nodes.map((node) => (node.id === c.id ? interleaved : node)) })),
+  };
+  const { fixture, inspector } = mountInspector(full, []);
+  try {
+    inspector.render(full, interleaved);
+    const text = fixture.root.textContent ?? "";
+    assert.equal(text.split("Builds on").length - 1, 1);
+    assert.match(text, /Interleaves with/);
+  } finally {
+    inspector.dispose();
+    fixture.restore();
+  }
+});

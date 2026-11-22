@@ -343,7 +343,7 @@ export function createNodeInspector(
 
     const related = node.interleavesNodeIds.map((id) => findNode(path, id)).filter((entry): entry is PathNode => entry !== null);
     if (related.length > 0) {
-      const relatedSection = section(t("insp.related"));
+      const relatedSection = section(t("insp.interleaves"));
       const row = el(document, "div", "rm-chips");
       for (const prior of related) {
         row.append(button(document, prior.title, () => options.selectNode(prior.id), scoped(), { variant: "ghost", className: "rm-chip" }));
