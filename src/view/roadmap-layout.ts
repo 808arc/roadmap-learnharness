@@ -295,6 +295,7 @@ export function layoutRoadmap(
   }
   const columns = graph.nodeIds.length === 0 ? 0 : Math.max(...graph.depth.values()) + 1;
   const colX = (depth: number): number => PAD + FRAME_PAD + depth * COL_W;
+  const moduleOf = new Map(path.modules.flatMap((module) => module.nodes.map((node) => [node.id, module.id] as const)));
 
   interface Band {
     readonly module: PathModule;
@@ -346,31 +347,18 @@ export function layoutRoadmap(
       h: band.height,
       errorLine,
     });
-    for (const [depth, list] of band.cells) {
-      const x = colX(depth);
-      list.forEach((node, row) => {
-        nodes.push({ node, moduleId: band.module.id, depth, x, y: top + FRAME_HEAD + row * ROW, w: SUB_W });
-      });
-      // Bracket each run of two or more adjacent members of one alternative group.
-      let runStart = 0;
-      for (let row = 1; row <= list.length; row += 1) {
-        if (row < list.length && unitKey(list[row]!) === unitKey(list[runStart]!)) continue;
-        const first = list[runStart]!;
-        if (first.alternativeGroup && row - runStart >= 2) {
-          groups.push({
-            alternativeGroup: first.alternativeGroup,
-            moduleId: band.module.id,
-            x: x - GROUP_BRACKET,
-            y1: top + FRAME_HEAD + runStart * ROW,
-            y2: top + FRAME_HEAD + (row - 1) * ROW + SUB_H,
-          });
-        }
-        runStart = row;
-      }
-    }
+    const placed = placeCells(band.cells, top + FRAME_HEAD, moduleOf);
+    nodes.push(...placed.nodes);
+    groups.push(...placed.groups);
     bottom = top - MODULE_GAP;
   }
 
+  const edges = placeEdges(graph, nodes);
+  return { width, height, modules, nodes, edges, groups };
+}
+
+/** Arrows from each prerequisite's right edge to its dependent's left edge (both ends must be placed). */
+function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[]): Edge[] {
   const placedNodes = new Map(nodes.map((placed) => [placed.node.id, placed]));
   const edges: Edge[] = [];
   for (const edge of graph.edges) {
@@ -387,6 +375,74 @@ export function layoutRoadmap(
       dashed: Boolean(from.node.optional || to.node.optional),
     });
   }
+  return edges;
+}
 
-  return { width, height, modules, nodes, edges, groups };
+/** Stack each column's nodes from `top`, one row per node. Alternatives of one unit stay adjacent
+ * (already sorted by the caller); each run of two or more members of one alternative group gets a bracket. */
+function placeCells(
+  cells: ReadonlyMap<number, readonly PathNode[]>,
+  top: number,
+  moduleOf: ReadonlyMap<string, string>,
+): { nodes: PlacedNode[]; groups: AlternativeGroup[] } {
+  const nodes: PlacedNode[] = [];
+  const groups: AlternativeGroup[] = [];
+  for (const [depth, list] of cells) {
+    const x = PAD + FRAME_PAD + depth * COL_W;
+    list.forEach((node, row) => {
+      nodes.push({ node, moduleId: moduleOf.get(node.id)!, depth, x, y: top + row * ROW, w: SUB_W });
+    });
+    // Bracket each run of two or more adjacent members of one alternative group.
+    let runStart = 0;
+    for (let row = 1; row <= list.length; row += 1) {
+      if (row < list.length && unitKey(list[row]!) === unitKey(list[runStart]!)) continue;
+      const first = list[runStart]!;
+      if (first.alternativeGroup && row - runStart >= 2) {
+        groups.push({
+          alternativeGroup: first.alternativeGroup,
+          moduleId: moduleOf.get(first.id)!,
+          x: x - GROUP_BRACKET,
+          y1: top + runStart * ROW,
+          y2: top + (row - 1) * ROW + SUB_H,
+        });
+      }
+      runStart = row;
+    }
+  }
+  return { nodes, groups };
+}
+
+/** The flat graph (no module frames): every shown node sits in the column of its dependency depth,
+ * with the same arrows and alternative brackets as the module layout. Modules are not drawn, so
+ * `modules` is empty and each node keeps its module id for selection and the tree. */
+export function layoutGraph(
+  path: LearningPath,
+  options: { readonly showOptional: boolean; readonly prerequisites?: readonly NodePrerequisites[] },
+): RoadmapLayout {
+  const graph = buildDependencyGraph(path, options);
+  const all = path.modules.flatMap((module) => module.nodes);
+  const flatIndex = new Map(all.map((node, index) => [node.id, index]));
+  const moduleOf = new Map(path.modules.flatMap((module) => module.nodes.map((node) => [node.id, module.id] as const)));
+  const firstOfUnit = new Map<string, number>();
+  for (const node of all) {
+    const key = unitKey(node);
+    if (!firstOfUnit.has(key)) firstOfUnit.set(key, flatIndex.get(node.id)!);
+  }
+  const columns = graph.nodeIds.length === 0 ? 0 : Math.max(...graph.depth.values()) + 1;
+  const cells = new Map<number, PathNode[]>();
+  for (const node of all) {
+    const depth = graph.depth.get(node.id);
+    if (depth === undefined) continue;
+    cells.set(depth, [...(cells.get(depth) ?? []), node]);
+  }
+  for (const list of cells.values()) {
+    list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
+  }
+  const rows = Math.max(0, ...[...cells.values()].map((list) => list.length));
+  const right = columns > 0 ? PAD + FRAME_PAD + (columns - 1) * COL_W + SUB_W : PAD + FRAME_PAD + SUB_W;
+  const width = right + FRAME_PAD + PAD;
+  const height = PAD + stackHeight(rows) + PAD + PAD_BOTTOM;
+  const placed = placeCells(cells, PAD, moduleOf);
+  const edges = placeEdges(graph, placed.nodes);
+  return { width, height, modules: [], nodes: placed.nodes, edges, groups: placed.groups };
 }

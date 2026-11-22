@@ -148,7 +148,7 @@ test("a roadmap with two roots draws both branches and the tree shows both roots
     showLegend: false,
   });
   try {
-    canvas.render(state("tree"));
+    canvas.render(state("list"));
     const rows = [...host.querySelectorAll<HTMLElement>(".rm-tree .rm-tree-row")];
     const level0 = rows.filter((row) => row.style.paddingLeft === "0px").map((row) => row.querySelector<HTMLElement>(".rm-tree-node")!.dataset.nodeId);
     assert.deepEqual(level0, ["root-one", "root-two"]);
