@@ -17,7 +17,6 @@ const { parseHTML } = createRequire(import.meta.url)("linkedom") as {
 };
 import type {
   PluginAction,
-  PluginActionContext,
   PluginActionPlacement,
   PluginAgentSnapshot,
   PluginDialogProps,

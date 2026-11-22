@@ -15,7 +15,7 @@ import type { LearningPath } from "../src/domain.ts";
 import { makePath } from "./fixtures.ts";
 import { canvasNode, chooseMenuItem, click, inspector, selectNode } from "./roadmap-dom.ts";
 import { createViewFixture, fire, makeConversation, setSelect } from "./view-host.ts";
-import type { MountRecord, ViewFixture } from "./view-host.ts";
+import type { ViewFixture } from "./view-host.ts";
 
 function assistant(text: string): PluginAgentSnapshot["messages"][number] {
   return {
@@ -39,10 +39,6 @@ async function mounted(fixture: ViewFixture): Promise<HTMLElement> {
   await fixture.flush();
   await fixture.flush();
   return container;
-}
-
-function liveButtons(fixture: ViewFixture): MountRecord[] {
-  return fixture.all("mountButton");
 }
 
 /** Toolbar buttons are plain Learny buttons; expose them like mount records for the Architect tests. */

@@ -12,7 +12,6 @@ import { createErrorLedger } from "../src/view/error-ledger.ts";
 import type { ErrorLedgerChange } from "../src/view/error-ledger.ts";
 import { AT, makePath } from "./fixtures.ts";
 import { createViewFixture } from "./view-host.ts";
-import type { MountRecord, ViewFixture } from "./view-host.ts";
 
 function ledgerPath(): LearningPath {
   const base = makePath();
@@ -57,19 +56,6 @@ function ledgerPath(): LearningPath {
       }),
     })),
   };
-}
-
-function buttonFor(
-  fixture: ViewFixture,
-  label: string,
-  errorId: string,
-): MountRecord {
-  return fixture.findLast(
-    "mountButton",
-    (record) =>
-      record.props.label === label &&
-      record.container.closest(`[data-error-id="${errorId}"]`) !== null,
-  );
 }
 
 /** Click the Learny-styled button with `label` inside the entry for `errorId` (or anywhere). */

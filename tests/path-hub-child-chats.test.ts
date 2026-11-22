@@ -52,12 +52,6 @@ async function mounted(fixture: ViewFixture, host?: NativeSessionHost): Promise<
   return fixture.root;
 }
 
-function button(fixture: ViewFixture, label: string) {
-  const found = fixture.all("mountButton").find((record) => record.props.label === label);
-  assert.ok(found, `Missing button ${label}`);
-  return found;
-}
-
 test("Lesson creates, links, stages and opens a native session", async () => {
   const path = makePath();
   const fixture = createViewFixture({ paths: [path] });
