@@ -14,6 +14,10 @@ export type NodeType = (typeof NODE_TYPES)[number];
 export const PROGRESSION_STATES = ["unstarted", "in_progress", "consolidated", "skipped"] as const;
 export type ProgressionState = (typeof PROGRESSION_STATES)[number];
 
+/** Marks a node the learner's graph already covers: a short review, not new material (#17). */
+export const REVIEW_MARKS = ["short-review"] as const;
+export type ReviewMark = (typeof REVIEW_MARKS)[number];
+
 export const CHILD_SESSION_KINDS = ["teaching", "practice"] as const;
 export type ChildSessionKind = (typeof CHILD_SESSION_KINDS)[number];
 
@@ -282,6 +286,8 @@ export interface PathNode {
   readonly pivotSuggestions: readonly PivotSuggestion[];
   /** Not needed for the goal: drawn dashed, never counted against the learner. */
   readonly optional?: boolean;
+  /** Set in code on nodes the learner's graph already covers (never by the model). */
+  readonly reviewMark?: ReviewMark;
   /** Nodes sharing a group are interchangeable choices ("GCC or Clang"). */
   readonly alternativeGroup?: string;
   /** Concrete abilities after the node ("After this node I can …"). */
@@ -703,6 +709,9 @@ function readPathNode(value: unknown, path: string): PathNode {
     ...(record.optional === undefined || record.optional === false
       ? {}
       : { optional: readBoolean(record.optional, `${path}.optional`) }),
+    ...(record.reviewMark === undefined
+      ? {}
+      : { reviewMark: readEnum(record.reviewMark, REVIEW_MARKS, `${path}.reviewMark`) }),
     ...(record.alternativeGroup === undefined || record.alternativeGroup === null || record.alternativeGroup === ""
       ? {}
       : { alternativeGroup: readString(record.alternativeGroup, `${path}.alternativeGroup`, { max: 100 }) }),

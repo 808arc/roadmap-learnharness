@@ -223,6 +223,7 @@ export function createNodeInspector(
         node.alternativeGroup ? t("mark.alternative") : node.optional ? t("mark.optional") : t("mark.recommended"),
       ),
     );
+    if (node.reviewMark) meta.append(el(document, "span", "rm-tag", t("mark.shortReview")));
     body.append(meta);
     body.append(el(document, "p", "rm-insp-goal", node.goal));
     const evidence = nodeEvidence(node, options.knowledgeMastery?.() ?? []);

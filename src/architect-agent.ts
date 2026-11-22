@@ -416,10 +416,15 @@ function completeDraft(
           const progression = oldNode?.progression ?? (matched ? "unstarted" : node.progression) ?? "unstarted";
           // Learner state belongs to the store once a node exists: progress, child-chat
           // links, errors and pivots recorded since the model last looked must survive.
+          // The review mark is set in code: a mark sent by the model is dropped, and a draft
+          // without a brief keeps the mark already stored.
+          const { reviewMark: _draftMark, ...carried } = { ...oldNode, ...node };
+          const reviewMark = graphKeys === null ? oldNode?.reviewMark : matched ? "short-review" : undefined;
           const complete = {
-            ...oldNode, ...node, id,
+            ...carried, id,
             progression,
             ...(matched && progression === "unstarted" ? { optional: true } : {}),
+            ...(reviewMark ? { reviewMark } : {}),
             interleavesNodeIds: node.interleavesNodeIds ?? oldNode?.interleavesNodeIds ?? preceding.slice(-2),
             childSessions: oldNode?.childSessions ?? node.childSessions ?? [],
             errors: oldNode?.errors ?? node.errors ?? [],

@@ -80,6 +80,22 @@ test("a draft sent with a graph brief keeps matching nodes as optional review, n
   assert.notEqual(stored.get(untouchedNode.id).optional, true, "a node the graph does not know is left as drafted");
 });
 
+test("only graph-matched nodes carry the short-review mark, and a model-sent mark is dropped", async (t) => {
+  const draft = rawPath();
+  const matchedNode = draft.modules[0].nodes[0];
+  const spoofedNode = draft.modules[1].nodes[0]; // unmatched, but the model tries to mark it
+  const untouchedNode = draft.modules[1].nodes[1];
+  spoofedNode.reviewMark = "short-review";
+  const h = host(t, { propositions: [topic(matchedNode.title)], chains: [] });
+
+  const { path } = await draftThrough(h, draft, true);
+  const stored = new Map<string, any>(nodesOf(path).map((node) => [node.id, node]));
+  assert.equal(stored.get(matchedNode.id).reviewMark, "short-review");
+  assert.equal(stored.get(spoofedNode.id).reviewMark, undefined, "the mark is code's word, not the model's");
+  assert.equal(stored.get(untouchedNode.id).reviewMark, undefined);
+  assert.equal(nodesOf(path).filter((node) => node.reviewMark).length, 1);
+});
+
 test("a draft without a graph brief matches today's output", async (t) => {
   const graph = {
     propositions: [{ ...topic("Synthetic topic A"), name: rawPath().modules[0].nodes[0].title }],
