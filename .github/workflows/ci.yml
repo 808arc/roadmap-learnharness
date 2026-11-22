@@ -20,6 +20,8 @@ jobs:
       # Typecheck is intentionally not run here: the LearnHarness plugin SDK
       # types (.sdk/) are not in the repository, so `tsc` would always fail in CI.
       # Run `npm run check` locally where .sdk/ is present.
+      - run: node scripts/check-version.mjs
+
       - run: npm run build
 
       - run: npm test
