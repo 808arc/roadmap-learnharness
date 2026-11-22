@@ -198,7 +198,7 @@ test("node panel persists status and artifact choices and refreshes the map and 
     const updated = fixture.paths.get(path.id)!;
     const node = updated.modules[0]!.nodes.find((candidate) => candidate.id === "n-concept")!;
     assert.equal(effectiveArtifact(updated, node), "relational_map");
-    assert.match(inspector(fixture).querySelector(".rm-why")!.textContent ?? "", /labelled nodes and arrows/);
+    assert.match(inspector(fixture).querySelector(".rm-why")!.textContent ?? "", /labelled arrows/);
 
     // Clearing the override falls back to the path default and keeps the reason.
     setSelect(artifact(), "");
@@ -207,7 +207,7 @@ test("node panel persists status and artifact choices and refreshes the map and 
     assert.equal(afterClear.modules[0]!.nodes.find((candidate) => candidate.id === "n-concept")!.artifactConfig, null);
     assert.match(
       inspector(fixture).querySelector(".rm-why")!.textContent ?? "",
-      /short hooks keep it quick to recall/,
+      /a few short memory cues/,
       "the path default (retrieval cue) now supplies the reason",
     );
     assert.equal(ARTIFACT_CATALOG.length, 6);
