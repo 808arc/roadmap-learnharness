@@ -234,6 +234,7 @@ export function createRoadmapCanvas(
     button.append(icon, el(document, "span", "rm-node-title", node.title));
     const tag = node.alternativeGroup ? t("mark.alternativeShort") : node.optional ? t("mark.optionalShort") : null;
     if (tag) button.append(el(document, "span", "rm-node-tag", tag));
+    if (node.reviewMark) button.append(el(document, "span", "rm-node-review", t("mark.shortReviewShort")));
     const errors = unresolved(node);
     if (errors > 0) {
       const warn = el(document, "span", "rm-node-warn");

@@ -416,6 +416,16 @@
   font-size: 11px;
 }
 
+/* A node the learner's graph already covers: a small review tag after the title. */
+.rm-node-review {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--rm-panel-2);
+  color: var(--rm-muted);
+  font-size: 10px;
+}
+
 .rm-node-warn {
   display: inline-flex;
   flex: none;
