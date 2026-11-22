@@ -22,6 +22,7 @@ import {
   listRoadmapTopics,
   parseTopicMarkdown,
   readTopic,
+  withUpstreamTimeout,
 } from "../src/upstream-roadmaps.ts";
 import type { UpstreamFetch } from "../src/upstream-roadmaps.ts";
 import { rawPath } from "./fixtures.ts";
@@ -160,6 +161,28 @@ test("a 500 is unreachable, an unknown roadmap is not found, and a missing topic
 
   const { fetch } = fakeFetch(standardRoutes());
   await assert.rejects(readTopic("synthetic-roadmap", "absent-topic", COMMIT, { fetch }), isUpstreamError("not_found"));
+});
+
+test("a GitHub request that never answers is abandoned at the timeout and reported as unreachable", async () => {
+  let aborted = false;
+  const hanging = (_url: string, init: { headers: Readonly<Record<string, string>>; signal: AbortSignal }) =>
+    new Promise<never>((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        aborted = true;
+        reject(new Error("aborted"));
+      });
+    });
+  const fetch = withUpstreamTimeout(hanging, 20);
+  await assert.rejects(listRoadmapTopics("synthetic-roadmap", COMMIT, { fetch }), isUpstreamError("unreachable"));
+  assert.equal(aborted, true, "the request was aborted by the timeout");
+});
+
+test("a fast GitHub response passes through the timeout wrapper unchanged", async () => {
+  const { fetch: inner, calls } = fakeFetch(standardRoutes());
+  const fetch = withUpstreamTimeout(async (url, init) => inner(url, init), 5_000);
+  const topic = await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, { fetch });
+  assert.equal(topic.title, "Synthetic Topic");
+  assert.equal(calls.length, 2);
 });
 
 test("with a listings cache, the roadmap listing is read once for several topic reads", async () => {

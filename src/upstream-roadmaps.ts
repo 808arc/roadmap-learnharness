@@ -43,6 +43,17 @@ export type UpstreamFetch = (
   init: { readonly headers: Readonly<Record<string, string>> },
 ) => Promise<UpstreamResponse>;
 
+/** Longest wait for one GitHub response, headers and body together. A slower request is reported as unreachable. */
+export const UPSTREAM_TIMEOUT_MS = 15_000;
+
+/** Wrap a real fetch so every request is bounded by `timeoutMs`. The caller's init is passed through unchanged. */
+export function withUpstreamTimeout(
+  send: (url: string, init: { readonly headers: Readonly<Record<string, string>>; readonly signal: AbortSignal }) => Promise<UpstreamResponse>,
+  timeoutMs: number = UPSTREAM_TIMEOUT_MS,
+): UpstreamFetch {
+  return (url, init) => send(url, { headers: init.headers, signal: AbortSignal.timeout(timeoutMs) });
+}
+
 export interface UpstreamOptions {
   readonly fetch: UpstreamFetch;
   /** Topic listings already read, keyed by roadmap and commit. Optional: when given, a listing is fetched once
