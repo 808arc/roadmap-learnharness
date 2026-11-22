@@ -38,6 +38,13 @@ test("seen-only evidence reports level, sessions and dates but suggests nothing"
   assert.equal(result && "suggestion" in result, false);
 });
 
+test("seen evidence gets no suggestion however many sessions it spans", () => {
+  const result = nodeEvidence(linked, [mastery("git", "seen", ["s1", "s2", "s3"])]);
+  assert.equal(result?.level, "seen");
+  assert.equal(result?.sessionCount, 3);
+  assert.equal(result && "suggestion" in result, false);
+});
+
 test("practiced evidence suggests marking the node consolidated", () => {
   const result = nodeEvidence(linked, [mastery("git", "practiced", ["s1"])]);
   assert.equal(result?.level, "practiced");

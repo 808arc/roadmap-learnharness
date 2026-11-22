@@ -182,6 +182,8 @@ export function createNodeInspector(
     const last = shortDate(evidence.lastAt, localeTag());
     wrapper.append(el(document, "p", "rm-why", t("evi.summary", { level, n: evidence.sessionCount, first, last })));
     wrapper.append(el(document, "p", "rm-muted", t("evi.note")));
+    // Seen is evidence text only: the action buttons are offered for practiced and mastered alone.
+    if (evidence.level === "seen") return;
 
     const choices = el(document, "div", "rm-chips");
     const offer = (target: EvidenceSuggestion, label: string): void => {
