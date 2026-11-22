@@ -41,9 +41,12 @@ import {
   ARCHITECT_DEFINITION_ID,
   graphBriefMessage,
   registerArchitect,
+  usageSince,
 } from "./architect-agent.ts";
 import type { ArchitectRegistration } from "./architect-agent.ts";
 import type { GraphBrief } from "./graph-brief.ts";
+import { architectLogPath, createPluginLog } from "./plugin-log.ts";
+import type { LogStep } from "./plugin-log.ts";
 import {
   ARTIFACT_TYPES,
   CHILD_SESSION_KINDS,
@@ -290,6 +293,31 @@ export function activate(ctx: PluginBackendContext): void {
   const debug = (event: string, detail: Record<string, unknown>): void => {
     if (process.env.ROADMAP_DEBUG === "1") console.debug("[roadmap]", event, detail);
   };
+  // Metadata-only timings of Architect steps, in <data>/logs/architect.jsonl.
+  const architectLog = createPluginLog(architectLogPath(ctx.dataDirectory));
+  // One "model call" step per Architect run: opened when a conversation is first
+  // seen running, closed when it leaves running. Token counts come from the run's messages.
+  const modelRuns = new Map<string, { step: LogStep; from: number }>();
+  const trackModelRun = (snapshot: PluginAgentSnapshot): void => {
+    const open = modelRuns.get(snapshot.id);
+    if (snapshot.status === "running") {
+      if (open) return;
+      const model = architect?.definition.model;
+      modelRuns.set(snapshot.id, {
+        step: architectLog.begin("model call", {
+          chatId: snapshot.id,
+          provider: model?.provider ?? null,
+          model: model?.id ?? null,
+        }),
+        from: snapshot.messages.length,
+      });
+      return;
+    }
+    if (!open) return;
+    modelRuns.delete(snapshot.id);
+    const finished = snapshot.status === "idle" || snapshot.status === "waiting";
+    open.step.end({ ...usageSince(snapshot.messages, open.from), status: snapshot.status, ok: finished });
+  };
   const createRequests = new Map<string, string>();
   let architect: ArchitectRegistration | null = null;
   // A settings model change saved while an Architect conversation was running;
@@ -419,6 +447,7 @@ export function activate(ctx: PluginBackendContext): void {
       researchTools: tools,
       activeChatId: () => activeChatId,
       graphBrief: () => (activeChatId === null ? null : (graphBriefs.get(activeChatId) ?? null)),
+      log: architectLog,
       onPathSaved: (path, created) =>
         emit(EVENT_PATHS_CHANGED, { id: path.id, created, updatedAt: path.updatedAt }),
     });
@@ -492,6 +521,7 @@ export function activate(ctx: PluginBackendContext): void {
     if (watchers.has(id)) return;
     const onChange = (snapshot: PluginAgentSnapshot): void => {
       latestSnapshots.set(id, snapshot);
+      trackModelRun(snapshot);
       // Transition updates are immediate; stream updates are sampled so the view
       // can fetch evolving reasoning/text without a request per token. The view
       // reads those ticks through architect.progress, which omits the history.
@@ -1209,6 +1239,8 @@ export function activate(ctx: PluginBackendContext): void {
     });
     return { conversation };
   });
+
+  handle("architect.logPath", () => ({ path: architectLog.path }));
 
   handle("architect.abort", (input) => {
     if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");

@@ -1393,6 +1393,13 @@
   color: var(--muted-foreground, var(--foreground));
 }
 
+.lp-architect-log {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground, var(--foreground));
+  overflow-wrap: anywhere;
+}
+
 .lp-status-busy {
   color: var(--chart-3, #f59e0b);
 }
