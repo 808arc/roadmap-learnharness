@@ -32,7 +32,7 @@ The system may know a lot about the learner, for example from their knowledge gr
 Every learning path must be anchored to an explicit **Source Spine**. The Path Architect builds the roadmap from the topic files of a developer roadmap (roadmap.sh, from the `nilbuild/developer-roadmap` repository), read at one commit that is pinned in the code:
 
 - **Structure comes from the topic files.** The Architect lists and reads the topics of one roadmap.
-- **Citable resources.** A saved path may cite a url only if it came from a topic file read in this conversation, from a resource of a path already saved, or from a book or web result returned in this conversation. Any other url is refused. A title must match what was read or stored, except for a url known only from a book or web result, which takes any title.
+- **Citable resources.** A saved path may cite a url only if it came from a topic file read, or a book or web result returned, in any Architect conversation since the Architect was last registered (on plugin activation, or after a change of model or research settings), or from a resource of a path already saved. Any other url is refused. A title must match what was read or stored, except for a url known only from a book or web result, which takes any title. Restarting the app clears the read and returned urls, but not saved paths.
 - **Books and the web enrich nodes last.** Book and web tools (for example `find_books`, `book_contents`, `web_search`) are offered only after the learner's graph and the topic and path tools, and they add detail to existing nodes; they do not build the structure.
 - **Pinned, so the spine is stable.** Every request reads the same commit, so the sources do not change under the learner.
 
