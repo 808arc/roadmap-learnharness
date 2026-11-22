@@ -167,11 +167,10 @@ For a rebuild-and-install loop on macOS, run `./plugin-sync.sh` from the repo. I
   plugins directory, and set `LEARNHARNESS_APP` to the app's executable for
   `npm run restart:learnharness`.
 
-To have the script restart LearnHarness for you, run `npm run restart:learnharness`. It quits
-LearnHarness gracefully (never force-closed), waits up to 30 seconds, then starts it again. It
-knows where the app is on macOS only; on Windows and Linux set `LEARNHARNESS_APP` to the app's
-location. Run directly, `node scripts/restart-learnharness.mjs` without `--restart` only prints its
-usage, so a restart happens only when asked for.
+`npm run restart:learnharness` restarts LearnHarness on its own. It asks the app to quit
+(never force-closed) and waits up to 30 seconds; if the app has not closed by then, it stops and
+does not start it again. It finds the app on macOS only; elsewhere set `LEARNHARNESS_APP`.
+`node scripts/restart-learnharness.mjs` without `--restart` only prints its usage.
 
 ### Coming from Learning Paths
 
@@ -210,6 +209,9 @@ your own search key), `logs/architect.jsonl` (see Logs), and a `.gitignore` the 
 
 Records are versioned and written atomically; corrupt or newer files are refused rather than
 overwritten. Roadmap never deletes native chats or Knowledge Graph records.
+
+[docs/data.md](docs/data.md) lists every file and whether Git keeps it;
+[docs/integrations.md](docs/integrations.md) covers the related plugins.
 
 ## Logs
 
