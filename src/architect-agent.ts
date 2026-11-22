@@ -32,7 +32,7 @@ import { buildArchitectSystemPrompt } from "./framework.ts";
 import { SOURCES_DIRECTORY, StoreError } from "./store.ts";
 import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
 import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
-import { UPSTREAM_REPOSITORY, UpstreamError, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
+import { UPSTREAM_REPOSITORY, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
 import type { UpstreamOptions } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
