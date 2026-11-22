@@ -6,7 +6,7 @@
  *   learning-paths.json      legacy single file; migrated once, then kept as
  *                            learning-paths.json.migrated
  *   settings.json            versioned plugin settings
- *   architect.json           chosen Architect model (needed to re-register)
+ *   architect-model.json     chosen Architect model (needed to re-register; reads migrate architect.json once)
  *   sources/<sourceId>.md    converted learner uploads (UUID names only)
  *   sources/index.json       versioned upload metadata, for hash deduplication
  * Host-reserved `agents/`, `tasks/` and `usage.jsonl` are never read or written.
@@ -45,7 +45,9 @@ export const ROADMAP_INDEX_FILE = "roadmaps-index.json";
 export const ROADMAP_MIGRATION_VERSION = 1;
 export const MIGRATED_LEGACY_SUFFIX = ".migrated";
 export const SETTINGS_FILE = "settings.json";
-export const ARCHITECT_FILE = "architect.json";
+export const ARCHITECT_FILE = "architect-model.json";
+/** The pre-rename name of `ARCHITECT_FILE`: read once and copied to `ARCHITECT_FILE`, never deleted. */
+export const LEGACY_ARCHITECT_FILE = "architect.json";
 export const SOURCES_DIRECTORY = "sources";
 export const SOURCE_INDEX_FILE = "index.json";
 /** Frontend conversion is bounded; this is the backend's own last line of defence. */
@@ -56,7 +58,7 @@ export { THINKING_LEVELS };
 export type { ThinkingLevelName } from "./domain.ts";
 
 /** The Architect definition needs an explicit model, which survives restart in
- * `architect.json`; plugin settings may override it through the Settings page. */
+ * `architect-model.json`; plugin settings may override it through the Settings page. */
 export interface ArchitectModelConfig {
   readonly provider: string;
   readonly id: string;
@@ -754,6 +756,12 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
   };
 
   let settingsState = loadSettingsFile(settingsFilename);
+  // One-time copy of the pre-rename `architect.json`; the old file is never removed.
+  const legacyArchitectFilename = path.join(directory, LEGACY_ARCHITECT_FILE);
+  if (!pathExists(architectFilename) && pathExists(legacyArchitectFilename)) {
+    const legacyText = readTextFile(legacyArchitectFilename);
+    if (legacyText !== undefined) atomicWrite(architectFilename, legacyText);
+  }
   let architectState = loadArchitectFile(architectFilename);
   let sourceState = loadSourceIndex(sourcesDirectory);
 

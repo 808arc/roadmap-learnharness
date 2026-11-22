@@ -39,8 +39,9 @@ function captureWarnings(t: { after: (fn: () => void) => void }): string[] {
   return warnings;
 }
 
-test("the log lives under <data>/logs/architect.jsonl", () => {
-  assert.equal(architectLogPath("/data/plugin"), path.join("/data/plugin", LOG_DIRECTORY, ARCHITECT_LOG_FILE));
+test("the run log lives under <data>/logs/architect-runs.jsonl", () => {
+  assert.equal(ARCHITECT_LOG_FILE, "architect-runs.jsonl");
+  assert.equal(architectLogPath("/data/plugin"), path.join("/data/plugin", LOG_DIRECTORY, "architect-runs.jsonl"));
 });
 
 test("a step writes a start line and an end line with durationMs and ids only", (t) => {

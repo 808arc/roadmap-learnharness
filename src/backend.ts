@@ -1,7 +1,7 @@
 /** Learning Path — backend activation.
  *
  * Wires these things over one plugin-owned store:
- * - the persistent Path Architect definition, registered from `architect.json`
+ * - the persistent Path Architect definition, registered from `architect-model.json`
  *   on activation and re-registered when the learner chooses another model;
  * - `ctx.handle` operations for paths, uploaded sources, Architect conversations
  *   (create/send/abort), child-session links (prepare/link/unlink/status),
@@ -360,7 +360,7 @@ export function activate(ctx: PluginBackendContext): void {
   const debug = (event: string, detail: Record<string, unknown>): void => {
     if (process.env.ROADMAP_DEBUG === "1") console.debug("[roadmap]", event, detail);
   };
-  // Metadata-only timings of Architect steps, in <data>/logs/architect.jsonl.
+  // Metadata-only timings of Architect steps, in <data>/logs/architect-runs.jsonl.
   const architectLog = createPluginLog(architectLogPath(ctx.dataDirectory));
   // One "model call" step per Architect run: opened when a conversation is first
   // seen running, closed when it leaves running. Token counts come from the run's messages.

@@ -8,6 +8,7 @@ import { DomainValidationError } from "../src/domain.ts";
 import {
   ARCHITECT_FILE,
   LEARNING_PATHS_FILE,
+  LEGACY_ARCHITECT_FILE,
   ROADMAPS_DIRECTORY,
   ROADMAP_INDEX_FILE,
   SETTINGS_FILE,
@@ -336,6 +337,37 @@ test("Architect model config round-trips and rejects invalid choices", (t) => {
   assert.throws(() => store.saveArchitectModel({ provider: " pi", id: "m" }), /provider/);
   assert.throws(() => store.saveArchitectModel(null), /must be an object/);
   assert.deepEqual(openLearningPathStore(dir).architectModel(), model);
+});
+
+test("the Architect model is written to architect-model.json only", (t) => {
+  const dir = directory(t);
+  const model = { provider: "pi", id: "fresh-model" };
+  openLearningPathStore(dir).saveArchitectModel(model);
+  assert.equal(ARCHITECT_FILE, "architect-model.json");
+  assert.deepEqual(JSON.parse(read(dir, ARCHITECT_FILE)).model, model);
+  assert.equal(fs.existsSync(path.join(dir, LEGACY_ARCHITECT_FILE)), false);
+});
+
+test("an old architect.json is migrated once to architect-model.json and kept", (t) => {
+  const dir = directory(t);
+  const legacy = JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 3, model: { provider: "pi", id: "saved-model", thinkingLevel: "high" } }, null, 2);
+  write(dir, LEGACY_ARCHITECT_FILE, legacy);
+  const store = openLearningPathStore(dir);
+  assert.deepEqual(store.architectModel(), { provider: "pi", id: "saved-model", thinkingLevel: "high" });
+  assert.equal(read(dir, ARCHITECT_FILE), legacy);
+  assert.equal(read(dir, LEGACY_ARCHITECT_FILE), legacy);
+  assert.deepEqual(temporaryFiles(dir), []);
+  // A later save writes only the new name and leaves the old file untouched.
+  store.saveArchitectModel({ provider: "pi", id: "newer-model" });
+  assert.equal(read(dir, LEGACY_ARCHITECT_FILE), legacy);
+  assert.equal(openLearningPathStore(dir).architectModel()?.id, "newer-model");
+});
+
+test("architect-model.json wins over a leftover architect.json", (t) => {
+  const dir = directory(t);
+  write(dir, LEGACY_ARCHITECT_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 1, model: { provider: "old", id: "old" } }));
+  write(dir, ARCHITECT_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 1, model: { provider: "new", id: "new" } }));
+  assert.equal(openLearningPathStore(dir).architectModel()?.id, "new");
 });
 
 test("a fresh settings read follows the host cheap slot", (t) => {

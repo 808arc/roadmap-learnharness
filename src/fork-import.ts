@@ -15,11 +15,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { THINKING_LEVELS, validateLearningPath } from "./domain.ts";
-import { ARCHITECT_FILE, LEARNING_PATHS_FILE, STORE_SCHEMA_VERSION, hasRoadmapData } from "./store.ts";
+import { LEGACY_ARCHITECT_FILE, LEARNING_PATHS_FILE, STORE_SCHEMA_VERSION, hasRoadmapData } from "./store.ts";
 
 export const FORK_PREVIOUS_PLUGIN_ID = "roadmap";
 export const FORK_IMPORT_MARKER = "imported-from-roadmap.json";
-const FILES = [LEARNING_PATHS_FILE, ARCHITECT_FILE] as const;
+const FILES = [LEARNING_PATHS_FILE, LEGACY_ARCHITECT_FILE] as const;
 
 export interface ForkImportResult {
   readonly imported: boolean;
