@@ -146,11 +146,6 @@ test("a roadmap with two roots draws both branches and the tree shows both roots
     showLegend: false,
   });
   try {
-    canvas.render(state("list"));
-    const rows = [...host.querySelectorAll<HTMLElement>(".rm-tree .rm-tree-row")];
-    const level0 = rows.filter((row) => row.style.paddingLeft === "0px").map((row) => row.querySelector<HTMLElement>(".rm-tree-node")!.dataset.nodeId);
-    assert.deepEqual(level0, ["root-one", "root-two"]);
-
     canvas.render(state("graph"));
     const graphIds = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
     for (const id of ["root-one", "root-two", "after-one", "after-two"]) assert.ok(graphIds.includes(id), `graph shows ${id}`);

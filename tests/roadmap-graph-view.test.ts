@@ -111,7 +111,7 @@ test("a column with many nodes keeps every node, stacked in rows inside the modu
   assert.ok(frame.h >= 29 * ROW + SUB_H, "the frame grows with the column");
 });
 
-test("the graph and the tree both render all five children of a node, and the tree collapses per node", () => {
+test("the graph and the tree both render all five children of a node", () => {
   const parent = makeNode("root", "concept");
   const children = ["one", "two", "three", "four", "five"].map((id) => makeNode(id, "skill"));
   const nodes = [parent, ...children];
@@ -138,17 +138,10 @@ test("the graph and the tree both render all five children of a node, and the tr
     for (const id of ["root", "one", "two", "three", "four", "five"]) assert.ok(graphIds.includes(id), `graph shows ${id}`);
     assert.equal(host.querySelectorAll(".rm-edges line").length >= 5, true, "five arrows are drawn");
 
-    canvas.render(state("list"));
-    const rows = () => [...host.querySelectorAll<HTMLElement>(".rm-tree .rm-tree-row .rm-tree-node")].map((node) => node.dataset.nodeId);
-    assert.deepEqual(rows(), ["root", "one", "two", "three", "four", "five"]);
-    const indents = [...host.querySelectorAll<HTMLElement>(".rm-tree .rm-tree-row")].map((row) => row.style.paddingLeft);
-    assert.deepEqual(indents, ["0px", "18px", "18px", "18px", "18px", "18px"]);
-
-    // Collapse the parent's children, then expand again.
-    host.querySelector<HTMLButtonElement>(".rm-tree .rm-tree-toggle")!.click();
-    assert.deepEqual(rows(), ["root"]);
-    host.querySelector<HTMLButtonElement>(".rm-tree .rm-tree-toggle")!.click();
-    assert.equal(rows().length, 6);
+    canvas.render(state("tree"));
+    const treeIds = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
+    for (const id of ["root", "one", "two", "three", "four", "five"]) assert.ok(treeIds.includes(id), `tree shows ${id}`);
+    assert.ok(host.querySelector(".rm-box"), "tree draws the module frame");
   } finally {
     canvas.dispose();
     controller.abort();
@@ -156,7 +149,7 @@ test("the graph and the tree both render all five children of a node, and the tr
 });
 
 test("the new interface strings exist in both languages", () => {
-  const keys: MessageKey[] = ["legend.arrow", "legend.moduleOrder", "tree.expand", "tree.collapse", "tree.alsoAfter", "view.list", "s.defaultViewHelp"];
+  const keys: MessageKey[] = ["legend.arrow", "legend.moduleOrder", "tree.expand", "tree.collapse", "tree.alsoAfter", "view.tree", "view.graph", "s.defaultViewHelp"];
   try {
     for (const key of keys) {
       setLocale("en");
@@ -168,14 +161,15 @@ test("the new interface strings exist in both languages", () => {
     }
     setLocale("ru");
     assert.equal(t("tree.expand"), "Развернуть");
-    assert.equal(t("view.list"), "Список");
+    assert.equal(t("view.graph"), "Граф");
+    assert.equal(t("view.tree"), "Дерево");
     assert.equal(locale(), "ru");
   } finally {
     setLocale("en");
   }
 });
 
-test("the three views render: the module tree by default, the bare graph, and the nested list", () => {
+test("the two views render: the module tree by default and the bare graph", () => {
   const parent = makeNode("root", "concept");
   const children = ["one", "two"].map((id) => makeNode(id, "skill"));
   const nodes = [parent, ...children];
@@ -199,24 +193,18 @@ test("the three views render: the module tree by default, the bare graph, and th
   const visible = (selector: string): boolean => !host.querySelector<HTMLElement>(selector)!.hidden;
   try {
     assert.equal(DEFAULT_DISPLAY.defaultView, "tree", "the default view is the tree");
-    assert.deepEqual([...VIEW_MODES], ["tree", "graph", "list"]);
+    assert.deepEqual([...VIEW_MODES], ["tree", "graph"]);
 
     canvas.render(state("tree"));
     assert.ok(host.querySelector(".rm-box[data-module-id=\"module-graph\"]"), "tree draws the module frame");
-    assert.ok(visible(".rm-viewport") && host.querySelector<HTMLElement>(".rm-tree")!.hidden, "tree shows the canvas, not the list");
+    assert.ok(visible(".rm-viewport"), "tree shows the canvas");
 
     canvas.render(state("graph"));
     assert.equal(host.querySelectorAll(".rm-box").length, 0, "graph draws no module boxes");
     assert.equal(host.querySelectorAll(".rm-stage .rm-node").length, 3, "graph shows every node");
     assert.equal(host.querySelectorAll(".rm-edges line").length, 2, "graph draws the arrows");
-    assert.ok(visible(".rm-viewport") && host.querySelector<HTMLElement>(".rm-tree")!.hidden, "graph shows the canvas, not the list");
-
-    canvas.render(state("list"));
-    const rows = host.querySelectorAll<HTMLElement>(".rm-tree .rm-tree-row");
-    assert.equal(rows.length, 3, "the list shows every node");
-    assert.equal(rows[1]!.querySelector(".rm-tree-node")!.getAttribute("data-node-id"), "one");
-    assert.equal(rows[1]!.style.paddingLeft, "18px", "children are nested one level in");
-    assert.ok(visible(".rm-tree") && host.querySelector<HTMLElement>(".rm-viewport")!.hidden, "list shows only the text tree");
+    assert.ok(visible(".rm-viewport"), "graph shows the canvas");
+    assert.equal(host.querySelector(".rm-tree"), null, "no text list is rendered");
   } finally {
     canvas.dispose();
     controller.abort();
@@ -236,10 +224,12 @@ test("the graph layout has no module frames and places each node by dependency d
   assert.ok(layout.nodes.every((placed) => placed.moduleId === "module-graph"), "nodes keep their module id");
 });
 
-test("old and new default-view settings validate; an unknown view is rejected", () => {
-  for (const view of ["graph", "tree", "list"]) {
+test("the graph and tree default views validate; a saved list falls back to tree; an unknown view is rejected", () => {
+  for (const view of ["graph", "tree"]) {
     assert.equal(parsePluginSettings({ artifactDefaults: {}, display: { defaultView: view } }).display?.defaultView, view);
   }
+  assert.equal(parsePluginSettings({ artifactDefaults: {}, display: { defaultView: "list" } }).display?.defaultView, "tree", "a saved list is tree");
+  assert.equal(validatePluginSettings({ artifactDefaults: {}, display: { defaultView: "list" } }).ok, true, "a saved list still validates");
   assert.equal((parsePluginSettings({ artifactDefaults: {} }).display ?? DEFAULT_DISPLAY).defaultView, "tree", "no saved value: tree");
   assert.equal(validatePluginSettings({ artifactDefaults: {}, display: { defaultView: "kanban" } }).ok, false);
 });
