@@ -58,8 +58,15 @@ export interface ArchitectAgentOptions {
   /** Upstream mode (#19): when set, the Architect's only sources are the learner's graph and the
    * developer-roadmap topic files at this fetch. `researchTools` and the uploaded-source tools are
    * then not offered at all. */
-  readonly upstream?: UpstreamOptions & { readonly commit: string };
+  readonly upstream?: UpstreamArchitectOptions;
 }
+
+/** Upstream mode: the developer-roadmap fetch, the pinned commit, and the learner's graph brief. */
+export type UpstreamArchitectOptions = UpstreamOptions & {
+  readonly commit: string;
+  /** The learner's graph brief (the backend's learnerGraphBrief); null when the graph is empty. */
+  readonly readGraph?: () => GraphBrief | null;
+};
 
 export interface ArchitectRegistration {
   readonly definition: PluginAgentDefinition;
@@ -719,35 +726,60 @@ export function registerArchitect(
 const isRecordValue = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-/** Resource urls of the stored paths: a refinement may echo links saved earlier. */
-function storedResourceUrls(store: LearningPathStore): string[] {
-  return store.paths().flatMap((path) =>
-    path.modules.flatMap((module) =>
-      module.nodes.flatMap((node) => (node.resources ?? []).map((resource) => resource.url ?? "")),
-    ),
-  );
+/** Each citable url with the titles it may carry: as the topic file writes them, or as a stored path has them. */
+type CitableResources = ReadonlyMap<string, ReadonlySet<string>>;
+
+/** A topic link's title as a learner reads it: the link text, and the same text without its `@tag@`. */
+function citableTitles(label: string): string[] {
+  const bare = label.replace(/^@[^@\s]+@/, "").trim();
+  return bare === label ? [label] : [label, bare];
 }
 
-/** Draft resource urls that are not in `allowed`, read the way the save tools read them. */
-function unseenResourceUrls(args: unknown, allowed: ReadonlySet<string>): string[] {
+function addCitable(map: Map<string, Set<string>>, url: string, titles: readonly string[]): void {
+  if (url === "") return;
+  const set = map.get(url) ?? new Set<string>();
+  for (const title of titles) set.add(title);
+  map.set(url, set);
+}
+
+/** Resources a save may cite: the links read in this conversation, and those of stored paths (a refinement may echo them). */
+function citableResources(readUrls: ReadonlyMap<string, ReadonlySet<string>>, store: LearningPathStore): CitableResources {
+  const map = new Map<string, Set<string>>();
+  for (const [url, titles] of readUrls) addCitable(map, url, [...titles]);
+  for (const path of store.paths()) {
+    for (const module of path.modules) {
+      for (const node of module.nodes) {
+        for (const resource of node.resources ?? []) addCitable(map, resource.url ?? "", [resource.title ?? ""]);
+      }
+    }
+  }
+  return map;
+}
+
+/** Draft resources whose url or title was not read from a topic file, read the way the save tools read them. */
+function uncitedResources(args: unknown, allowed: CitableResources): string[] {
   const draft = normalizeDraftArguments(args);
   if (!isRecordValue(draft) || !Array.isArray(draft.modules)) return [];
-  const unseen: string[] = [];
+  const uncited: string[] = [];
   for (const module of draft.modules) {
     if (!isRecordValue(module) || !Array.isArray(module.nodes)) continue;
     for (const node of module.nodes) {
       if (!isRecordValue(node) || !Array.isArray(node.resources)) continue;
       for (const resource of node.resources) {
-        const url = isRecordValue(resource) ? resource.url : undefined;
-        if (typeof url === "string" && url !== "" && !allowed.has(url)) unseen.push(url);
+        if (!isRecordValue(resource)) continue;
+        const { url, title } = resource;
+        if (typeof url !== "string" || url === "") continue;
+        const titles = allowed.get(url);
+        if (!titles) uncited.push(url);
+        else if (typeof title === "string" && !titles.has(title.trim())) uncited.push(`"${title}" for ${url}`);
       }
     }
   }
-  return unseen;
+  return uncited;
 }
 
-/** Refuse a save whose resource urls were not read from a topic file: no invented or reworded links. */
-function withUpstreamLinkCheck(tool: PluginAgentTool, allowed: () => ReadonlySet<string>): PluginAgentTool {
+/** Refuse a save whose resource urls or titles were not read from a topic file: no invented or reworded links. */
+function withUpstreamLinkCheck(tool: PluginAgentTool, allowed: () => CitableResources): PluginAgentTool {
   if (!tool.execute) return tool;
   const execute = tool.execute;
   return {
@@ -762,11 +794,11 @@ function withUpstreamLinkCheck(tool: PluginAgentTool, allowed: () => ReadonlySet
           draft = params; // Unparseable: the save tool itself reports it.
         }
       }
-      const unseen = unseenResourceUrls(draft, allowed());
-      if (unseen.length > 0) {
+      const uncited = uncitedResources(draft, allowed());
+      if (uncited.length > 0) {
         return errorResult(
-          "Learning path rejected; nothing was written. Resource urls must be copied from topic files read in " +
-            `this conversation (read_roadmap_topic): ${unseen.slice(0, 5).join(", ")}`,
+          "Learning path rejected; nothing was written. Resource urls and titles must be copied from topic files read in " +
+            `this conversation (read_roadmap_topic): ${uncited.slice(0, 5).join(", ")}`,
         );
       }
       return execute(...args);
@@ -774,8 +806,8 @@ function withUpstreamLinkCheck(tool: PluginAgentTool, allowed: () => ReadonlySet
   } as PluginAgentTool;
 }
 
-/** `read_learner_graph`: the learner's graph brief, read through ctx.learning.graph(). */
-function readLearnerGraphTool(ctx: PluginBackendContext): PluginAgentTool {
+/** `read_learner_graph`: the learner's graph brief, from the backend helper or ctx.learning.graph(). */
+function readLearnerGraphTool(ctx: PluginBackendContext, readGraph?: () => GraphBrief | null): PluginAgentTool {
   return {
     name: "read_learner_graph",
     description:
@@ -785,8 +817,12 @@ function readLearnerGraphTool(ctx: PluginBackendContext): PluginAgentTool {
     execute: async (_toolCallId, _params, signal) => {
       assertLive(ctx, signal);
       try {
-        const graph = ctx.learning.graph();
-        const brief = buildGraphBrief({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
+        const brief = readGraph
+          ? (readGraph() ?? buildGraphBrief({ propositions: [], chains: [] }))
+          : (() => {
+              const graph = ctx.learning.graph();
+              return buildGraphBrief({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
+            })();
         return textResult(brief, JSON.stringify(brief));
       } catch (error) {
         return errorResult(`The learner's graph could not be read: ${error instanceof Error ? error.message : String(error)}`);
@@ -798,8 +834,8 @@ function readLearnerGraphTool(ctx: PluginBackendContext): PluginAgentTool {
 /** `list_roadmap_topics` and `read_roadmap_topic`: the two upstream operations, nothing else. */
 function upstreamReadTools(
   ctx: PluginBackendContext,
-  upstream: UpstreamOptions & { readonly commit: string },
-  readUrls: Set<string>,
+  upstream: UpstreamArchitectOptions,
+  readUrls: Map<string, Set<string>>,
 ): PluginAgentTool[] {
   const upstreamFailure = (error: unknown): AgentToolResult<{ error: string }> => {
     // Bad arguments and upstream failures are both reported to the model, never thrown.
@@ -841,7 +877,7 @@ function upstreamReadTools(
         try {
           const params = readObject(rawParams);
           const topic = await readTopic(String(params.roadmapSlug), String(params.topicSlug), upstream.commit, upstream);
-          for (const resource of topic.resources) readUrls.add(resource.url);
+          for (const resource of topic.resources) addCitable(readUrls, resource.url, citableTitles(resource.label));
           return textResult(topic, JSON.stringify(topic));
         } catch (error) {
           return upstreamFailure(error);
@@ -856,10 +892,10 @@ function buildUpstreamDefinition(
   ctx: PluginBackendContext,
   model: ArchitectModelConfig,
   options: ArchitectAgentOptions,
-  upstream: UpstreamOptions & { readonly commit: string },
+  upstream: UpstreamArchitectOptions,
 ): PluginAgentDefinition {
-  const readUrls = new Set<string>();
-  const allowed = (): ReadonlySet<string> => new Set([...readUrls, ...storedResourceUrls(options.store)]);
+  const readUrls = new Map<string, Set<string>>();
+  const allowed = (): CitableResources => citableResources(readUrls, options.store);
   return {
     id: ARCHITECT_DEFINITION_ID,
     model: toModelSpec(model),
@@ -870,7 +906,7 @@ function buildUpstreamDefinition(
     }),
     maxTurns: ARCHITECT_MAX_TURNS,
     tools: [
-      readLearnerGraphTool(ctx),
+      readLearnerGraphTool(ctx, upstream.readGraph),
       ...upstreamReadTools(ctx, upstream, readUrls),
       getLearningPathTool(ctx, options),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options), allowed),

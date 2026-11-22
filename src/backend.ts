@@ -26,7 +26,7 @@ import { createKeyStore } from "./research/key-store.ts";
 import { createResearchNotes } from "./research/notes.ts";
 import { createResearchChats, registerResearchSessions, researchBrief } from "./research/session-research.ts";
 import { buildResearchTools } from "./research/tools.ts";
-import { applyMisconceptionsTool, buildMessage, createDeclinedChats, registerProposals } from "./diagnostic.ts";
+import { buildMessage, createDeclinedChats, registerProposals } from "./diagnostic.ts";
 import { sessionMetrics } from "./session-metrics.ts";
 import { buildGraphBrief } from "./graph-brief.ts";
 import type { BriefGraph } from "./graph-brief.ts";
@@ -44,6 +44,11 @@ import {
   usageSince,
 } from "./architect-agent.ts";
 import type { ArchitectRegistration } from "./architect-agent.ts";
+import { UPSTREAM_PINNED_COMMIT } from "./upstream-roadmaps.ts";
+import type { UpstreamFetch } from "./upstream-roadmaps.ts";
+
+/** The only network seam of the Architect's upstream reads (issue #19). Tests inject their own. */
+const upstreamFetch: UpstreamFetch = (url, init) => fetch(url, init);
 import type { GraphBrief } from "./graph-brief.ts";
 import { deriveMastery } from "./learner-map.ts";
 import type { LearnerGraph, Mastery } from "./learner-map.ts";
@@ -441,20 +446,18 @@ export function activate(ctx: PluginBackendContext): void {
     pendingModel = null;
     architect?.unregister();
     architect = null;
-    const tools = [
-      ...researchTools(),
-      applyMisconceptionsTool(ctx, {
-        store,
-        notes,
-        onPathChanged: (path) => emit(EVENT_PATHS_CHANGED, { id: path.id, updatedAt: path.updatedAt, change: "error" }),
-      }),
-    ];
     registeredResearch = researchSignature();
+    // Issue #19: the Architect builds only from the learner's graph and the pinned developer-roadmap
+    // commit. Its research tools (web, books, pages, deep research, notes) are not offered in this mode.
     const registration = registerArchitect(ctx, model, {
       store,
-      researchTools: tools,
       activeChatId: () => activeChatId,
       graphBrief: () => (activeChatId === null ? null : (graphBriefs.get(activeChatId) ?? null)),
+      upstream: {
+        fetch: upstreamFetch,
+        commit: UPSTREAM_PINNED_COMMIT,
+        readGraph: () => learnerGraphBrief(ctx),
+      },
       log: architectLog,
       onPathSaved: (path, created) =>
         emit(EVENT_PATHS_CHANGED, { id: path.id, created, updatedAt: path.updatedAt }),

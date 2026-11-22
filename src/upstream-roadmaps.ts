@@ -12,16 +12,22 @@
 
 export const UPSTREAM_REPOSITORY = "nilbuild/developer-roadmap";
 export const UPSTREAM_API_BASE = "https://api.github.com";
+/** The pinned upstream commit: nilbuild/developer-roadmap master when this release was cut.
+ * Every request reads this commit. It is set by hand and never fetched from master at runtime. */
+export const UPSTREAM_PINNED_COMMIT = "6675ce60868ce44aeecc439ad39b3df22453a8ce";
 /** The source named on every topic read; resources are attributed to it. */
 export const UPSTREAM_SOURCE = "roadmap.sh";
 /** Longest topic file accepted, in UTF-16 code units. Real topic files are far smaller. */
 export const MAX_TOPIC_CHARS = 200_000;
 
-const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** A slug is lowercase letters and digits, joined by single hyphens or single dots (`node.js`).
+ * Every separator sits between two alphanumerics, so `.`, `..`, `../x`, `a/b`, `a..b` and
+ * anything with a slash, `?`, `#` or `%` are all refused. */
+const SLUG_PATTERN = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
 const MAX_SLUG_CHARS = 80;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 /** Topic file names are `<slug>@<id>.md`. */
-const TOPIC_FILE_PATTERN = /^([a-z0-9]+(?:-[a-z0-9]+)*)@[A-Za-z0-9_-]+\.md$/;
+const TOPIC_FILE_PATTERN = /^([a-z0-9]+(?:[-.][a-z0-9]+)*)@[A-Za-z0-9_-]+\.md$/;
 /** A tagged resource: `[@book@Title](https://...)`. The link text and URL are kept as written. */
 const RESOURCE_PATTERN = /\[(@[^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
 
@@ -78,7 +84,7 @@ export interface UpstreamTopic {
   readonly commit: string;
 }
 
-/** Strict slug check. Rejects anything that could name a path other than one plain folder or file stem. */
+/** Slug check. Rejects anything that could name a path other than one plain folder or file stem. */
 export function assertSlug(value: unknown, what: string): string {
   if (typeof value !== "string" || value.length > MAX_SLUG_CHARS || !SLUG_PATTERN.test(value)) {
     throw new UpstreamError("invalid", `${what} must be a lowercase slug (letters, digits and single hyphens).`);

@@ -14,8 +14,10 @@ import type { ArchitectModelConfig } from "../src/store.ts";
 import { openLearningPathStore } from "../src/store.ts";
 import {
   UPSTREAM_API_BASE,
+  UPSTREAM_PINNED_COMMIT,
   UPSTREAM_REPOSITORY,
   UpstreamError,
+  assertSlug,
   listRoadmapTopics,
   parseTopicMarkdown,
   readTopic,
@@ -113,7 +115,7 @@ test("parseTopicMarkdown copes with a file that has no title or description", ()
 });
 
 test("slugs that are not plain slugs are rejected before any request", async () => {
-  const bad = ["", "../etc", "a/b", "A-Upper", "has space", "x@y", "dots.here", "a--b", "-lead", "trail-", "%2e%2e", "a".repeat(81), "frontend?x=1"];
+  const bad = ["", "../etc", "a/b", "A-Upper", "has space", "x@y", "a--b", "-lead", "trail-", "%2e%2e", "a".repeat(81), "frontend?x=1"];
   for (const slug of bad) {
     const { fetch, calls } = fakeFetch(standardRoutes());
     await assert.rejects(listRoadmapTopics(slug, COMMIT, { fetch }), isUpstreamError("invalid"), `roadmap ${slug}`);
@@ -286,4 +288,78 @@ test("an upstream failure is returned to the Architect as an error, with no othe
   assert.equal(result.isError, true);
   assert.match(result.content[0]?.text ?? "", /could not be reached/);
   assert.equal(calls.length, 1);
+});
+
+test("the pinned upstream commit is a full 40-character lowercase SHA", () => {
+  assert.match(UPSTREAM_PINNED_COMMIT, /^[0-9a-f]{40}$/);
+});
+
+test("dotted slugs such as node.js are accepted; traversal and path characters are refused before any request", async () => {
+  for (const slug of ["node.js", "a.b-c", "nodejs", "ci-cd", "x1.y2"]) assert.equal(assertSlug(slug, "slug"), slug);
+  const refused = ["..", ".", "../x", "x/../y", "a/b", "a..b", ".hidden", "node.", "x?y", "x#y", "x%2e%2e", "a\\b", "", "Node.js"];
+  for (const slug of refused) assert.throws(() => assertSlug(slug, "slug"), isUpstreamError("invalid"), slug);
+
+  const { fetch, calls } = fakeFetch({});
+  for (const slug of ["../x", "a/b", ".."]) {
+    await assert.rejects(listRoadmapTopics(slug, COMMIT, { fetch }), isUpstreamError("invalid"), slug);
+    await assert.rejects(readTopic("synthetic-roadmap", slug, COMMIT, { fetch }), isUpstreamError("invalid"), slug);
+  }
+  assert.equal(calls.length, 0, "no request for a refused slug");
+
+  const dotted = fakeFetch({
+    [`${ROOT}/synthetic-roadmap/content?ref=${COMMIT}`]: { status: 200, body: JSON.stringify([{ name: "node.js@aB3_x.md" }]) },
+    [`${ROOT}/synthetic-roadmap/content/node.js@aB3_x.md?ref=${COMMIT}`]: { status: 200, body: TOPIC_MD },
+  });
+  const topic = await readTopic("synthetic-roadmap", "node.js", COMMIT, { fetch: dotted.fetch });
+  assert.equal(topic.slug, "node.js");
+  assert.equal(topic.resources.length, 3);
+});
+
+test("the save guard refuses a resource title that was not read from its topic file", async (t) => {
+  const { fetch } = fakeFetch(standardRoutes());
+  const { tool, store } = upstreamDefinition(t, fetch);
+  await tool("read_roadmap_topic").execute("c1", { roadmapSlug: "synthetic-roadmap", topicSlug: "synthetic-topic" }, undefined);
+  const draft = rawPath();
+  draft.sourceSpine = {
+    mode: "canonical",
+    references: [{ title: "roadmap.sh developer roadmap (nilbuild/developer-roadmap)", kind: "course" }],
+  };
+
+  draft.modules[0].nodes[0].resources = [{ title: "Reworded Book Title", kind: "book", url: "https://books.example.test/b/1" }];
+  const refused = await tool("save_learning_path").execute("c2", draft, undefined);
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0]?.text ?? "", /Reworded Book Title/);
+  assert.equal(store.paths().length, 0, "nothing written");
+
+  for (const title of ["@book@Example Book", "Example Book"]) {
+    draft.modules[0].nodes[0].resources = [{ title, kind: "book", url: "https://books.example.test/b/1" }];
+    const saved = await tool("save_learning_path").execute("c3", draft, undefined);
+    assert.equal(saved.isError, undefined, `${title}: ${saved.content[0]?.text}`);
+  }
+  assert.equal(store.paths().length, 1);
+});
+
+test("no graph statement, goal or learner name appears in any request to GitHub", async (t) => {
+  const NAME = "ZZ-LEARNER-NAME-4412";
+  const GOAL = "ZZ-GOAL-PRIVATE-4412";
+  const { fetch, calls } = fakeFetch(standardRoutes());
+  const { tool, store } = upstreamDefinition(t, fetch);
+  const draft = rawPath();
+  draft.title = `${NAME} path`;
+  draft.goal = `${GOAL} for ${NAME}`;
+  const saved = await tool("save_learning_path").execute("c1", draft, undefined);
+  assert.equal(saved.isError, undefined, saved.content[0]?.text);
+  assert.equal(store.paths().length, 1);
+
+  await tool("read_learner_graph").execute("c2", {}, undefined);
+  await tool("list_roadmap_topics").execute("c3", { roadmapSlug: "synthetic-roadmap" }, undefined);
+  await tool("read_roadmap_topic").execute("c4", { roadmapSlug: "synthetic-roadmap", topicSlug: "synthetic-topic" }, undefined);
+  assert.equal(calls.length, 3);
+  for (const call of calls) {
+    assert.match(call.url, new RegExp(`^${UPSTREAM_API_BASE}/repos/${UPSTREAM_REPOSITORY}/contents/roadmaps/`));
+    for (const secret of [SECRET, GOAL, NAME]) {
+      assert.equal(call.url.includes(secret), false, "no learner text in a URL");
+      assert.equal(JSON.stringify(call.headers).includes(secret), false, "no learner text in headers");
+    }
+  }
 });
