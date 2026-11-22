@@ -29,6 +29,19 @@ export const FRAME_HEAD = 41;
 export const ERROR_LINE = 26;
 /** Distance from a node's left edge to its alternatives bracket. */
 export const GROUP_BRACKET = 8;
+/** Graph view: each node is a small pill, stacked with generous room between rows. */
+export const PILL_W = 168;
+export const PILL_H = 24;
+export const PILL_ROW = 40;
+
+/** Size of one node cell: row pitch, width and height. */
+interface NodeSize {
+  readonly row: number;
+  readonly w: number;
+  readonly h: number;
+}
+const TREE_SIZE: NodeSize = { row: ROW, w: SUB_W, h: SUB_H };
+const PILL_SIZE: NodeSize = { row: PILL_ROW, w: PILL_W, h: PILL_H };
 
 export type NodeRole = "order" | "extra" | "consolidation";
 
@@ -59,6 +72,7 @@ export interface PlacedNode {
   readonly x: number;
   readonly y: number;
   readonly w: number;
+  readonly h: number;
 }
 
 export interface PlacedModule {
@@ -279,7 +293,8 @@ export function buildDependencyGraph(
   return { nodeIds: shown.map((node) => node.id), depth, edges, parent, ignored };
 }
 
-const stackHeight = (count: number): number => (count === 0 ? 0 : (count - 1) * ROW + SUB_H);
+const stackHeight = (count: number, size: NodeSize = TREE_SIZE): number =>
+  count === 0 ? 0 : (count - 1) * size.row + size.h;
 
 export function layoutRoadmap(
   path: LearningPath,
@@ -369,9 +384,9 @@ function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[]): Edge[
       from: edge.from,
       to: edge.to,
       x1: from.x + from.w,
-      y1: from.y + SUB_H / 2,
+      y1: from.y + from.h / 2,
       x2: to.x,
-      y2: to.y + SUB_H / 2,
+      y2: to.y + to.h / 2,
       dashed: Boolean(from.node.optional || to.node.optional),
     });
   }
@@ -384,13 +399,14 @@ function placeCells(
   cells: ReadonlyMap<number, readonly PathNode[]>,
   top: number,
   moduleOf: ReadonlyMap<string, string>,
+  size: NodeSize = TREE_SIZE,
 ): { nodes: PlacedNode[]; groups: AlternativeGroup[] } {
   const nodes: PlacedNode[] = [];
   const groups: AlternativeGroup[] = [];
   for (const [depth, list] of cells) {
     const x = PAD + FRAME_PAD + depth * COL_W;
     list.forEach((node, row) => {
-      nodes.push({ node, moduleId: moduleOf.get(node.id)!, depth, x, y: top + row * ROW, w: SUB_W });
+      nodes.push({ node, moduleId: moduleOf.get(node.id)!, depth, x, y: top + row * size.row, w: size.w, h: size.h });
     });
     // Bracket each run of two or more adjacent members of one alternative group.
     let runStart = 0;
@@ -402,8 +418,8 @@ function placeCells(
           alternativeGroup: first.alternativeGroup,
           moduleId: moduleOf.get(first.id)!,
           x: x - GROUP_BRACKET,
-          y1: top + runStart * ROW,
-          y2: top + (row - 1) * ROW + SUB_H,
+          y1: top + runStart * size.row,
+          y2: top + (row - 1) * size.row + size.h,
         });
       }
       runStart = row;
@@ -412,9 +428,9 @@ function placeCells(
   return { nodes, groups };
 }
 
-/** The flat graph (no module frames): every shown node sits in the column of its dependency depth,
- * with the same arrows and alternative brackets as the module layout. Modules are not drawn, so
- * `modules` is empty and each node keeps its module id for selection and the tree. */
+/** The flat graph (no module frames, no brackets): every shown node is a pill in the column of its
+ * dependency depth, stacked in rows, with arrows from each prerequisite to its dependent. `modules`
+ * and `groups` are empty; each node keeps its module id for selection. */
 export function layoutGraph(
   path: LearningPath,
   options: { readonly showOptional: boolean; readonly prerequisites?: readonly NodePrerequisites[] },
@@ -439,10 +455,11 @@ export function layoutGraph(
     list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
   }
   const rows = Math.max(0, ...[...cells.values()].map((list) => list.length));
-  const right = columns > 0 ? PAD + FRAME_PAD + (columns - 1) * COL_W + SUB_W : PAD + FRAME_PAD + SUB_W;
+  const right = columns > 0 ? PAD + FRAME_PAD + (columns - 1) * COL_W + PILL_W : PAD + FRAME_PAD + PILL_W;
   const width = right + FRAME_PAD + PAD;
-  const height = PAD + stackHeight(rows) + PAD + PAD_BOTTOM;
-  const placed = placeCells(cells, PAD, moduleOf);
+  const height = PAD + stackHeight(rows, PILL_SIZE) + PAD + PAD_BOTTOM;
+  const placed = placeCells(cells, PAD, moduleOf, PILL_SIZE);
   const edges = placeEdges(graph, placed.nodes);
-  return { width, height, modules: [], nodes: placed.nodes, edges, groups: placed.groups };
+  // Pills carry the alternative tag themselves; no brackets are drawn in the graph view.
+  return { width, height, modules: [], nodes: placed.nodes, edges, groups: [] };
 }

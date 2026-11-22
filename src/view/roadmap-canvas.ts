@@ -10,7 +10,7 @@ import type { MessageKey } from "../i18n.ts";
 import type { NodePrerequisites } from "../node-prerequisites.ts";
 import { ICONS, setIcon, statusIcon } from "./icons.ts";
 import { buildDependencyGraph, isDone, layoutGraph, layoutRoadmap, moduleCounts } from "./roadmap-layout.ts";
-import type { PlacedModule, RoadmapLayout } from "./roadmap-layout.ts";
+import type { PlacedModule, PlacedNode, RoadmapLayout } from "./roadmap-layout.ts";
 import { el } from "./dom.ts";
 
 /** "tree": module frames around their nodes; "graph": nodes and arrows only. */
@@ -198,22 +198,24 @@ export function createRoadmapCanvas(
       : null;
   resize?.observe(viewport);
 
-  const nodeButton = (node: PathNode, selected: boolean, x: number | null, y: number | null, w: number | null): HTMLButtonElement => {
+  /** One node: a box in the tree view, a small pill in the graph view (`pill`). */
+  const nodeButton = (placed: PlacedNode, selected: boolean, pill: boolean): HTMLButtonElement => {
+    const { node } = placed;
     const button = el(document, "button", "rm-node");
     button.type = "button";
     button.dataset.nodeId = node.id;
-    if (selected) button.classList.add("rm-sel");
+    if (selected) button.classList.add("rm-sel", "rm-highlight");
+    if (pill) button.classList.add("rm-pill");
     if (node.optional) button.classList.add("rm-opt");
     if (node.alternativeGroup) button.classList.add("rm-alt");
     if (node.progression === "skipped") button.classList.add("rm-skip");
     if (node.progression === "consolidated") button.classList.add("rm-done");
     if (node.progression === "in_progress") button.classList.add("rm-prog");
     if (node.type === "checkpoint") button.classList.add("rm-check");
-    if (x !== null && y !== null && w !== null) {
-      button.style.left = `${x}px`;
-      button.style.top = `${y}px`;
-      button.style.width = `${w}px`;
-    }
+    button.style.left = `${placed.x}px`;
+    button.style.top = `${placed.y}px`;
+    button.style.width = `${placed.w}px`;
+    button.style.height = `${placed.h}px`;
     const icon = el(document, "span", "rm-node-icon");
     if (node.type === "checkpoint") {
       icon.classList.add("rm-flag");
@@ -338,7 +340,7 @@ export function createRoadmapCanvas(
       children.push(bracket);
     }
     for (const placed of layout.nodes) {
-      children.push(nodeButton(placed.node, placed.node.id === current.selectedNodeId, placed.x, placed.y, placed.w));
+      children.push(nodeButton(placed, placed.node.id === current.selectedNodeId, !withModules));
     }
     stage.replaceChildren(...children);
     const viewKey = `${current.path.id}\u0000${current.view}`;

@@ -343,7 +343,7 @@
 
 .rm-edges line {
   stroke: var(--rm-edge);
-  stroke-width: 1.2;
+  stroke-width: 1;
 }
 
 .rm-edges line.rm-dashed {
@@ -398,6 +398,38 @@
   border-color: var(--rm-acc);
   box-shadow: 0 0 0 1px var(--rm-acc);
   background: color-mix(in srgb, var(--rm-acc) 9%, var(--rm-panel));
+}
+
+/* Graph view: each node is a small rounded pill with its title; no frames around them. */
+.rm-node.rm-pill {
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border-color: var(--rm-line-2);
+  background: var(--rm-bg);
+  font-size: var(--rm-font-sm);
+}
+
+.rm-node.rm-pill .rm-node-title {
+  font-size: var(--rm-font-sm);
+}
+
+/* Optional nodes: dashed outline, no fill, with the "opt." tag. */
+.rm-node.rm-pill.rm-opt {
+  border-style: dashed;
+  background: transparent;
+}
+
+/* Checkpoints: the flag icon marks the pill. */
+.rm-node.rm-pill.rm-check .rm-flag {
+  color: var(--rm-text);
+}
+
+/* The current node: blue outline. */
+.rm-node.rm-pill.rm-highlight {
+  border-color: var(--rm-acc);
+  box-shadow: 0 0 0 1px var(--rm-acc);
+  background: var(--rm-acc-bg);
 }
 
 .rm-node-icon {
