@@ -382,6 +382,8 @@ const en = {
   // Roadmap views: the List view and the help text for the default view. New blocks go at the end of the table.
   "view.list": "List",
   "s.defaultViewHelp": "Tree draws modules as blocks; Graph draws nodes and arrows only; List is a nested text list.",
+  // Open a node as a chat (latest linked chat, or a new Lesson). New blocks go at the end of the table.
+  "action.openNode": "Open",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -762,6 +764,8 @@ const ru: Record<MessageKey, string> = {
   // Представления карты: Список и подсказка к виду по умолчанию. Новые блоки добавляются в конец таблицы.
   "view.list": "Список",
   "s.defaultViewHelp": "Дерево рисует модули блоками; Граф — только узлы и стрелки; Список — вложенный текстовый список.",
+  // Открыть узел как чат (последний связанный чат или новый урок). Новые блоки добавляются в конец таблицы.
+  "action.openNode": "Открыть",
 };
 
 export const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };
