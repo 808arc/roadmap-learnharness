@@ -51,7 +51,7 @@ test("codeRepo rejects an empty location", () => {
 });
 
 test("codeRepo rejects control characters in the location", () => {
-  for (const location of ["/tmp/repo\u0007", "https://example.com/a\nb.git", "/tmp/x\u007f"]) {
+  for (const location of ["/tmp/repo\u0007", "https://example.com/a\nb.git", "/tmp/my\trepo", "/tmp/x\u007f"]) {
     const result = validateWithRepo({ location });
     assert.equal(result.ok, false, JSON.stringify(location));
     if (!result.ok) assert.match(result.issues[0]!.message, /control characters/);

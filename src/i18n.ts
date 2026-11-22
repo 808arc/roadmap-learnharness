@@ -341,12 +341,12 @@ const en = {
   "sa.open": "Open in roadmap",
   "sa.attach": "Attach to roadmap…",
 
-  // Graph-seeded roadmap empty state (issue #15). Keep this block last.
+  // Graph-seeded roadmap empty state (issue #15). Keep after the earlier blocks; new blocks go at the end of the table.
   "graphEmpty.build": "Build from my graph",
   "graphEmpty.hint": "Study some material first: the graph has no topics yet.",
   "graphEmpty.prompt": "Build a roadmap from the topics in my knowledge graph.",
 
-  // Question-pattern suggestions in the node panel (issue #35).
+  // Question-pattern suggestions in the node panel (issue #35). Keep after the issue #15 block; new blocks go at the end of the table.
   "pattern.hint.overview": "Tip: an overview template fits a lesson on this node.",
   "pattern.hint.explainBack": "Tip: an explain-back template fits a lesson on this node.",
   "pattern.hint.compare": "Tip: a compare-and-contrast template fits this node.",
@@ -358,7 +358,7 @@ const en = {
   "s.patternHints": "Show question-template tips",
   "s.patternHintsDesc": "Suggests a question template for a node. It is only a suggestion; nothing is selected for you.",
 
-  // Code repository on a node (issue #32). Keep this block last.
+  // Code repository on a node (issue #32). Keep after the issue #35 block; new blocks go at the end of the table.
   "insp.codeRepo": "Code repository",
 } as const;
 
@@ -699,12 +699,12 @@ const ru: Record<MessageKey, string> = {
   "sa.open": "Открыть в дорожной карте",
   "sa.attach": "Привязать к дорожной карте…",
 
-  // Graph-seeded roadmap empty state (issue #15). Keep this block last.
+  // Graph-seeded roadmap empty state (issue #15). Keep after the earlier blocks; new blocks go at the end of the table.
   "graphEmpty.build": "Собрать из моего графа",
   "graphEmpty.hint": "Сначала изучите материал: в графе пока нет тем.",
   "graphEmpty.prompt": "Составь дорожную карту из тем в моём графе знаний.",
 
-  // Question-pattern suggestions in the node panel (issue #35).
+  // Question-pattern suggestions in the node panel (issue #35). Keep after the issue #15 block; new blocks go at the end of the table.
   "pattern.hint.overview": "Подсказка: шаблон обзора подойдёт для урока по этому узлу.",
   "pattern.hint.explainBack": "Подсказка: шаблон «объясни своими словами» подойдёт для урока по этому узлу.",
   "pattern.hint.compare": "Подсказка: шаблон сравнения подойдёт для этого узла.",
@@ -716,7 +716,7 @@ const ru: Record<MessageKey, string> = {
   "s.patternHints": "Показывать подсказки о шаблонах вопросов",
   "s.patternHintsDesc": "Подсказывает шаблон вопросов для узла. Это только совет: ничего не выбирается за вас.",
 
-  // Code repository on a node (issue #32). Keep this block last.
+  // Code repository on a node (issue #32). Keep after the issue #35 block; new blocks go at the end of the table.
   "insp.codeRepo": "Репозиторий кода",
 };
 
