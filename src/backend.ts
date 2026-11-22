@@ -55,10 +55,10 @@ const upstreamFetch: UpstreamFetch = withUpstreamTimeout((url, init) => fetch(ur
 
 /** The local clone of the pinned topic files, one per data folder: created once, so registrations share it. */
 let localRoadmaps: { readonly directory: string; readonly copy: LocalRoadmapCopy } | null = null;
-function localRoadmapCopy(dataDirectory: string): LocalRoadmapCopy {
+function localRoadmapCopy(dataDirectory: string, log: PluginLog): LocalRoadmapCopy {
   const directory = nodePath.join(dataDirectory, "upstream", "developer-roadmap");
   if (localRoadmaps?.directory !== directory) {
-    localRoadmaps = { directory, copy: createLocalRoadmapCopy({ directory, commit: UPSTREAM_PINNED_COMMIT }) };
+    localRoadmaps = { directory, copy: createLocalRoadmapCopy({ directory, commit: UPSTREAM_PINNED_COMMIT, log }) };
   }
   return localRoadmaps.copy;
 }
@@ -67,7 +67,7 @@ import { deriveMastery } from "./learner-map.ts";
 import { propositionsForChats } from "./node-propositions.ts";
 import type { LearnerGraph, Mastery } from "./learner-map.ts";
 import { architectLogPath, createPluginLog } from "./plugin-log.ts";
-import type { LogStep } from "./plugin-log.ts";
+import type { LogStep, PluginLog } from "./plugin-log.ts";
 import {
   ARTIFACT_TYPES,
   CHILD_SESSION_KINDS,
@@ -526,7 +526,7 @@ export function activate(ctx: PluginBackendContext): void {
         fetch: upstreamFetch,
         commit: UPSTREAM_PINNED_COMMIT,
         topicCache: createTopicDiskCache(nodePath.join(ctx.dataDirectory, "topic-cache")),
-        local: localRoadmapCopy(ctx.dataDirectory),
+        local: localRoadmapCopy(ctx.dataDirectory, architectLog),
         readGraph: () => learnerGraphBrief(ctx),
       },
       log: architectLog,

@@ -113,7 +113,21 @@ export interface UpstreamOptions {
   /** Topic reads in progress or done, keyed by roadmap, topic and commit. A prefetch and a batch read
    * that ask for the same topic share one request. A failed read is removed, so the next call retries. */
   readonly topics?: Map<string, Promise<UpstreamTopic>>;
+  /** Opens a trace for each topic read that reaches a source (the disk cache, the local copy or GitHub). Absent: no trace.
+   * A read served from `topics` reaches no source and is not traced. */
+  readonly trace?: TopicReadTracer;
 }
+
+/** Where a traced topic read found its text. */
+export type TopicReadSource = "local" | "github" | "cache";
+/** How a traced topic read ended: accepted, the file not found, or refused (invalid, too large, unreachable). */
+export type TopicReadOutcome = "accepted" | "not_found" | "rejected";
+/** One open trace of a topic read; `end` is called once with where the text came from and the outcome. */
+export interface TopicReadStep {
+  end(result: { readonly source: TopicReadSource; readonly outcome: TopicReadOutcome }): void;
+}
+/** Opens the trace of one topic read of `roadmap`. Only the roadmap slug is passed: never a topic slug, text or URL. */
+export type TopicReadTracer = (roadmap: string) => TopicReadStep;
 
 /** Storage for successful topic reads. `read` resolves what was stored (validated here) or null. */
 export interface TopicDiskCache {
@@ -356,21 +370,47 @@ async function githubTopicMarkdown(roadmap: string, topic: string, sha: string, 
   return request(options.fetch, contentsUrl(roadmap, sha, ref.file), HEADERS_RAW, `topic "${topic}" of roadmap "${roadmap}"`);
 }
 
-async function loadTopic(roadmap: string, topic: string, sha: string, options: UpstreamOptions): Promise<UpstreamTopic> {
-  const cached = await readTopicCache(options.topicCache, roadmap, topic, sha);
-  if (cached) return cached;
-  const markdown = (await readLocalTopic(roadmap, topic, options)) ?? (await githubTopicMarkdown(roadmap, topic, sha, options));
-  if (markdown.length > MAX_TOPIC_CHARS) throw new UpstreamError("invalid", `Topic "${topic}" is larger than the reader accepts.`);
-  const result: UpstreamTopic = {
-    roadmap,
-    slug: topic,
-    ...parseTopicMarkdown(markdown),
-    source: UPSTREAM_SOURCE,
-    repository: UPSTREAM_REPOSITORY,
-    commit: sha,
-  };
+/** Thrown by a local-only load when the local copy cannot answer. It is never shown to the model. */
+class TopicNotLocal extends Error {}
+
+/** One topic from the disk cache, then the local copy, then GitHub (the local copy only when `localOnly`).
+ * A load that reaches a source is traced once, with where its text came from and how the read ended. */
+async function loadTopic(roadmap: string, topic: string, sha: string, options: UpstreamOptions, localOnly: boolean): Promise<UpstreamTopic> {
+  const step = options.trace?.(roadmap);
+  let source: TopicReadSource = "cache";
+  let result: UpstreamTopic;
+  let fromCache = false;
+  try {
+    const cached = await readTopicCache(options.topicCache, roadmap, topic, sha);
+    if (cached) {
+      fromCache = true;
+      result = cached;
+    } else {
+      source = "local";
+      let markdown = await readLocalTopic(roadmap, topic, options);
+      if (markdown === null) {
+        if (localOnly) throw new TopicNotLocal(`Topic "${topic}" is not in the local copy.`);
+        source = "github";
+        markdown = await githubTopicMarkdown(roadmap, topic, sha, options);
+      }
+      if (markdown.length > MAX_TOPIC_CHARS) throw new UpstreamError("invalid", `Topic "${topic}" is larger than the reader accepts.`);
+      result = {
+        roadmap,
+        slug: topic,
+        ...parseTopicMarkdown(markdown),
+        source: UPSTREAM_SOURCE,
+        repository: UPSTREAM_REPOSITORY,
+        commit: sha,
+      };
+    }
+  } catch (error) {
+    const outcome: TopicReadOutcome = error instanceof UpstreamError && error.kind === "not_found" ? "not_found" : "rejected";
+    step?.end({ source, outcome });
+    throw error;
+  }
+  step?.end({ source, outcome: "accepted" });
   // Best effort: a cache that cannot be written only costs a later request.
-  if (options.topicCache) await options.topicCache.write(result).catch(() => undefined);
+  if (!fromCache && options.topicCache) await options.topicCache.write(result).catch(() => undefined);
   return result;
 }
 
@@ -388,7 +428,7 @@ export async function readTopic(
   const key = `${roadmap}/${topic}@${sha}`;
   const shared = options.topics?.get(key);
   if (shared) return shared;
-  const pending = loadTopic(roadmap, topic, sha, options);
+  const pending = loadTopic(roadmap, topic, sha, options, false);
   const topics = options.topics;
   if (topics) {
     topics.set(key, pending);
@@ -397,6 +437,47 @@ export async function readTopic(
     });
   }
   return pending;
+}
+
+/** One topic from the local copy only (no GitHub request), or null when the copy cannot answer it. A topic already
+ * read in this definition is reused; a topic read here is kept for the later reads, as readTopic keeps its own. */
+async function localTopic(roadmap: string, slug: string, sha: string, options: UpstreamOptions): Promise<UpstreamTopic | null> {
+  try {
+    assertSlug(slug, "topicSlug");
+  } catch {
+    return null;
+  }
+  const key = `${roadmap}/${slug}@${sha}`;
+  const shared = options.topics?.get(key);
+  if (shared) return shared.then(
+    (topic) => topic,
+    () => null,
+  );
+  try {
+    const topic = await loadTopic(roadmap, slug, sha, options, true);
+    if (options.topics && !options.topics.has(key)) options.topics.set(key, Promise.resolve(topic));
+    return topic;
+  } catch {
+    return null;
+  }
+}
+
+/** The listed topics of one roadmap read from the local copy, LOCAL_TOPIC_READ_CONCURRENCY at a time, in the order
+ * listed. A topic the copy cannot answer is left out, and no request is made to GitHub for it. */
+export async function readLocalTopics(
+  roadmapSlug: string,
+  topicSlugs: readonly string[],
+  commit: string,
+  options: UpstreamOptions,
+): Promise<UpstreamTopic[]> {
+  const roadmap = assertSlug(roadmapSlug, "roadmapSlug");
+  const sha = assertCommit(commit);
+  if (!options.local) return [];
+  // The copy has no folder for this roadmap (not ready, or absent): nothing to read locally.
+  const names = await options.local.listFiles(roadmap).catch(() => null);
+  if (!names) return [];
+  const found = await mapWithConcurrency(topicSlugs, LOCAL_TOPIC_READ_CONCURRENCY, (slug) => localTopic(roadmap, slug, sha, options));
+  return found.filter((topic): topic is UpstreamTopic => topic !== null);
 }
 
 /** Start reading the listed topics of one roadmap in the background, bounded by TOPIC_READ_CONCURRENCY, so later

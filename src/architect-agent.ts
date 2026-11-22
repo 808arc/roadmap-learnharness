@@ -40,10 +40,11 @@ import {
   listRoadmapTopics,
   mapWithConcurrency,
   prefetchRoadmapTopics,
+  readLocalTopics,
   readTopic,
   topicReadConcurrency,
 } from "./upstream-roadmaps.ts";
-import type { UpstreamErrorKind, UpstreamOptions, UpstreamTopic } from "./upstream-roadmaps.ts";
+import type { TopicReadStep, UpstreamErrorKind, UpstreamOptions, UpstreamTopic } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
 export const ARCHITECT_DEFINITION_ID = "path-architect";
@@ -897,7 +898,12 @@ type TopicBatchResult =
 
 /** Validate the whole batch before any request, then read each topic at the pinned commit. One topic's failure
  * is its own result; the others still come back. Results keep the order the slugs were given in. */
-async function readTopicBatch(roadmapSlug: unknown, topicSlugs: unknown, upstream: UpstreamOptions & { readonly commit: string }): Promise<{ roadmap: string; results: TopicBatchResult[] }> {
+async function readTopicBatch(
+  roadmapSlug: unknown,
+  topicSlugs: unknown,
+  upstream: UpstreamOptions & { readonly commit: string },
+  log: PluginLog | undefined,
+): Promise<{ roadmap: string; results: TopicBatchResult[] }> {
   const roadmap = assertSlug(roadmapSlug, "roadmapSlug");
   if (!Array.isArray(topicSlugs) || topicSlugs.length === 0) {
     throw new UpstreamError("invalid", "topicSlugs must be a non-empty array of topic slugs.");
@@ -906,10 +912,11 @@ async function readTopicBatch(roadmapSlug: unknown, topicSlugs: unknown, upstrea
     throw new UpstreamError("invalid", `topicSlugs may name at most ${MAX_TOPICS_PER_BATCH} topics per call.`);
   }
   const slugs = topicSlugs.map((slug, index) => assertSlug(slug, `topicSlugs[${index}]`));
+  const traced = tracedUpstream(upstream, log, slugs.length);
   // At most topicReadConcurrency(upstream) requests in flight; results keep the order the slugs were given in.
   const results = await mapWithConcurrency(slugs, topicReadConcurrency(upstream), async (slug): Promise<TopicBatchResult> => {
     try {
-      return { slug, ok: true, topic: await readTopic(roadmap, slug, upstream.commit, upstream) };
+      return { slug, ok: true, topic: await readTopic(roadmap, slug, upstream.commit, traced) };
     } catch (error) {
       if (error instanceof UpstreamError) return { slug, ok: false, kind: error.kind, error: error.message };
       throw error;
@@ -918,11 +925,27 @@ async function readTopicBatch(roadmapSlug: unknown, topicSlugs: unknown, upstrea
   return { roadmap, results };
 }
 
+/** The upstream options for one tool call: each topic read it makes is traced as a "topic read" step with the
+ * call's count. Without a log the options are unchanged. */
+function tracedUpstream<T extends UpstreamOptions>(upstream: T, log: PluginLog | undefined, count: number): T {
+  if (!log) return upstream;
+  return {
+    ...upstream,
+    trace: (roadmap: string): TopicReadStep => {
+      const step = log.begin("topic read", { roadmap, count });
+      return {
+        end: ({ source, outcome }) => step.end({ source, outcome, ok: outcome === "accepted" }),
+      };
+    },
+  };
+}
+
 /** `list_roadmap_topics`, `read_roadmap_topic` and `read_roadmap_topics`: the upstream operations, nothing else. */
 export function upstreamReadTools(
   ctx: PluginBackendContext,
   upstream: UpstreamArchitectOptions,
   readUrls: Map<string, Set<string>>,
+  log?: PluginLog,
 ): PluginAgentTool[] {
   const upstreamFailure = (error: unknown): AgentToolResult<{ error: string }> => {
     // Bad arguments and upstream failures are both reported to the model, never thrown.
@@ -933,8 +956,9 @@ export function upstreamReadTools(
     {
       name: "list_roadmap_topics",
       description:
-        "List the topic slugs of one developer-roadmap roadmap (for example \"frontend\" or \"devops\"). " +
-        "Then read them with read_roadmap_topics in batches (up to 10 slugs per call), or read_roadmap_topic for one topic.",
+        "List the topics of one developer-roadmap roadmap (for example \"frontend\" or \"devops\"). Each listed topic " +
+        "carries its title and description, so the structure needs no further reads. For a topic's resources, read it " +
+        "with read_roadmap_topics in batches (up to 10 slugs per call), or read_roadmap_topic for one topic.",
       parameters: objectSchema({
         roadmapSlug: { type: "string", description: "Lowercase slug of the roadmap, e.g. \"backend\"." },
       }, ["roadmapSlug"]),
@@ -945,9 +969,17 @@ export function upstreamReadTools(
           const roadmap = String(params.roadmapSlug);
           const topics = await listRoadmapTopics(roadmap, upstream.commit, upstream);
           const slugs = topics.map((topic) => topic.slug);
-          // Best effort, in the background: the listed topics are read so later batch reads hit the cache.
-          void prefetchRoadmapTopics(roadmap, slugs, upstream.commit, upstream);
-          const result = { topics: slugs };
+          const traced = tracedUpstream(upstream, log, slugs.length);
+          // Every listed topic is read from the local copy in parallel, so the list carries each title and description.
+          const local = new Map((await readLocalTopics(roadmap, slugs, upstream.commit, traced)).map((topic) => [topic.slug, topic]));
+          // Topics the copy did not answer are fetched in the background, so later batch reads hit the cache.
+          void prefetchRoadmapTopics(roadmap, slugs.filter((slug) => !local.has(slug)), upstream.commit, traced);
+          const result = {
+            topics: slugs.map((slug) => {
+              const topic = local.get(slug);
+              return { slug, title: topic?.title ?? null, description: topic?.description ?? null };
+            }),
+          };
           return textResult(result, JSON.stringify(result));
         } catch (error) {
           return upstreamFailure(error);
@@ -967,7 +999,7 @@ export function upstreamReadTools(
         assertLive(ctx, signal);
         try {
           const params = readObject(rawParams);
-          const topic = await readTopic(String(params.roadmapSlug), String(params.topicSlug), upstream.commit, upstream);
+          const topic = await readTopic(String(params.roadmapSlug), String(params.topicSlug), upstream.commit, tracedUpstream(upstream, log, 1));
           for (const resource of topic.resources) addCitable(readUrls, resource.url, citableTitles(resource.label));
           return textResult(topic, JSON.stringify(topic));
         } catch (error) {
@@ -995,7 +1027,7 @@ export function upstreamReadTools(
         assertLive(ctx, signal);
         try {
           const params = readObject(rawParams);
-          const batch = await readTopicBatch(params.roadmapSlug, params.topicSlugs, upstream);
+          const batch = await readTopicBatch(params.roadmapSlug, params.topicSlugs, upstream, log);
           for (const result of batch.results) {
             if (result.ok) for (const resource of result.topic.resources) addCitable(readUrls, resource.url, citableTitles(resource.label));
           }
@@ -1040,7 +1072,7 @@ function buildUpstreamDefinition(
     maxTurns: ARCHITECT_MAX_TURNS,
     tools: [
       readLearnerGraphTool(ctx, upstream.readGraph),
-      ...upstreamReadTools(ctx, upstreamReads, readUrls),
+      ...upstreamReadTools(ctx, upstreamReads, readUrls, options.log),
       getLearningPathTool(ctx, options),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options), allowed),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options, true), allowed),
