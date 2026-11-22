@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import type { PluginAgentTool, PluginBackendContext } from "learnharness-plugin-api";
-import { buildArchitectDefinition } from "../src/architect-agent.ts";
+import { buildArchitectDefinition, recalledRoadmapPath } from "../src/architect-agent.ts";
 import { buildArchitectSystemPrompt } from "../src/framework.ts";
 import type { ArchitectModelConfig } from "../src/store.ts";
 import { openLearningPathStore } from "../src/store.ts";
@@ -591,4 +591,56 @@ test("the instructions put the graph and the topic files before the book and web
   assert.match(prompt.slice(research), /enrich/);
   assert.match(prompt, /Books and web never create topics, nodes or roadmap structure/);
   assert.equal(prompt.includes("Do not search the web"), false, "the old ban is gone");
+});
+
+/** Issue #41: a deep_research question may not name a roadmap repo or path from memory. */
+test("deep_research refuses a developer-roadmap repo other than the pinned one, or the old data/roadmaps path, and runs nothing", async (t) => {
+  const store = openLearningPathStore(workspace(t));
+  const questions: string[] = [];
+  const deepResearch = {
+    name: "deep_research",
+    description: "synthetic deep research",
+    parameters: { type: "object", properties: {} },
+    execute: async (_id: string, params: { question: string }) => {
+      questions.push(params.question);
+      return { content: [{ type: "text", text: "Research note n1 saved." }], details: {} };
+    },
+  } as unknown as PluginAgentTool;
+  const definition = buildArchitectDefinition(learnerContext(), model, {
+    store,
+    activeChatId: () => "chat-synthetic",
+    researchTools: [deepResearch],
+    upstream: { fetch: fakeFetch(standardRoutes()).fetch, commit: COMMIT },
+  });
+  const tool = definition.tools?.find((candidate: PluginAgentTool) => candidate.name === "deep_research") as unknown as {
+    execute(id: string, params: unknown, signal: undefined): Promise<ToolResult>;
+  };
+
+  for (const question of [
+    "Map the Git roadmap from github.com/example-owner/developer-roadmap",
+    "Read data/roadmaps/git-github in the roadmap repo",
+  ]) {
+    const refused = await tool.execute("c1", { question }, undefined);
+    assert.equal(refused.isError, true, question);
+    assert.match(refused.content[0]!.text, new RegExp(`other than ${UPSTREAM_REPOSITORY}`));
+    assert.match(refused.content[0]!.text, /list_roadmap_topics and read_roadmap_topic/);
+  }
+  assert.deepEqual(questions, [], "a refused question is never run");
+
+  // The pinned repo, its own layout, other repos and plain briefs pass.
+  for (const question of [
+    `Best Git books; the structure is ${UPSTREAM_REPOSITORY} roadmaps/git-github/content`,
+    "Find a course for github.com/git/git internals",
+    "Git for a beginner who writes Python: books and courses",
+  ]) {
+    const passed = await tool.execute("c2", { question }, undefined);
+    assert.equal(passed.isError, undefined, question);
+  }
+  assert.equal(questions.length, 3);
+});
+
+test("recalledRoadmapPath matches the pinned repo in any case, and leaves other text alone", () => {
+  assert.equal(recalledRoadmapPath(UPSTREAM_REPOSITORY.toUpperCase()), null);
+  assert.equal(recalledRoadmapPath("metadata/roadmaps and developer-roadmap alone"), null);
+  assert.equal(recalledRoadmapPath("see someone/developer-roadmap/tree/master"), "someone/developer-roadmap");
 });

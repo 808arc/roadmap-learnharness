@@ -32,7 +32,7 @@ import { buildArchitectSystemPrompt } from "./framework.ts";
 import { SOURCES_DIRECTORY, StoreError } from "./store.ts";
 import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
 import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
-import { UpstreamError, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
+import { UPSTREAM_REPOSITORY, UpstreamError, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
 import type { UpstreamOptions } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
@@ -684,6 +684,35 @@ function withResearchCitations(tool: PluginAgentTool, researchUrls: Set<string>)
   } as PluginAgentTool;
 }
 
+/** A roadmap repo or path that only memory could supply (#41): a developer-roadmap repo other than the pinned
+ * upstream, or the old `data/roadmaps/` layout. Narrow on purpose: other repos and paths are not judged. */
+export function recalledRoadmapPath(question: string): string | null {
+  for (const match of question.matchAll(/([\w.-]+)\/developer-roadmap\b/gi)) {
+    if (match[0].toLowerCase() !== UPSTREAM_REPOSITORY.toLowerCase()) return match[0];
+  }
+  return /\bdata\/roadmaps\b/i.exec(question)?.[0] ?? null;
+}
+
+/** Refuse a deep_research question that names a roadmap repo or path from memory; nothing is run. */
+function withRoadmapPathCheck(tool: PluginAgentTool): PluginAgentTool {
+  if (tool.name !== "deep_research" || !tool.execute) return tool;
+  const execute = tool.execute;
+  return {
+    ...tool,
+    execute: async (...args: Parameters<typeof execute>) => {
+      const params: unknown = args[1];
+      const recalled = isRecordValue(params) && typeof params.question === "string" ? recalledRoadmapPath(params.question) : null;
+      if (recalled) {
+        return errorResult(
+          `deep_research refused; nothing was run. The question names "${recalled}", a roadmap repo or path other than ${UPSTREAM_REPOSITORY}. ` +
+            "Roadmap structure comes only from list_roadmap_topics and read_roadmap_topic. Remove it and ask again.",
+        );
+      }
+      return execute(...args);
+    },
+  } as PluginAgentTool;
+}
+
 /** Draft resources whose url or title was not read from a topic file, read the way the save tools read them. */
 function uncitedResources(args: unknown, allowed: CitableResources): string[] {
   const draft = normalizeDraftArguments(args);
@@ -831,7 +860,7 @@ function buildUpstreamDefinition(
   const allowed = (): CitableResources => citableResources(readUrls, researchUrls, options.store);
   // Books and web come last and only enrich: they are offered after the graph, topic and path tools.
   const enrichmentTools = (options.researchTools ?? []).map((tool) =>
-    withResearchCitations(timedResearchTool(tool, options.log), researchUrls),
+    withResearchCitations(timedResearchTool(withRoadmapPathCheck(tool), options.log), researchUrls),
   );
   return {
     id: ARCHITECT_DEFINITION_ID,
