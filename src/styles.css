@@ -93,10 +93,6 @@
   color: var(--rm-muted);
 }
 
-.rm-crumb-sep {
-  color: var(--rm-faint);
-}
-
 .rm-crumb-path {
   display: inline-flex;
   align-items: center;
