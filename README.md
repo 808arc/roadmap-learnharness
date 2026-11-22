@@ -134,8 +134,9 @@ kept as research notes (listed in settings) that the Architect reads.
 4. Press **Refresh**, enable **Roadmap**, and restart LearnHarness.
 
 To update, replace `roadmap-learnharness/dist/` and keep `roadmap-learnharness/data/` (your roadmaps).
-The plugin id changed from `roadmap`; on first start it copies this fork's
-roadmap files from `<plugins-directory>/roadmap/data/` if the new data folder is empty. The old
+The plugin id changed from `roadmap`; on first start it copies `learning-paths.json` and
+`architect.json` (this fork's format) from `<plugins-directory>/roadmap/data/` if the new data folder
+has no roadmap yet. The old
 folder is never changed.
 
 ### From source
@@ -156,6 +157,12 @@ npm run install:local -- "<plugins-directory>"
 `<plugins-directory>/roadmap-learnharness/dist/`. It replaces only `dist/`.
 It never touches `data/`, so your roadmaps are kept. Then refresh Community
 plugins and restart LearnHarness.
+
+To have the script restart LearnHarness for you, run `npm run restart:learnharness`. It quits
+LearnHarness gracefully (never force-closed), waits up to 30 seconds, then starts it again. It
+knows where the app is on macOS only; on Windows and Linux set `LEARNHARNESS_APP` to the app's
+location. Run directly, `node scripts/restart-learnharness.mjs` without `--restart` only prints its
+usage, so a restart happens only when asked for.
 
 ### Coming from Learning Paths
 
@@ -184,11 +191,16 @@ Settings → Roadmap:
 
 Everything lives in the plugin's own data folder (`<plugins>/roadmap-learnharness/data/`):
 `roadmaps/` (one file per roadmap, named by a hash of its id), `roadmaps-index.json`, `settings.json`,
-`architect.json`, `sources/`, `research/` (research notes), `research-chats.json`, `secrets/` (only if
-you save your own search key) and the host-managed `agents/`. An older `learning-paths.json` is read
-once to write the roadmap files; it stays in the data folder as `learning-paths.json.migrated`.
-Records are versioned and written atomically; corrupt or newer files are refused rather than overwritten. Roadmap never deletes native
-chats or Knowledge Graph records.
+`architect.json`, `sources/`, `research/` (research notes), `research-chats.json`,
+`declined-proposals.json` (roadmap offers you declined), `secrets/search-key.json` (only if you save
+your own search key), `logs/architect.jsonl` (see Logs), and a `.gitignore` the plugin writes so that
+`secrets/`, `logs/` and `*.tmp` stay out of a Git-versioned data folder. LearnHarness reserves
+`agents/`, `tasks/` and `usage.jsonl` here; Roadmap never reads or writes them. An older
+`learning-paths.json` is read once to write the roadmap files; it stays in the data folder as
+`learning-paths.json.migrated`.
+
+Records are versioned and written atomically; corrupt or newer files are refused rather than
+overwritten. Roadmap never deletes native chats or Knowledge Graph records.
 
 ## Logs
 
