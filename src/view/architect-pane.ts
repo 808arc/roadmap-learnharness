@@ -11,6 +11,9 @@
  * All handles are scoped to the per-mount `AbortSignal` and disposed on unmount.
  */
 import { locale, t } from "../i18n.ts";
+import type { MessageKey } from "../i18n.ts";
+import { architectSteps } from "../architect-progress.ts";
+import type { ArchitectStep } from "../architect-progress.ts";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ArchitectProgress } from "../topics.ts";
 import type {
@@ -35,6 +38,15 @@ const DEEP_RESEARCH_PREFIX =
   "syllabi and pages you rely on, canonical and deeper sources, and use deep_research if you have it. Then build or refine the path.]\n\n";
 
 const ACCEPTED = /\.(pdf|md|markdown|txt|text)$/i;
+
+const STEP_LABEL_KEYS: Record<ArchitectStep, MessageKey> = {
+  readGraph: "archProgress.readGraph",
+  findTopics: "archProgress.findTopics",
+  readTopics: "archProgress.readTopics",
+  research: "archProgress.research",
+  draft: "archProgress.draft",
+  save: "archProgress.save",
+};
 
 export interface ArchitectPane {
   readonly element: HTMLElement;
@@ -108,7 +120,11 @@ export function createArchitectPane(
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
   headingRow.append(status);
-  root.append(headingRow);
+  // Build strip: six steps of a roadmap build, shown only while the Architect is busy.
+  const progress = el(document, "ol", "lp-architect-progress");
+  progress.setAttribute("aria-label", t("archProgress.label"));
+  progress.hidden = true;
+  root.append(headingRow, progress);
 
   const log = el(document, "div", "lp-chat-log");
   log.setAttribute("aria-label", t("a.log"));
@@ -306,8 +322,34 @@ export function createArchitectPane(
   }
   researchSession.addEventListener("click", () => void startResearchSession(), { signal });
 
+  function renderProgress(): void {
+    const running = busy();
+    progress.hidden = !running;
+    if (!running) {
+      progress.replaceChildren();
+      return;
+    }
+    const steps = architectSteps(conversation?.messages ?? [], conversation?.partial, true);
+    progress.replaceChildren(...steps.map((view) => {
+      const item = el(document, "li", "lp-progress-step");
+      item.dataset.step = view.step;
+      item.dataset.state = view.state;
+      if (view.state === "running") item.setAttribute("aria-current", "step");
+      item.append(el(document, "span", "lp-progress-dot"));
+      item.append(el(document, "span", "lp-progress-label", t(STEP_LABEL_KEYS[view.step])));
+      const count = view.count;
+      if (count && count.total !== undefined) {
+        item.append(el(document, "span", "lp-progress-count", t("archProgress.count", { done: count.done, total: count.total })));
+      } else if (count && count.done > 0) {
+        item.append(el(document, "span", "lp-progress-count", String(count.done)));
+      }
+      return item;
+    }));
+  }
+
   function renderStatus(): void {
     if (disposed || signal.aborted) return;
+    renderProgress();
     status.className = "lp-architect-status";
     if (error) {
       status.textContent = error;
