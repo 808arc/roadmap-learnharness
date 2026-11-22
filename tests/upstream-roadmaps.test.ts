@@ -162,6 +162,44 @@ test("a 500 is unreachable, an unknown roadmap is not found, and a missing topic
   await assert.rejects(readTopic("synthetic-roadmap", "absent-topic", COMMIT, { fetch }), isUpstreamError("not_found"));
 });
 
+test("with a listings cache, the roadmap listing is read once for several topic reads", async () => {
+  const { fetch, calls } = fakeFetch({
+    ...standardRoutes(),
+    [`${ROOT}/synthetic-roadmap/content/other-topic@Qz9-k.md?ref=${COMMIT}`]: { status: 200, body: TOPIC_MD },
+  });
+  const listings = new Map();
+  const options = { fetch, listings };
+  const first = await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, options);
+  const second = await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, options);
+  const other = await readTopic("synthetic-roadmap", "other-topic", COMMIT, options);
+  assert.deepEqual(second, first);
+  assert.equal(other.slug, "other-topic");
+  assert.deepEqual((await listRoadmapTopics("synthetic-roadmap", COMMIT, options)).map((topic) => topic.slug), ["synthetic-topic", "other-topic"]);
+  const listingCalls = calls.filter((call) => call.url.includes("/content?ref="));
+  assert.equal(listingCalls.length, 1, "the listing is read once");
+  assert.equal(calls.length, 4, "one listing and one request per topic file");
+});
+
+test("without a listings cache every topic read lists the roadmap again, as before", async () => {
+  const { fetch, calls } = fakeFetch(standardRoutes());
+  await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, { fetch });
+  await readTopic("synthetic-roadmap", "synthetic-topic", COMMIT, { fetch });
+  assert.equal(calls.length, 4);
+});
+
+test("a failed listing is not kept: the next call asks GitHub again", async () => {
+  const route = `${ROOT}/synthetic-roadmap/content?ref=${COMMIT}`;
+  const routes: Record<string, { status: number; body: string } | null> = { [route]: null };
+  const { fetch, calls } = fakeFetch(routes);
+  const listings = new Map();
+  await assert.rejects(listRoadmapTopics("synthetic-roadmap", COMMIT, { fetch, listings }), isUpstreamError("unreachable"));
+  assert.equal(listings.size, 0, "the failed listing is removed from the cache");
+  routes[route] = { status: 200, body: LISTING };
+  const topics = await listRoadmapTopics("synthetic-roadmap", COMMIT, { fetch, listings });
+  assert.equal(topics.length, 2);
+  assert.equal(calls.length, 2);
+});
+
 /** A learner whose graph holds distinctive synthetic text, to prove none of it leaves the plugin. */
 const SECRET = "ZZ-LEARNER-SECRET-7731";
 function learnerContext(): PluginBackendContext {
@@ -258,7 +296,7 @@ test("the graph brief is read through ctx.learning.graph() and upstream calls ca
   );
   assert.equal(refused.isError, true);
 
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2, "one listing (reused by the topic read) and one topic file");
   for (const call of calls) {
     assert.equal(call.url.includes(SECRET), false, "no learner text in a URL");
     assert.equal(JSON.stringify(call.headers).includes(SECRET), false, "no learner text in headers");
@@ -371,7 +409,7 @@ test("no graph statement, goal or learner name appears in any request to GitHub"
   await tool("read_learner_graph").execute("c2", {}, undefined);
   await tool("list_roadmap_topics").execute("c3", { roadmapSlug: "synthetic-roadmap" }, undefined);
   await tool("read_roadmap_topic").execute("c4", { roadmapSlug: "synthetic-roadmap", topicSlug: "synthetic-topic" }, undefined);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2, "one listing (reused by the topic read) and one topic file");
   for (const call of calls) {
     assert.match(call.url, new RegExp(`^${UPSTREAM_API_BASE}/repos/${UPSTREAM_REPOSITORY}/contents/roadmaps/`));
     for (const secret of [SECRET, GOAL, NAME]) {

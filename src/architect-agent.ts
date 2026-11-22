@@ -797,6 +797,8 @@ function buildUpstreamDefinition(
 ): PluginAgentDefinition {
   const readUrls = new Map<string, Set<string>>();
   const researchUrls = new Set<string>();
+  // One listing per roadmap for the definition's lifetime: a topic read needs the listing, and the pinned commit never changes.
+  const upstreamReads: UpstreamArchitectOptions = { ...upstream, listings: upstream.listings ?? new Map() };
   const allowed = (): CitableResources => citableResources(readUrls, researchUrls, options.store);
   // Books and web come last and only enrich: they are offered after the graph, topic and path tools.
   const enrichmentTools = (options.researchTools ?? []).map((tool) =>
@@ -813,7 +815,7 @@ function buildUpstreamDefinition(
     maxTurns: ARCHITECT_MAX_TURNS,
     tools: [
       readLearnerGraphTool(ctx, upstream.readGraph),
-      ...upstreamReadTools(ctx, upstream, readUrls),
+      ...upstreamReadTools(ctx, upstreamReads, readUrls),
       getLearningPathTool(ctx, options),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options), allowed),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options, true), allowed),
