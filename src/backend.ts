@@ -51,6 +51,7 @@ import type { UpstreamFetch } from "./upstream-roadmaps.ts";
 const upstreamFetch: UpstreamFetch = withUpstreamTimeout((url, init) => fetch(url, init));
 import type { GraphBrief } from "./graph-brief.ts";
 import { deriveMastery } from "./learner-map.ts";
+import { propositionsForChats } from "./node-propositions.ts";
 import type { LearnerGraph, Mastery } from "./learner-map.ts";
 import { architectLogPath, createPluginLog } from "./plugin-log.ts";
 import type { LogStep } from "./plugin-log.ts";
@@ -668,6 +669,14 @@ export function activate(ctx: PluginBackendContext): void {
   handle("graph.topicCount", () => ({ topics: readGraphTopicCount(ctx.learning) }));
 
   handle("graph.mastery", () => ({ mastery: readGraphMastery(ctx.learning) }));
+
+  // The learner's stored propositions linked to the given native chats (read-only). Used by a node's Flashcard seed action.
+  handle("graph.propositions", (input) => {
+    const value = object(input, "graph.propositions").chatIds;
+    if (!Array.isArray(value) || value.length > 200) throw new Error("chatIds must be an array of at most 200 chats.");
+    const chatIds = value.map((chatId) => readText(chatId, "chatId", { max: 128 }));
+    return { propositions: propositionsForChats(chatIds, ctx.learning.graph().propositions ?? []) };
+  });
 
   handle("paths.get", (input) => {
     const id = readText(object(input, "paths.get").id, "id", { max: 128 });

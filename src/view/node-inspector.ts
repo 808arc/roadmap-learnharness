@@ -8,7 +8,7 @@
  * Controlled: `render` receives the authoritative path and node; edits are
  * reported to the caller.
  */
-import type { PluginFrontendContext, PluginWidgetHandle } from "learnharness-plugin-api";
+import type { PluginDialogProps, PluginFrontendContext, PluginWidgetHandle } from "learnharness-plugin-api";
 import { ARTIFACT_CATALOG, PROGRESSION_STATES, artifactCatalogEntry, recommendedArtifactsFor } from "../domain.ts";
 import type {
   ArtifactType,
@@ -25,6 +25,7 @@ import type { MessageKey } from "../i18n.ts";
 import type { Mastery } from "../learner-map.ts";
 import { nodeEvidence } from "../node-evidence.ts";
 import { nodePatternHintKey } from "../pattern-hint.ts";
+import type { NodeProposition } from "../node-propositions.ts";
 import type { EvidenceSuggestion, NodeEvidence } from "../node-evidence.ts";
 import type { SessionStatus } from "../session-types.ts";
 import { button, el, shortDate } from "./dom.ts";
@@ -58,6 +59,8 @@ export interface NodeInspectorOptions {
   knowledgeMastery?(): readonly Mastery[];
   /** Read on each render: whether the one-line question-template hint shows. Absent means shown. */
   showPatternHints?(): boolean;
+  /** The learner's graph propositions linked to this node, for the Flashcard seed action. Null when the read fails. */
+  nodePropositions?(node: PathNode): Promise<readonly NodeProposition[] | null>;
 }
 
 export interface NodeInspector {
@@ -193,6 +196,47 @@ export function createNodeInspector(
     offer("consolidated", t("evi.markConsolidated"));
     offer("skipped", t("evi.skip"));
     wrapper.append(choices);
+  };
+
+  /**
+   * Flashcard seed: lists the learner's own graph propositions for the node. The Flashcards plugin's review lives
+   * in its own view, which this plugin cannot open or detect, so the dialog says where to find it.
+   */
+  const showPropositions = async (node: PathNode): Promise<void> => {
+    if (!options.nodePropositions) return;
+    let found: readonly NodeProposition[] | null;
+    try {
+      found = await options.nodePropositions(node);
+    } catch {
+      found = null;
+    }
+    if (disposed || signal.aborted) return;
+    let dialog: PluginWidgetHandle<PluginDialogProps> | null = null;
+    dialog = ctx.ui.openDialog(
+      {
+        title: t("flash.title"),
+        content: (content, contentSignal) => {
+          content.append(el(document, "h2", "rm-insp-title", t("flash.title")));
+          content.append(el(document, "p", "rm-why", t("flash.reviewNote")));
+          if (found === null) {
+            content.append(el(document, "p", "rm-muted", t("flash.unavailable")));
+          } else if (found.length === 0) {
+            content.append(el(document, "p", "rm-muted", t("flash.none")));
+          } else {
+            const list = el(document, "div", "rm-list");
+            for (const proposition of found) {
+              list.append(item(null, proposition.name, proposition.statement));
+            }
+            content.append(list);
+          }
+          const actions = el(document, "div", "rm-chips");
+          actions.append(button(document, t("flash.close"), () => dialog?.dispose(), contentSignal, { variant: "outline" }));
+          content.append(actions);
+        },
+      },
+      { signal: scoped() },
+    );
+    handles.push(dialog);
   };
 
   const renderSelected = (path: LearningPath, node: PathNode): void => {
@@ -358,6 +402,11 @@ export function createNodeInspector(
     artifactSection.append(select);
     if (node.artifactConfig?.instructions) artifactSection.append(item(ICONS.article, node.artifactConfig.instructions));
     artifactSection.append(el(document, "p", "rm-why", t("insp.why", { text: t(`artWhy.${entry.type}` as MessageKey) })));
+    if (effective === "retrieval_cue" && options.nodePropositions) {
+      artifactSection.append(
+        button(document, t("flash.open"), () => void showPropositions(node), scoped(), { variant: "outline" }),
+      );
+    }
 
     footer.append(
       button(document, t("action.lesson"), () => void options.startSession("teaching"), scoped(), { variant: "primary" }),
