@@ -1,6 +1,6 @@
 # Data folder
 
-The plugin keeps its files in the data directory the host gives it (`ctx.dataDirectory`). This page lists what the code on `main` writes, what each file holds, and whether it is safe to commit to Git. The file names come from `src/store.ts` and `src/git-safe-data.ts`.
+The plugin keeps its files in the data directory the host gives it (`ctx.dataDirectory`). This page lists what the code on `main` writes, what each file holds, and whether it is safe to commit to Git. The file names come from the modules that write them, mainly `src/store.ts` and `src/git-safe-data.ts`.
 
 The generated `.gitignore` in this folder (see [Git safety](#git-safety)) decides what a Git plugin such as learnharness-git will commit. The `Git` column below shows the result.
 
@@ -25,7 +25,7 @@ The migration moves each roadmap from `learning-paths.json` into `roadmaps/`, re
 | `architect.json` | The Architect model the learner chose. It is needed to register the Architect again after a restart. | Versioned |
 | `sources/<sourceId>.md` | Learner uploads, converted to Markdown. Files are named by UUID, not by the original file name. | Versioned |
 | `sources/index.json` | Metadata for each upload, used to skip identical uploads. | Versioned |
-| `research/` | One JSON file per research note. Notes are written by research sessions and deep-research runs, and the Architect reads them back. | Versioned |
+| `research/` | One JSON file per research note. Notes are written by research sessions, deep-research runs and diagnostic dossiers, and the Architect reads them back. | Versioned |
 | `research-chats.json` | Teaching chats that were opened with a research brief, with their topic and the ids of the notes attached to them. | Versioned |
 | `declined-proposals.json` | Ids of chats where the learner chose "not now" on a proposal. | Versioned |
 | `secrets/search-key.json` | The learner's optional search API key, as plain text. | Ignored |
@@ -34,7 +34,18 @@ The migration moves each roadmap from `learning-paths.json` into `roadmaps/`, re
 | `*.tmp` | Leftovers of an interrupted atomic write. | Ignored |
 | `.gitignore` | Written by the plugin on start. See [Git safety](#git-safety). | Versioned |
 
-The plugin never reads or writes the host's own entries: `agents/`, `tasks/` and `usage.jsonl`.
+The plugin never reads or writes the host's own entries: `agents/`, `tasks/` and `usage.jsonl`. The one exception is the Learning Paths import below, which copies the old folder's `agents/` folder here when it has one.
+
+## Import markers
+
+Two one-time imports copy data from earlier plugin folders into this one. Each writes a marker file when it copies something, and the marker stops it from running again. The imports never change the old folders.
+
+| Path | Holds | Git |
+| --- | --- | --- |
+| `imported-from-learning-path.json` | Written by the import from the Learning Paths plugin's folder, `learning-path/data/` (`src/legacy-import.ts`). It copies `learning-paths.json`, `settings.json`, `architect.json`, `sources/` and `agents/` when this folder has no roadmap data yet. The marker lists what was copied and when. | Versioned |
+| `imported-from-roadmap.json` | Written by the import from this fork's previous plugin id, `roadmap/data/` (`src/fork-import.ts`). It copies `learning-paths.json` and `architect.json` when they match this fork's schema, and skips any other file. The marker lists what was copied, what was skipped and when. A file that is not valid JSON stops the import before anything is copied, and no marker is written, so the import is tried again on the next start. | Versioned |
+
+If an old folder has no data to import, nothing is copied and no marker is written.
 
 ## Git safety
 
