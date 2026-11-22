@@ -96,6 +96,7 @@ import {
   EVENT_SETTINGS_CHANGED,
   EVENT_SOURCES_CHANGED,
 } from "./topics.ts";
+import { ensureDataGitignore } from "./git-safe-data.ts";
 import type { ArchitectProgress } from "./topics.ts";
 
 /** Live notification topics; consumers refetch authoritative state on receipt. */
@@ -296,6 +297,8 @@ export function readGraphMastery(learning: { graph(): LearnerGraph }): Mastery[]
 }
 
 export function activate(ctx: PluginBackendContext): void {
+  // Keeps secrets and logs out of a Git-versioned data folder. Never throws.
+  ensureDataGitignore(ctx.dataDirectory);
   // Previous fork id first: its files are newer than the Learning Paths ones.
   try {
     importForkData(ctx.dataDirectory);
