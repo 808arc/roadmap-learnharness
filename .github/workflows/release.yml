@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check versions agree
+        run: node scripts/check-version.mjs
+
+      - run: npm run build
+
+      - name: Package dist as roadmap-<version>.zip
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          rm -rf stage
+          mkdir -p stage/roadmap-learnharness
+          cp -R dist/. stage/roadmap-learnharness/
+          (cd stage && zip -r -q "$GITHUB_WORKSPACE/roadmap-${VERSION}.zip" roadmap-learnharness)
+          echo "Packaged roadmap-${VERSION}.zip"
+          unzip -l "roadmap-${VERSION}.zip" | head -20
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: roadmap-*.zip
