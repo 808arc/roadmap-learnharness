@@ -51,6 +51,7 @@ import type { UpstreamFetch } from "./upstream-roadmaps.ts";
 const upstreamFetch: UpstreamFetch = withUpstreamTimeout((url, init) => fetch(url, init));
 import type { GraphBrief } from "./graph-brief.ts";
 import { deriveMastery } from "./learner-map.ts";
+import { propositionsForChats } from "./node-propositions.ts";
 import type { LearnerGraph, Mastery } from "./learner-map.ts";
 import { architectLogPath, createPluginLog } from "./plugin-log.ts";
 import type { LogStep } from "./plugin-log.ts";
@@ -668,6 +669,21 @@ export function activate(ctx: PluginBackendContext): void {
   handle("graph.topicCount", () => ({ topics: readGraphTopicCount(ctx.learning) }));
 
   handle("graph.mastery", () => ({ mastery: readGraphMastery(ctx.learning) }));
+
+  // One stored node's graph propositions, mapped through that node's own linked chats (read-only; issue #39).
+  // The chats come from the saved node, not from the caller, so the result never covers another node.
+  handle("graph.propositions", (input) => {
+    const value = object(input, "graph.propositions");
+    const pathId = readText(value.pathId, "pathId", { max: 128 });
+    const nodeId = readText(value.nodeId, "nodeId", { max: 128 });
+    const path = store.path(pathId);
+    if (!path) throw new Error(`Unknown path: ${pathId}`);
+    const node = findNodeById(path, nodeId);
+    if (!node) throw new Error(`Unknown node: ${nodeId}`);
+    const stored = ctx.learning.graph().propositions;
+    const chatIds = node.childSessions.map((link) => link.chatId);
+    return { propositions: propositionsForChats(chatIds, Array.isArray(stored) ? stored : []) };
+  });
 
   handle("paths.get", (input) => {
     const id = readText(object(input, "paths.get").id, "id", { max: 128 });

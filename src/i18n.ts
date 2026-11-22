@@ -370,6 +370,14 @@ const en = {
   // Roadmap files changed by Git sync (issue #29). Keep after the issue #32 block; new blocks go at the end of the table.
   "error.refused": "Roadmap file {file} could not be read, so it is hidden and nothing is written to it. Resolve it in the Git view.",
   "error.refusedNewer": "Roadmap file {file} was saved by a newer version of this plugin, so it is hidden and never overwritten. Update the plugin.",
+
+  // Flashcard seed action on a node (issue #39). Keep after the issue #29 block; new blocks go at the end of the table.
+  "flash.open": "Show facts from your Knowledge Graph",
+  "flash.title": "Knowledge Graph facts for this node",
+  "flash.reviewNote": "If the Flashcards plugin is installed, it reviews facts from your Knowledge Graph with spaced repetition in its own view. This roadmap cannot open that view or check whether the plugin is installed.",
+  "flash.none": "No Knowledge Graph facts are linked to this node yet. They appear after a lesson or practice session linked to it.",
+  "flash.unavailable": "The Knowledge Graph could not be read right now.",
+  "flash.close": "Close",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -738,6 +746,14 @@ const ru: Record<MessageKey, string> = {
   // Roadmap files changed by Git sync (issue #29). Keep after the issue #32 block; new blocks go at the end of the table.
   "error.refused": "Файл дорожной карты {file} не читается, поэтому он скрыт и в него ничего не записывается. Разрешите это во вкладке Git.",
   "error.refusedNewer": "Файл дорожной карты {file} сохранён более новой версией плагина, поэтому он скрыт и никогда не перезаписывается. Обновите плагин.",
+
+  // Flashcard seed action on a node (issue #39). Keep after the issue #29 block; new blocks go at the end of the table.
+  "flash.open": "Показать факты из графа знаний",
+  "flash.title": "Факты из графа знаний для этого узла",
+  "flash.reviewNote": "Если установлен плагин Flashcards, он предлагает интервальное повторение фактов из вашего графа знаний в своём собственном представлении. Эта дорожная карта не может открыть это представление или проверить, установлен ли плагин.",
+  "flash.none": "С этим узлом пока не связан ни один факт из графа знаний. Факты появятся после урока или практики, привязанных к этому узлу.",
+  "flash.unavailable": "Граф знаний сейчас не удалось прочитать.",
+  "flash.close": "Закрыть",
 };
 
 export const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };

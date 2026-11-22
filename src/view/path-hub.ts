@@ -25,6 +25,7 @@ import { ARTIFACT_TYPES, DEFAULT_DISPLAY, PROGRESSION_STATES, artifactCatalogEnt
 import { locale, resolveLocale, setLocale, t } from "../i18n.ts";
 import type { NativeSessionHost } from "../native-session-host.ts";
 import type { Mastery } from "../learner-map.ts";
+import type { NodeProposition } from "../node-propositions.ts";
 import { nextUpForPath, type NextRecommendation } from "../node-next.ts";
 import { createSessionLauncher } from "../session-launcher.ts";
 import { consumePathHubTarget, subscribePathHubTarget } from "../session-navigation.ts";
@@ -252,6 +253,7 @@ export function mountPathHub(
       return unlinkSession(chatId);
     },
     knowledgeMastery: () => mastery,
+    nodePropositions: (node) => readNodePropositions(node),
     showPatternHints: () => display.patternHints,
     chatStatus: chatStatuses,
     selectNode(nodeId) {
@@ -579,6 +581,20 @@ export function mountPathHub(
     try {
       const result = await ctx.call<{ mastery: readonly Mastery[] }>("graph.mastery");
       return Array.isArray(result.mastery) ? result.mastery : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** One saved node's graph propositions, from `graph.propositions` (the backend reads the node's own chat links). Null when the read fails. */
+  async function readNodePropositions(node: PathNode): Promise<readonly NodeProposition[] | null> {
+    if (!path) return null;
+    try {
+      const result = await ctx.call<{ propositions: readonly NodeProposition[] }>("graph.propositions", {
+        pathId: path.id,
+        nodeId: node.id,
+      });
+      return Array.isArray(result.propositions) ? result.propositions : null;
     } catch {
       return null;
     }
