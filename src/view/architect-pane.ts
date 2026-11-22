@@ -23,6 +23,7 @@ import type {
 } from "learnharness-plugin-api";
 import { createBrowserSessionHost } from "../native-session-host.ts";
 import type { NativeSessionHost } from "../native-session-host.ts";
+import { el } from "./dom.ts";
 
 interface PaneResearchStatus {
   readonly effective: { session: boolean };
@@ -91,17 +92,6 @@ function messageText(message: unknown): string | null {
   return text || null;
 }
 
-function element<K extends keyof HTMLElementTagNameMap>(
-  document: Document,
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 export function createArchitectPane(
   ctx: PluginFrontendContext,
@@ -109,67 +99,67 @@ export function createArchitectPane(
   signal: AbortSignal,
 ): ArchitectPane {
   const document = container.ownerDocument;
-  const root = element(document, "section", "lp-architect");
+  const root = el(document, "section", "lp-architect");
   root.setAttribute("aria-label", t("a.title"));
 
-  const headingRow = element(document, "div", "lp-pane-heading");
-  headingRow.append(element(document, "h2", "lp-pane-title", t("a.title")));
-  const status = element(document, "p", "lp-architect-status");
+  const headingRow = el(document, "div", "lp-pane-heading");
+  headingRow.append(el(document, "h2", "lp-pane-title", t("a.title")));
+  const status = el(document, "p", "lp-architect-status");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
   headingRow.append(status);
   root.append(headingRow);
 
-  const log = element(document, "div", "lp-chat-log");
+  const log = el(document, "div", "lp-chat-log");
   log.setAttribute("aria-label", t("a.log"));
   // Committed history is re-rendered only when it changes; the streamed partial
   // lives in its own section so progress ticks never remount the whole log.
-  const history = element(document, "div", "lp-chat-history");
-  const live = element(document, "div", "lp-chat-live");
-  const emptyChat = element(document, "p", "lp-empty-chat",
+  const history = el(document, "div", "lp-chat-history");
+  const live = el(document, "div", "lp-chat-live");
+  const emptyChat = el(document, "p", "lp-empty-chat",
     t("a.empty"));
   log.append(history, live, emptyChat);
   root.append(log);
 
   // One composer card: attached books, the text field, then a quiet tool bar.
-  const card = element(document, "div", "rm-composer");
-  const sourcesRow = element(document, "div", "rm-composer-sources");
-  const uploadStatus = element(document, "p", "lp-upload-status");
+  const card = el(document, "div", "rm-composer");
+  const sourcesRow = el(document, "div", "rm-composer-sources");
+  const uploadStatus = el(document, "p", "lp-upload-status");
   uploadStatus.setAttribute("role", "status");
   uploadStatus.setAttribute("aria-live", "polite");
-  const fileInput = element(document, "input", "lp-file-input");
+  const fileInput = el(document, "input", "lp-file-input");
   fileInput.type = "file";
   fileInput.multiple = true;
   fileInput.accept = ".pdf,.md,.markdown,.txt,.text,application/pdf,text/plain,text/markdown";
   fileInput.hidden = true;
   fileInput.setAttribute("aria-label", t("a.uploadAria"));
-  const composerHost = element(document, "div", "lp-composer-host");
-  const bar = element(document, "div", "rm-composer-bar");
-  const attach = element(document, "button", "rm-chip-button");
+  const composerHost = el(document, "div", "lp-composer-host");
+  const bar = el(document, "div", "rm-composer-bar");
+  const attach = el(document, "button", "rm-chip-button");
   attach.type = "button";
   attach.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>';
-  attach.append(element(document, "span", undefined, t("a.attach")));
+  attach.append(el(document, "span", undefined, t("a.attach")));
   attach.title = t("a.attachHint");
-  const deep = element(document, "button", "rm-chip-button rm-deep");
+  const deep = el(document, "button", "rm-chip-button rm-deep");
   deep.type = "button";
   deep.setAttribute("aria-pressed", "false");
   deep.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>';
-  deep.append(element(document, "span", undefined, t("a.deep")));
+  deep.append(el(document, "span", undefined, t("a.deep")));
   deep.title = t("a.deepHint");
-  const researchSession = element(document, "button", "rm-chip-button");
+  const researchSession = el(document, "button", "rm-chip-button");
   researchSession.type = "button";
   researchSession.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg>';
-  researchSession.append(element(document, "span", undefined, t("a.researchSession")));
+  researchSession.append(el(document, "span", undefined, t("a.researchSession")));
   researchSession.title = t("a.researchSessionHint");
-  const spacer = element(document, "span", "rm-composer-spacer");
-  const modelHint = element(document, "span", "rm-model-hint");
-  const dictationHost = element(document, "span", "rm-dictation-host");
+  const spacer = el(document, "span", "rm-composer-spacer");
+  const modelHint = el(document, "span", "rm-model-hint");
+  const dictationHost = el(document, "span", "rm-dictation-host");
   bar.append(attach, deep, researchSession, spacer, dictationHost);
   sourcesRow.append(uploadStatus, fileInput);
   card.append(sourcesRow, composerHost, bar);
-  const dropHint = element(document, "div", "rm-drop-hint", t("a.dropHint"));
+  const dropHint = el(document, "div", "rm-drop-hint", t("a.dropHint"));
   dropHint.hidden = true;
-  const logLine = element(document, "p", "lp-architect-log");
+  const logLine = el(document, "p", "lp-architect-log");
   root.append(card, modelHint, logLine, dropHint);
   container.append(root);
   // The Architect's timing log lives in the plugin data folder; show where to find it.
@@ -267,12 +257,12 @@ export function createArchitectPane(
       {
         title: t("a.deepTitle"),
         content: (content, contentSignal) => {
-          content.append(element(document, "h2", "lp-dialog-title", t("a.deepTitle")));
-          content.append(element(document, "p", "lp-dialog-text", t("a.deepWarning")));
-          const actions = element(document, "div", "lp-dialog-actions");
+          content.append(el(document, "h2", "lp-dialog-title", t("a.deepTitle")));
+          content.append(el(document, "p", "lp-dialog-text", t("a.deepWarning")));
+          const actions = el(document, "div", "lp-dialog-actions");
           content.append(actions);
-          const cancelHost = element(document, "span", "lp-button-host");
-          const okHost = element(document, "span", "lp-button-host");
+          const cancelHost = el(document, "span", "lp-button-host");
+          const okHost = el(document, "span", "lp-button-host");
           actions.append(cancelHost, okHost);
           ctx.ui.mountButton(cancelHost, { label: t("a.cancel"), variant: "outline", size: "sm", onClick: () => dialog?.dispose() }, { signal: contentSignal });
           ctx.ui.mountButton(okHost, {
@@ -369,21 +359,21 @@ export function createArchitectPane(
     text: string,
     partial = false,
   ): void {
-    const article = element(
+    const article = el(
       document,
       "article",
       `lp-chat-turn lp-chat-${role}${partial ? " lp-chat-partial" : ""}`,
     );
     article.dataset.role = role;
     article.append(
-      element(document, "span", "lp-chat-role", role === "user" ? t("a.you") : t("a.title")),
+      el(document, "span", "lp-chat-role", role === "user" ? t("a.you") : t("a.title")),
     );
     if (role === "assistant") {
-      const host = element(document, "div", "lp-chat-markdown");
+      const host = el(document, "div", "lp-chat-markdown");
       article.append(host);
       handles.push(ctx.ui.mountMarkdown(host, { text }, { signal }));
     } else {
-      article.append(element(document, "p", "lp-chat-text", text));
+      article.append(el(document, "p", "lp-chat-text", text));
     }
     target.append(article);
   }
@@ -398,20 +388,20 @@ export function createArchitectPane(
     for (const part of content as TextPart[]) {
       if (part?.type === "thinking" && typeof part.thinking === "string" && part.thinking.trim()) {
         if (streaming) {
-          const block = element(document, "div", "lp-chat-reasoning");
-          block.append(element(document, "span", "lp-chat-role", t("a.reasoning")));
-          block.append(element(document, "p", "lp-chat-text", part.thinking));
+          const block = el(document, "div", "lp-chat-reasoning");
+          block.append(el(document, "span", "lp-chat-role", t("a.reasoning")));
+          block.append(el(document, "p", "lp-chat-text", part.thinking));
           target.append(block);
         } else {
-          const block = element(document, "details", "lp-chat-reasoning");
-          block.append(element(document, "summary", "lp-chat-role", t("a.reasoning")));
-          block.append(element(document, "p", "lp-chat-text", part.thinking));
+          const block = el(document, "details", "lp-chat-reasoning");
+          block.append(el(document, "summary", "lp-chat-role", t("a.reasoning")));
+          block.append(el(document, "p", "lp-chat-text", part.thinking));
           target.append(block);
         }
         count++;
       } else if (part?.type === "toolCall" && typeof part.name === "string") {
         target.append(
-          element(document, "p", "lp-chat-activity", streaming ? t("a.using", { name: String(part.name) }) : t("a.used", { name: String(part.name) })),
+          el(document, "p", "lp-chat-activity", streaming ? t("a.using", { name: String(part.name) }) : t("a.used", { name: String(part.name) })),
         );
         count++;
       }
