@@ -88,6 +88,8 @@ test("instructions exist, and native tools are injected only for linked chats of
     assert.deepEqual(host.instructions[0]!.agents, ["prober", "teacher", "practice"]);
     assert.match(host.instructions[0]!.text, /If roadmap_get_brief is not in your current tool set, ignore this entire section/);
     assert.equal(host.instructions[0]!.text, NATIVE_BRIDGE_INSTRUCTIONS);
+    assert.match(host.instructions[0]!.text, /Question format \(count, question type, answer form\) is not set by this section/);
+    assert.match(host.instructions[0]!.text, /The brief sets content, not question format\./);
 
     const linked = await host.call<{ path: { id: string } }>("sessions.link", {
       pathId: "path-linear-algebra",

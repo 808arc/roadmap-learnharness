@@ -80,17 +80,17 @@ const nodeGuide = (type: NodeType): NodeTypeGuide => {
 export function microPrimingHookFor(type: NodeType): string {
   switch (type) {
     case "holistic":
-      return "Before naming definitions, ask the learner to predict how the main pieces of this module might connect, then compare their sketch with the structure you build.";
+      return "Default way in, when no question format is set: before naming definitions, invite the learner to predict how the main pieces of this module might connect, then compare their sketch with the structure you build.";
     case "concept":
-      return "Open with one concrete phenomenon or tiny case where the naive account visibly breaks, and ask for an intuition before any formal definition.";
+      return "Default way in, when no question format is set: open with one concrete phenomenon or tiny case where the naive account visibly breaks, and invite an intuition before any formal definition.";
     case "contrast":
-      return "Present two near-identical scenarios that differ only at the boundary, and ask which principle applies before naming either one.";
+      return "Default way in, when no question format is set: present two near-identical scenarios that differ only at the boundary, and invite the learner to say which principle applies before naming either one.";
     case "skill":
-      return "Show a worked miniature and ask the learner to predict the next mechanical step before executing it.";
+      return "Default way in, when no question format is set: show a worked miniature and invite the learner to predict the next mechanical step before executing it.";
     case "checkpoint":
-      return "Present one unlabelled mixed problem and ask the learner to choose a strategy before solving it.";
+      return "Default way in, when no question format is set: present one unlabelled mixed problem and invite the learner to choose a strategy before solving it.";
     case "bridge":
-      return "Recall the exact upstream step that is missing, ask the learner to reconstruct it in one line, then repair only that step.";
+      return "Default way in, when no question format is set: recall the exact upstream step that is missing, invite the learner to reconstruct it in one line, then repair only that step.";
   }
 }
 
@@ -424,7 +424,7 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
       ? ["No earlier node is linked for this node yet; keep the examples varied inside this session and connect back to the module's holistic node when one exists."]
       : interleavedNodes.map(
           (earlier) =>
-            `- ${earlier.title} (${earlier.type}): re-surface it briefly and use it inside at least one example or question, without a heading that labels which idea applies.`,
+            `- ${earlier.title} (${earlier.type}): re-surface it briefly and use it inside an example, question or task where the session's format allows, without a heading that labels which idea applies.`,
         );
 
   const watchpointLines =
@@ -454,7 +454,7 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
     `Goal: ${node.goal}`,
     `Progression: ${node.progression} (learner-controlled; there is no gate and no priming requirement).`,
     ...(node.outcomes?.length
-      ? ["After this node the learner should be able to:", ...node.outcomes.map((outcome) => `- ${outcome}`), "Aim the session at these abilities and check them in the form they are applied."]
+      ? ["After this node the learner should be able to:", ...node.outcomes.map((outcome) => `- ${outcome}`), "Aim the session at these abilities; where the session format allows, check them in the form they are applied."]
       : []),
     "",
     "## Source anchor",
@@ -467,12 +467,13 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
       "No pre-reading pointer is set for this node. If orientation would help, suggest one short self-directed skim; never make it a requirement.",
     "",
     "## Loose micro-priming (recommended, never a gate)",
+    "Question format (count, type, answer form) is not set here. If the learner or an installed session plugin has set one, that format decides how questions are posed; the hook below is only a default for when none is set.",
     input.primingHook ?? microPrimingHookFor(node.type),
     "Treat this as one possible hook: offer it once, accept a skip immediately, and move on to the node's goal.",
     "",
     "## Meso-interleaving callbacks",
     ...interleavingLines,
-    "Keep micro-interleaving inside this session by mixing edge cases, non-examples and variations.",
+    "Where it fits, keep micro-interleaving inside this session by mixing edge cases, non-examples and variations.",
     "",
     "## Active error watchpoints",
     ...watchpointLines,

@@ -151,6 +151,24 @@ test("a child brief carries the anchor, pre-reading, priming, interleaving and w
   assert.doesNotMatch(brief.text, PACING);
 });
 
+test("the brief carries content only and leaves question format to the session", () => {
+  const path = makePath();
+  const brief = buildChildSessionBrief({ path, nodeId: "n-contrast", kind: "practice" });
+  // Content fields stay in the brief.
+  assert.match(brief.text, /^Goal: /m);
+  assert.match(brief.text, /^Anchor: /m);
+  assert.match(brief.text, /Node n-concept \(concept\)/);
+  assert.match(brief.text, /Recommended: /);
+  assert.match(brief.text, /\[procedural_slip\]/);
+  // Format is softened: it is set by the learner or a session plugin, and hooks are defaults.
+  assert.match(brief.text, /Question format \(count, type, answer form\) is not set here\./);
+  assert.match(brief.text, /the hook below is only a default for when none is set/);
+  for (const type of ["holistic", "concept", "contrast", "skill", "checkpoint", "bridge"] as const) {
+    assert.match(microPrimingHookFor(type), /^Default way in, when no question format is set: /, type);
+  }
+  assert.doesNotMatch(brief.text, /check them in the form they are applied\.$/m);
+});
+
 test("light pre-reading and a node artifact override reach the brief with their justification", () => {
   const path = makePath();
   const brief = buildChildSessionBrief({
