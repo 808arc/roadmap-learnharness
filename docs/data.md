@@ -1,6 +1,6 @@
 # Data folder
 
-The plugin keeps its files in the data directory the host gives it (`ctx.dataDirectory`). This page lists what the code on `main` writes, what each file holds, and whether it is safe to commit to Git. The file names come from the modules that write them, mainly `src/store.ts` and `src/git-safe-data.ts`.
+The plugin keeps its files in the data directory the host gives it (`ctx.dataDirectory`). This page lists what the code on `main` writes, what each file holds, and whether it is safe to commit to Git. The file names come from the modules that write them, mainly `src/store.ts`, `src/plugin-log.ts`, `src/git-safe-data.ts` and the research modules in `src/research/`.
 
 The generated `.gitignore` in this folder (see [Git safety](#git-safety)) decides what a Git plugin such as learnharness-git will commit. The `Git` column below shows the result.
 

@@ -14,13 +14,12 @@ The roadmap works alongside four related plugins. Each section says what is buil
 
 Plugin id `activity-heatmap`, by Huskhd, MIT. Repository: https://github.com/Huskhd/learnharness-activity-heatmap
 
-The roadmap counts study days with a rule taken from the heatmap's approach. The rule is implemented in `src/follow-through.ts` (issue #24):
+The roadmap measures focused time in a linked session with the heatmap's idea of a learner action. The rule is in `src/session-metrics.ts`:
 
-- Each learner action (a message, an answered question, or a practice submission) is dated by its own timestamp.
-- A day is a local calendar day, taken from the machine's time zone.
-- A day is a study day when it holds at least one action. A session that crosses midnight counts on both days.
+- A learner action is a message from the learner, an answered question or a practice submission, the same three kinds the heatmap counts. Each is dated by its own timestamp.
+- Focused time is the sum of the gaps between consecutive actions. A gap longer than 15 minutes is a break and is not counted.
 
-When the exact action times are not available, the roadmap falls back to the session's `createdAt` and `updatedAt`, which is an approximation.
+The node panel shows each linked session with its focused minutes and how many answered questions were correct.
 
 ## Git (built)
 
