@@ -65,6 +65,9 @@ import type {
 } from "./domain.ts";
 import { buildChildSessionBrief } from "./framework.ts";
 import { registerNativeBridge } from "./native-bridge.ts";
+import { registerAgentGaps } from "./agent-gaps-tools.ts";
+import type { LinkedGapsSource } from "./agent-gaps-tools.ts";
+import { readLearnerMap } from "./learner-map.ts";
 import {
   addChildLink,
   findChatLink,
@@ -220,6 +223,24 @@ function learnerGraphBrief(ctx: PluginBackendContext): GraphBrief | null {
   const graph = ctx.learning.graph();
   const brief = buildGraphBrief({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
   return brief.topics.length > 0 ? brief : null;
+}
+
+/** Linked-chat source for the read-only roadmap gap tool: the chat's path and the learner's mastery. */
+function linkedGapsSource(ctx: PluginBackendContext, store: LearningPathStore): LinkedGapsSource {
+  return {
+    linked: (chatId) => findChatLink(store.paths(), chatId) !== null,
+    input: (chatId) => {
+      const located = findChatLink(store.paths(), chatId);
+      if (!located) throw new Error("This session is not linked to a roadmap node.");
+      const mastery = readLearnerMap({
+        graph: () => {
+          const graph = ctx.learning.graph();
+          return { propositions: graph.propositions ?? [], chains: graph.chains ?? [] };
+        },
+      });
+      return { path: located.path, mastery };
+    },
+  };
 }
 
 /** Native chat kinds are `teach`/`practice`; plugin links say `teaching`/`practice`. */
@@ -400,6 +421,9 @@ export function activate(ctx: PluginBackendContext): void {
         emit(EVENT_PATHS_CHANGED, { id: path.id, ...detail, updatedAt: path.updatedAt }),
     }),
   );
+
+  // Read-only roadmap gap tool for linked teacher chats (issue #11).
+  disposers.push(registerAgentGaps(ctx, linkedGapsSource(ctx, store)));
 
   disposers.push(
     registerResearchSessions(ctx, {
