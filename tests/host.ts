@@ -108,6 +108,16 @@ export function createHost(options: HostOptions = {}): TestHost {
   const dataDirectory =
     options.dataDirectory ?? fs.mkdtempSync(path.join(os.tmpdir(), "learning-path-host-"));
   const ownDirectory = options.dataDirectory === undefined;
+  // These fixtures exercise the host-slot path, which is an explicit learner choice now
+  // (the new default is the cheapest model); a settings file the test did not write wins.
+  const settingsFile = path.join(dataDirectory, "settings.json");
+  if (!fs.existsSync(settingsFile)) {
+    fs.mkdirSync(dataDirectory, { recursive: true });
+    fs.writeFileSync(
+      settingsFile,
+      JSON.stringify({ schemaVersion: 1, revision: 0, settings: { artifactDefaults: {}, architect: { followHostSlot: true } } }),
+    );
+  }
   const catalog = options.catalog ?? DEFAULT_CATALOG;
   const chats = new Map<string, ChatRecord>();
   for (const chat of options.chats ?? []) chats.set(chat.id, structuredClone(chat));

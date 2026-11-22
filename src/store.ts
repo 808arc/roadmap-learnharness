@@ -20,6 +20,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  DEFAULT_ARCHITECT_PREFERENCES,
   DomainValidationError,
   THINKING_LEVELS,
   isSourceId,
@@ -84,7 +85,7 @@ export class StoreError extends Error {
 }
 
 export function defaultSettings(): PluginSettings {
-  return { artifactDefaults: {} };
+  return { artifactDefaults: {}, architect: DEFAULT_ARCHITECT_PREFERENCES };
 }
 
 /** UUID-only source ids keep converted uploads inside `sources/`. */

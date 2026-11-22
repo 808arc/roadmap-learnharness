@@ -40,7 +40,10 @@ test("saves, replaces and reloads paths with a versioned envelope", (t) => {
   const store = openLearningPathStore(dir);
   assert.deepEqual(store.paths(), []);
   assert.equal(store.path("path-linear-algebra"), null);
-  assert.deepEqual(store.settings(), { artifactDefaults: {} });
+  assert.deepEqual(store.settings(), {
+    artifactDefaults: {},
+    architect: { followHostSlot: false, model: { provider: "anthropic", id: "claude-haiku-5-5" } },
+  });
 
   const saved = store.savePath(makePath());
   assert.deepEqual(saved, makePath());
@@ -333,4 +336,26 @@ test("Architect model config round-trips and rejects invalid choices", (t) => {
   assert.throws(() => store.saveArchitectModel({ provider: " pi", id: "m" }), /provider/);
   assert.throws(() => store.saveArchitectModel(null), /must be an object/);
   assert.deepEqual(openLearningPathStore(dir).architectModel(), model);
+});
+
+test("a fresh settings read defaults the Architect to the cheapest model, not the host slot", (t) => {
+  const dir = directory(t);
+  const settings = openLearningPathStore(dir).settings();
+  assert.deepEqual(settings.architect, { followHostSlot: false, model: { provider: "anthropic", id: "claude-haiku-5-5" } });
+});
+
+test("a saved Architect choice is kept, and old settings without an architect record still validate", (t) => {
+  const dir = directory(t);
+  const store = openLearningPathStore(dir);
+  const choice = { followHostSlot: false, model: { provider: "anthropic", id: "claude-opus-4-1" } };
+  store.saveSettings({ artifactDefaults: {}, architect: choice });
+  assert.deepEqual(openLearningPathStore(dir).settings().architect, choice);
+
+  const old = directory(t);
+  write(old, SETTINGS_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 3, settings: { artifactDefaults: {} } }));
+  assert.equal(openLearningPathStore(old).settings().architect, undefined);
+
+  const following = directory(t);
+  write(following, SETTINGS_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 1, settings: { architect: { followHostSlot: true } } }));
+  assert.deepEqual(openLearningPathStore(following).settings().architect, { followHostSlot: true });
 });

@@ -338,6 +338,17 @@ export interface ArchitectPreferences {
   readonly thinkingLevel?: ThinkingLevelName;
 }
 
+/**
+ * Cheapest Architect model, used for new installs and for saved settings that
+ * predate the architect record. The id is the cheapest one the repo already
+ * names (tests use `anthropic:claude-haiku-5-5`); the SDK ships no model list.
+ */
+export const DEFAULT_ARCHITECT_MODEL = { provider: "anthropic", id: "claude-haiku-5-5" } as const;
+export const DEFAULT_ARCHITECT_PREFERENCES: ArchitectPreferences = {
+  followHostSlot: false,
+  model: DEFAULT_ARCHITECT_MODEL,
+};
+
 export interface PluginSettings {
   /** Explicit per-node-type defaults; absent entries fall back to the catalog. */
   readonly artifactDefaults: Partial<Record<NodeType, ArtifactType>>;
@@ -964,9 +975,12 @@ function readResearchSettings(value: unknown, path: string): ResearchSettings {
 function readArchitectPreferences(value: unknown, path: string): ArchitectPreferences {
   const record = readObject(value, path);
   const followHostSlot =
-    record.followHostSlot === undefined ? true : readBoolean(record.followHostSlot, `${path}.followHostSlot`);
+    record.followHostSlot === undefined ? false : readBoolean(record.followHostSlot, `${path}.followHostSlot`);
   let model: { provider: string; id: string } | undefined;
-  if (record.model !== undefined) {
+  if (record.model === undefined && !followHostSlot && record.followHostSlot === undefined) {
+    // A record with no choice at all falls back to the cheapest model.
+    model = { ...DEFAULT_ARCHITECT_MODEL };
+  } else if (record.model !== undefined) {
     const choice = readObject(record.model, `${path}.model`);
     model = {
       provider: readString(choice.provider, `${path}.model.provider`, { max: 200 }),
