@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ensureDataGitignore, GITIGNORE_ENTRIES, mergeGitignore } from "../src/git-safe-data.ts";
-import { LEARNING_PATHS_FILE, openLearningPathStore } from "../src/store.ts";
+import { openLearningPathStore, ROADMAPS_DIRECTORY, roadmapFileName } from "../src/store.ts";
 import { makePath } from "./fixtures.ts";
 import { createHost } from "./host.ts";
 
@@ -91,10 +91,11 @@ test("writes are pretty-printed with a stable key order, whatever order the inpu
   const reversed = Object.fromEntries(Object.entries(path1).reverse()) as typeof path1;
   openLearningPathStore(first).savePath(path1);
   openLearningPathStore(second).savePath(reversed);
-  const bytes = fs.readFileSync(path.join(first, LEARNING_PATHS_FILE), "utf8");
-  assert.equal(bytes, fs.readFileSync(path.join(second, LEARNING_PATHS_FILE), "utf8"));
+  const file = path.join(ROADMAPS_DIRECTORY, roadmapFileName("path-linear-algebra"));
+  const bytes = fs.readFileSync(path.join(first, file), "utf8");
+  assert.equal(bytes, fs.readFileSync(path.join(second, file), "utf8"));
   assert.ok(bytes.endsWith("}\n"), "trailing newline");
-  assert.match(bytes, /\n  "paths": \[/, "pretty-printed with two-space indent");
+  assert.match(bytes, /\n  "roadmap": \{/, "pretty-printed with two-space indent");
   assert.doesNotThrow(() => JSON.parse(bytes));
 });
 
@@ -102,7 +103,7 @@ test("saving an unchanged path is byte-identical and skips the write", (t) => {
   const dir = directory(t);
   const store = openLearningPathStore(dir);
   store.savePath(makePath());
-  const file = path.join(dir, LEARNING_PATHS_FILE);
+  const file = path.join(dir, ROADMAPS_DIRECTORY, roadmapFileName("path-linear-algebra"));
   const bytes = fs.readFileSync(file, "utf8");
   const inode = fs.statSync(file).ino;
   const mtime = fs.statSync(file).mtimeMs;
@@ -124,7 +125,7 @@ test("saving a changed path still writes and bumps the revision", (t) => {
   const store = openLearningPathStore(dir);
   store.savePath(makePath());
   store.savePath({ ...makePath(), title: "Renamed" });
-  const saved = JSON.parse(fs.readFileSync(path.join(dir, LEARNING_PATHS_FILE), "utf8"));
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, ROADMAPS_DIRECTORY, roadmapFileName("path-linear-algebra")), "utf8"));
   assert.equal(saved.revision, 2);
-  assert.equal(saved.paths[0].title, "Renamed");
+  assert.equal(saved.roadmap.title, "Renamed");
 });

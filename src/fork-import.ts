@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { THINKING_LEVELS, validateLearningPath } from "./domain.ts";
-import { ARCHITECT_FILE, LEARNING_PATHS_FILE, STORE_SCHEMA_VERSION } from "./store.ts";
+import { ARCHITECT_FILE, LEARNING_PATHS_FILE, STORE_SCHEMA_VERSION, hasRoadmapData } from "./store.ts";
 
 export const FORK_PREVIOUS_PLUGIN_ID = "roadmap";
 export const FORK_IMPORT_MARKER = "imported-from-roadmap.json";
@@ -73,7 +73,7 @@ export function forkDataDirectory(dataDirectory: string): string {
 
 export function importForkData(dataDirectory: string, now: () => Date = () => new Date()): ForkImportResult {
   if (isFile(path.join(dataDirectory, FORK_IMPORT_MARKER))) return { imported: false, reason: "already-imported", copied: [], skipped: [] };
-  if (FILES.some((name) => exists(path.join(dataDirectory, name)))) {
+  if (hasRoadmapData(dataDirectory) || FILES.some((name) => exists(path.join(dataDirectory, name)))) {
     return { imported: false, reason: "already-has-data", copied: [], skipped: [] };
   }
 
