@@ -398,6 +398,19 @@ export function collectErrorWatchpoints(
   return watchpoints;
 }
 
+/**
+ * Rederive (rederive-lh) runs in the same native teaching sessions. These sentences keep
+ * the roadmap text from contradicting its flow; native-bridge.ts reuses them.
+ */
+export const REDERIVE_DEFERRAL =
+  "Rederive (rederive-lh) may share this session. While one of its problems is active (its rederive_* tools are in your tool set and a problem is open), its flow comes first: it decides who poses the next question, the question form (its cards and ask_user_question, one question per message) and when a problem ends. Do not pose a micro-priming question or a roadmap check in plain text in its place, and do not show a worked solution; the hook and any interleaved example wait until that problem is logged or skipped. A Rederive problem about the learner's own repo is not off-anchor: the anchor still names this node's topic.";
+
+export const REDERIVE_PROGRESS_SENTENCE =
+  "Whatever Rederive's flow ends with, still call roadmap_update_progress as understanding consolidates and roadmap_log_error for each diagnosed root cause before the session ends; Rederive's log tools do not replace them.";
+
+export const ROADMAP_SAFETY_SENTENCE =
+  "These roadmap rules hold alongside Rederive: do not give answers away, do not grade the learner (Rederive's own graded cards are not roadmap scores), log errors by root cause only, and never restructure the path.";
+
 /** Compose the brief for a child teaching/practice session linked to one node. */
 export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSessionBrief {
   const { path, nodeId, kind } = input;
@@ -473,6 +486,7 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
     "Question format (count, type, answer form) is not set here. If the learner or an installed session plugin has set one, that format decides how questions are posed; the hook below is only a default for when none is set.",
     input.primingHook ?? microPrimingHookFor(node.type),
     "Treat this as one possible hook: offer it once, accept a skip immediately, and move on to the node's goal.",
+    REDERIVE_DEFERRAL,
     "",
     "## Meso-interleaving callbacks",
     ...interleavingLines,
@@ -486,6 +500,8 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
     "",
     "## Reporting back",
     "Use roadmap_update_progress as understanding consolidates, roadmap_log_error for each diagnosed root cause, and roadmap_suggest_pivot only when a topic is not sticking for a specific reason.",
+    REDERIVE_PROGRESS_SENTENCE,
+    ROADMAP_SAFETY_SENTENCE,
     "Never restructure the path yourself; the learner decides.",
   ].join("\n");
 
