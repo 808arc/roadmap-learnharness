@@ -14,6 +14,7 @@ import {
   microPrimingHookFor,
   resolveNodeArtifact,
 } from "../src/framework.ts";
+import { UPSTREAM_REPOSITORY } from "../src/upstream-roadmaps.ts";
 import { makePath } from "./fixtures.ts";
 
 /** FRAMEWORK.md principle 7: no pacing, calendar or gamified pressure language. */
@@ -234,4 +235,23 @@ test("a node with no unresolved errors still tells the session to probe", () => 
   const holistic = buildChildSessionBrief({ path, nodeId: "n-holistic", kind: "teaching" });
   assert.match(holistic.text, /No unresolved error is on record/);
   assert.deepEqual(holistic.watchpoints, []);
+});
+
+/** Issue #41: the one upstream source is named by its constant, and no repo path is written from memory. */
+test("the Architect prompts name the upstream constant and forbid repo paths from memory", () => {
+  // The offline default has no research tools and so no research instructions; it is not checked here.
+  const variants = [
+    buildArchitectSystemPrompt({ upstream: true }),
+    buildArchitectSystemPrompt({ upstream: true, researchTools: ["web_search", "deep_research", "read_page"] }),
+    buildArchitectSystemPrompt({ researchTools: ["web_search", "deep_research"], existingPath: makePath() }),
+  ];
+  for (const prompt of variants) {
+    assert.ok(prompt.includes(UPSTREAM_REPOSITORY), `names ${UPSTREAM_REPOSITORY}`);
+    assert.match(prompt, /Roadmap structure comes only from list_roadmap_topics and read_roadmap_topic/);
+    assert.match(prompt, /Never write a repo URL or path from memory/);
+    assert.doesNotMatch(prompt, /kamranahmedse/);
+    assert.doesNotMatch(prompt, /src\/data\/roadmaps/);
+  }
+  const withWeb = buildArchitectSystemPrompt({ researchTools: ["web_search", "deep_research"] });
+  assert.match(withWeb, /A research question may name a repo only if a tool result in this conversation gave that name/);
 });
