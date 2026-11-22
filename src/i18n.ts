@@ -332,6 +332,10 @@ const en = {
   "tr.suggestPivot": "Suggesting a repair node",
   "sa.open": "Open in roadmap",
   "sa.attach": "Attach to roadmap…",
+
+  // Graph-seeded roadmap empty state (issue #15). Keep this block last.
+  "graphEmpty.build": "Build from my graph",
+  "graphEmpty.hint": "Study some material first: the graph has no topics yet.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -662,6 +666,10 @@ const ru: Record<MessageKey, string> = {
   "tr.suggestPivot": "Предлагает дополнительный узел",
   "sa.open": "Открыть в дорожной карте",
   "sa.attach": "Привязать к дорожной карте…",
+
+  // Graph-seeded roadmap empty state (issue #15). Keep this block last.
+  "graphEmpty.build": "Собрать из моего графа",
+  "graphEmpty.hint": "Сначала изучите материал: в графе пока нет тем.",
 };
 
 const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };

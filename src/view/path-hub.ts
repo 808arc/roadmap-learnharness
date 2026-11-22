@@ -193,6 +193,9 @@ export function mountPathHub(
   let sideOpen = true;
   let autoLoadedPathId: string | null = null;
   let createdPathId: string | null = null;
+  /** Graph topics the learner has studied, from the backend brief; read only for the empty state. */
+  let graphTopics = 0;
+  let emptyControls = new AbortController();
   let loadToken = 0;
   let disposed = false;
   let startingSession = false;
@@ -303,11 +306,14 @@ export function mountPathHub(
     refine.disabled = path === null;
     actions.replaceChildren(
       refine,
-      button(document, t("action.new"), () => {
-        setTab("architect");
-        pane.startNew();
-      }, scoped, { variant: "outline" }),
+      button(document, t("action.new"), () => startNewRoadmap(), scoped, { variant: "outline" }),
     );
+  }
+
+  /** The create-roadmap path: open the Architect on a fresh draft. */
+  function startNewRoadmap(): void {
+    setTab("architect");
+    pane.startNew();
   }
 
   function renderSide(): void {
@@ -333,12 +339,34 @@ export function mountPathHub(
     if (disposed || signal.aborted) return;
     empty.hidden = path !== null;
     if (!path) {
-      empty.replaceChildren(el(document, "h2", "rm-empty-title", t("empty.title")), el(document, "p", "rm-muted", t("empty.text")));
+      renderEmpty();
       canvasHost.dataset.empty = "true";
       return;
     }
     delete canvasHost.dataset.empty;
     canvas.render({ path, selectedNodeId, expandedModuleId, view, showOptional: display.showOptional, showLegend: side.hidden });
+  }
+
+  /** Empty state: the Architect text, plus "Build from my graph" once the graph has a topic. */
+  function renderEmpty(): void {
+    emptyControls.abort();
+    emptyControls = new AbortController();
+    const scoped = AbortSignal.any([signal, emptyControls.signal]);
+    const hasGraph = graphTopics > 0;
+    const build = button(document, t("graphEmpty.build"), () => startNewRoadmap(), scoped, {
+      variant: "outline",
+      icon: ICONS.sparkle,
+      className: "rm-empty-build",
+    });
+    build.disabled = !hasGraph;
+    const actions = el(document, "div", "rm-empty-actions");
+    actions.append(build);
+    if (!hasGraph) actions.append(el(document, "p", "rm-muted rm-empty-hint", t("graphEmpty.hint")));
+    empty.replaceChildren(
+      el(document, "h2", "rm-empty-title", t("empty.title")),
+      el(document, "p", "rm-muted", t("empty.text")),
+      actions,
+    );
   }
 
   function renderInspector(): void {
@@ -494,6 +522,8 @@ export function mountPathHub(
       } else {
         chatStatuses.clear();
         tab = "architect";
+        graphTopics = await readGraphTopicCount();
+        if (!live(token)) return;
       }
       ensureSelection();
       showError(null);
@@ -506,6 +536,16 @@ export function mountPathHub(
     } catch (problem) {
       if (!live(token)) return;
       showError(t("error.load", { message: problemText(problem) }));
+    }
+  }
+
+  /** Topic count from the backend brief. A failed read leaves the graph-build button disabled. */
+  async function readGraphTopicCount(): Promise<number> {
+    try {
+      const result = await ctx.call<{ topics: number }>("graph.topicCount");
+      return typeof result.topics === "number" ? result.topics : 0;
+    } catch {
+      return 0;
     }
   }
 
@@ -745,6 +785,7 @@ export function mountPathHub(
     offResync();
     menuHandle?.dispose();
     toolbarControls.abort();
+    emptyControls.abort();
     canvas.dispose();
     inspector.dispose();
     pane.dispose();
