@@ -145,6 +145,7 @@ const nodeDraftSchema = objectSchema({
     checked: { type: "boolean", description: "True only if you looked inside it (contents, syllabus, page) in this conversation." },
   }, ["title", "kind"]), description: "3–8 resources: canonical first, then deeper." },
   interleavesNodeIds: { type: "array", items: { type: "string" }, description: "Optional; new nodes default to the two preceding nodes." },
+  prerequisites: { type: "array", items: { type: "string" }, description: "Ids of nodes in this draft this one needs first: existing ids on refinement, or the id you gave a new node. Only dependencies shown by the learner's graph chains or the topic files; never invent. [] is allowed." },
   progression: { type: "string", enum: PROGRESSION_STATES, description: SERVER_OWNED },
   childSessions: { type: "array", items: { type: "object", additionalProperties: true }, description: SERVER_OWNED },
   errors: { type: "array", items: { type: "object", additionalProperties: true }, description: SERVER_OWNED },
@@ -261,6 +262,7 @@ function pathOutline(path: LearningPath): Record<string, unknown> {
         ...(node.artifactConfig ? { artifactConfig: node.artifactConfig } : {}),
         ...(node.optional ? { optional: true } : {}),
         ...(node.alternativeGroup ? { alternativeGroup: node.alternativeGroup } : {}),
+        ...(node.prerequisites === undefined ? {} : { prerequisites: node.prerequisites }),
         ...(node.outcomes?.length ? { outcomes: node.outcomes } : {}),
         ...(node.resources?.length ? { resources: node.resources } : {}),
         interleavesNodeIds: node.interleavesNodeIds,
@@ -270,9 +272,15 @@ function pathOutline(path: LearningPath): Record<string, unknown> {
   };
 }
 
+/** Prerequisites that name a node of the same draft; unknown ids and repeats are dropped, not refused. */
+function draftPrerequisites(value: unknown[], draftIds: ReadonlySet<string>): string[] {
+  return [...new Set(value.filter((id): id is string => typeof id === "string" && draftIds.has(id)))];
+}
+
 /** Complete the server-owned fields without changing existing learner state on refinement.
- * `graphKeys` (from a graph brief) marks matching nodes optional review; null leaves the draft as written. */
-function completeDraft(
+ * `graphKeys` (from a graph brief) marks matching nodes optional review; null leaves the draft as written.
+ * Prerequisites keep only ids of this draft; a cycle is refused later, by parseLearningPath. */
+export function completeDraft(
   args: Record<string, unknown>,
   existing: LearningPath | null,
   chatId: string,
@@ -283,6 +291,10 @@ function completeDraft(
   const previousNodes = new Map(existing?.modules.flatMap(module => module.nodes.map(node => [node.id, node] as const)) ?? []);
   const previousModules = new Map(existing?.modules.map(module => [module.id, module] as const) ?? []);
   const preceding: string[] = [];
+  const draftIds = new Set(
+    modules.flatMap(module => Array.isArray(module?.nodes) ? module.nodes.map((node: { id?: unknown }) => node?.id) : [])
+      .filter((id): id is string => typeof id === "string"),
+  );
   if (existing) {
     const suppliedModules = new Set(modules.map(module => module?.id));
     const missingModules = existing.modules.map(module => module.id).filter(id => !suppliedModules.has(id));
@@ -322,13 +334,17 @@ function completeDraft(
           // links, errors and pivots recorded since the model last looked must survive.
           // The review mark is set in code: a mark sent by the model is dropped, and a draft
           // without a brief keeps the mark already stored.
-          const { reviewMark: _draftMark, ...carried } = { ...oldNode, ...node };
+          const { reviewMark: _draftMark, prerequisites: _draftPrerequisites, ...carried } = { ...oldNode, ...node };
+          const prerequisites = Array.isArray(node.prerequisites)
+            ? draftPrerequisites(node.prerequisites, draftIds)
+            : oldNode?.prerequisites;
           const reviewMark = graphKeys === null ? oldNode?.reviewMark : matched ? "short-review" : undefined;
           const complete = {
             ...carried, id,
             progression,
             ...(matched && progression === "unstarted" ? { optional: true } : {}),
             ...(reviewMark ? { reviewMark } : {}),
+            ...(prerequisites === undefined ? {} : { prerequisites }),
             interleavesNodeIds: node.interleavesNodeIds ?? oldNode?.interleavesNodeIds ?? preceding.slice(-2),
             childSessions: oldNode?.childSessions ?? node.childSessions ?? [],
             errors: oldNode?.errors ?? node.errors ?? [],

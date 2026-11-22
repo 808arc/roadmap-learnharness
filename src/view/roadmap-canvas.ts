@@ -462,7 +462,14 @@ export function createRoadmapCanvas(
       item(ICONS.flag, "legend.checkpoint"),
       item(ICONS.warn, "legend.error", "rm-legend-warn"),
       arrowItem,
-      el(document, "span", "rm-legend-item rm-legend-note", t("legend.moduleOrder")),
+      el(
+        document,
+        "span",
+        "rm-legend-item rm-legend-note",
+        state !== null && state.path.modules.some((module) => module.nodes.some((node) => node.prerequisites !== undefined))
+          ? t("legend.prerequisitesNote")
+          : t("legend.moduleOrder"),
+      ),
     );
   };
 

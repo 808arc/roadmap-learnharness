@@ -321,6 +321,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
       "Call save_learning_path with title, goal, sourceSpine and modules. Each module has a title and nodes. Each node has type, title, goal and a sourceAnchor OBJECT (reference title; optional chapter, section, pages).",
       "New path: omit ids, timestamps, progression, interleavesNodeIds, childSessions, errors and pivotSuggestions. The server fills them, including links to preceding nodes. Example node: {\"type\":\"concept\",\"title\":\"Hash functions\",\"goal\":\"Explain why hashes appear irregular\",\"sourceAnchor\":{\"reference\":\"The Book of Shaders\",\"chapter\":\"Random\"}}.",
       "Refinement: call get_learning_path first, then save the full outline with every existing id. The server always preserves learner state on existing nodes. Never invent ids for an existing path.",
+      "Prerequisites: each node may list in prerequisites the ids of nodes it needs first, in this path. Telegraphic; only dependencies shown by the learner's graph chains or the topic files; [] is allowed; never invent one.",
       "Several nodes: prefer save_learning_path_json, with the whole draft as one JSON string in draftJson. Small drafts: save_learning_path. If nested modules arrive as a string or a call fails to parse, switch to save_learning_path_json; never retry hand-written XML/DSML tags. Never print tool-call tags or JSON code blocks in chat. On validation failure, fix the named field, then retry.",
     ].join("\n"),
   ];
