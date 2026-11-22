@@ -101,7 +101,7 @@ test("backend enable, disable and re-enable are idempotent and keep stored data"
   assert.equal(host.toolContributions.length, 3);
   assert.equal(host.instructions.length, 3);
   assert.deepEqual(await host.call("paths.status"), {
-    id: "roadmap",
+    id: "roadmap-learnharness",
     version: "0.4.0",
     active: true,
   });
@@ -310,7 +310,7 @@ test("install:local updates dist, preserves data and runs without warnings", (t)
   const workspace = temporaryDirectory(t);
   const pluginsDirectory = path.join(workspace, "plugins");
   fs.mkdirSync(pluginsDirectory);
-  const installed = path.join(pluginsDirectory, "roadmap");
+  const installed = path.join(pluginsDirectory, "roadmap-learnharness");
   const installedDist = path.join(installed, "dist");
   const installedData = path.join(installed, "data");
 

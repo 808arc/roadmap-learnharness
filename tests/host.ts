@@ -25,7 +25,7 @@ import { activate } from "../src/backend.ts";
 
 export const MANIFEST: PluginManifest = {
   apiVersion: 1,
-  id: "roadmap",
+  id: "roadmap-learnharness",
   name: "Roadmap",
   version: "0.4.0",
   minAppVersion: "0.6.0",

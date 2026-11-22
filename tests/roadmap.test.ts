@@ -154,7 +154,7 @@ function temporary(t: { after(fn: () => void): void }): string {
 test("legacy Learning Paths data is copied once and never modified", (t) => {
   const plugins = temporary(t);
   const legacy = path.join(plugins, "learning-path", "data");
-  const own = path.join(plugins, "roadmap", "data");
+  const own = path.join(plugins, "roadmap-learnharness", "data");
   assert.equal(legacyDataDirectory(own), legacy);
 
   assert.equal(importLegacyData(own).reason, "no-legacy-data");
@@ -184,7 +184,7 @@ test("legacy Learning Paths data is copied once and never modified", (t) => {
 test("legacy import does nothing when Roadmap already has data", (t) => {
   const plugins = temporary(t);
   const legacy = path.join(plugins, "learning-path", "data");
-  const own = path.join(plugins, "roadmap", "data");
+  const own = path.join(plugins, "roadmap-learnharness", "data");
   fs.mkdirSync(legacy, { recursive: true });
   fs.mkdirSync(own, { recursive: true });
   fs.writeFileSync(path.join(legacy, "learning-paths.json"), "legacy");

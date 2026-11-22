@@ -8,7 +8,7 @@ progress and mistakes back to the map.
 
 ![Roadmap with the node panel](docs/roadmap.png)
 
-Roadmap is a LearnHarness Community plugin (`apiVersion: 1`, id `roadmap`,
+Roadmap is a LearnHarness Community plugin (`apiVersion: 1`, id `roadmap-learnharness`,
 LearnHarness 0.6.0 or newer). The interface is available in English and
 Russian (Settings → Roadmap → Interface language; *Auto* follows the system).
 
@@ -103,10 +103,13 @@ kept as research notes (listed in settings) that the Architect reads.
 1. Download `roadmap-<version>.zip` from the latest release.
 2. In LearnHarness open **Settings → Community plugins** and copy the plugins
    directory path.
-3. Unzip there so that `<plugins-directory>/roadmap/dist/manifest.json` exists.
+3. Unzip there so that `<plugins-directory>/roadmap-learnharness/dist/manifest.json` exists.
 4. Press **Refresh**, enable **Roadmap**, and restart LearnHarness.
 
-To update, replace `roadmap/dist/` and keep `roadmap/data/` (your roadmaps).
+To update, replace `roadmap-learnharness/dist/` and keep `roadmap-learnharness/data/` (your roadmaps).
+The plugin id changed from `roadmap`; on first start it copies this fork's
+roadmap files from `<plugins-directory>/roadmap/data/` if the new data folder is empty. The old
+folder is never changed.
 
 ### From source
 
@@ -142,7 +145,7 @@ Settings → Roadmap:
 
 ## Data
 
-Everything lives in the plugin's own data folder (`<plugins>/roadmap/data/`):
+Everything lives in the plugin's own data folder (`<plugins>/roadmap-learnharness/data/`):
 `learning-paths.json`, `settings.json`, `architect.json`, `sources/`, `research/`
 (research notes), `research-chats.json`, `secrets/` (only if you save your own
 search key) and the host-managed `agents/`. Records are versioned and written atomically; corrupt or
