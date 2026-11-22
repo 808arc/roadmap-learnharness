@@ -1,20 +1,22 @@
-/** Read-only roadmap gap tool for linked teaching sessions (issue #11).
+/** Read-only roadmap tools for linked teaching sessions (issue #11).
  *
- * Registers `roadmap_gaps` through the host's registerTools/registerInstructions. The tool is
- * present only in teacher turns of a chat linked to a node. Its handler calls readNodeGaps and
- * writes nothing. The data (the linked path and the learner's mastery) comes from the backend.
+ * Registers `roadmap_gaps` and `roadmap_next` through the host's registerTools/registerInstructions.
+ * Both tools are present only in teacher turns of a chat linked to a node. Their handlers call
+ * readNodeGaps or readNextNode and write nothing. The data (the linked path and the learner's
+ * mastery) comes from the backend.
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { PluginBackendContext, PluginTools } from "learnharness-plugin-api";
-import { readNodeGaps } from "./agent-gaps.ts";
+import { readNextNode, readNodeGaps } from "./agent-gaps.ts";
 
 export const GAPS_TOOL_NAME = "roadmap_gaps";
+export const NEXT_TOOL_NAME = "roadmap_next";
 
 export const GAPS_INSTRUCTIONS = [
   "# Roadmap gap check",
-  "This applies only when the tool roadmap_gaps is in your current tool set; otherwise ignore this section.",
-  "Call roadmap_gaps before teaching a linked node to see which prerequisite nodes the learner has not seen or practised yet, then review the most severe ones first.",
-  "Treat the result as read-only data: it does not change progress or the path, and do not invent gaps that are not in it.",
+  "This applies only when the tools roadmap_gaps or roadmap_next are in your current tool set; otherwise ignore this section.",
+  "Call roadmap_gaps before teaching a linked node to see which prerequisite nodes the learner has not seen or practised yet, and roadmap_next to see the node that is ready to teach next.",
+  "Treat both results as read-only data: they do not change progress or the path, and do not invent gaps or nodes that are not in them.",
 ].join("\n");
 
 /** The backend's view of linked chats: whether a chat is linked, and the input for a read. */
@@ -31,28 +33,32 @@ const errorResult = (message: string): AgentToolResult<{ isError: true; error: s
   isError: true,
 });
 
-function gapsTool(source: LinkedGapsSource, chatId: string): AgentTool {
+type ReadResult = { isError: boolean; error?: string } & Record<string, unknown>;
+
+function readTool(
+  source: LinkedGapsSource,
+  chatId: string,
+  spec: { name: string; label: string; description: string; read: (input: unknown) => ReadResult },
+): AgentTool {
   return {
-    name: GAPS_TOOL_NAME,
-    label: "Roadmap gaps",
-    description:
-      "Read the prerequisite gaps of this session's roadmap: nodes the learner has not seen or practised yet that " +
-      "block a node, most severe first. Read-only; takes no arguments.",
+    name: spec.name,
+    label: spec.label,
+    description: spec.description,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
     execute: async () => {
-      let result: ReturnType<typeof readNodeGaps>;
+      let result: ReadResult;
       try {
-        result = readNodeGaps(source.input(chatId));
+        result = spec.read(source.input(chatId));
       } catch (error) {
         return errorResult(error instanceof Error ? error.message : String(error));
       }
-      if (result.isError) return errorResult(result.error);
+      if (result.isError) return errorResult(String(result.error));
       return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
     },
   };
 }
 
-/** Register the teaching instruction and the per-turn gap tool for linked teacher chats. */
+/** Register the teaching instruction and the per-turn gap and next-node tools for linked teacher chats. */
 export function registerAgentGaps(ctx: PluginBackendContext, source: LinkedGapsSource): () => void {
   const unregisterInstructions = ctx.registerInstructions({ agents: ["teacher"], text: GAPS_INSTRUCTIONS });
   const contribution: PluginTools = {
@@ -61,9 +67,26 @@ export function registerAgentGaps(ctx: PluginBackendContext, source: LinkedGapsS
       try {
         if (!source.linked(context.chatId)) return [];
       } catch {
-        // An unreadable store keeps the tool, so its call reports the failure instead of hiding it.
+        // An unreadable store keeps the tools, so their calls report the failure instead of hiding it.
       }
-      return [gapsTool(source, context.chatId)];
+      return [
+        readTool(source, context.chatId, {
+          name: GAPS_TOOL_NAME,
+          label: "Roadmap gaps",
+          description:
+            "Read the prerequisite gaps of this session's roadmap: nodes the learner has not seen or practised yet that " +
+            "block a node, most severe first. Read-only; takes no arguments.",
+          read: readNodeGaps as (input: unknown) => ReadResult,
+        }),
+        readTool(source, context.chatId, {
+          name: NEXT_TOOL_NAME,
+          label: "Roadmap next node",
+          description:
+            "Read the recommended next node of this session's roadmap, with the reasons it is ready, or null when no node " +
+            "is ready. Read-only; takes no arguments.",
+          read: readNextNode as (input: unknown) => ReadResult,
+        }),
+      ];
     },
   };
   const unregisterTools = ctx.registerTools(contribution);

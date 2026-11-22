@@ -1,8 +1,8 @@
-/** Read-only roadmap gap tool for linked teaching sessions (issue #11).
+/** Read-only roadmap tools for linked teaching sessions (issue #11).
  *
- * Runs the real backend activation: registration (name, description, instruction scope), a call
- * on a linked chat, a broken store returning isError, and a call that leaves the store files as
- * they were. No model request is made.
+ * Runs the real backend activation: registration (names, descriptions, instruction scope), calls
+ * on a linked chat, a failed read returning isError, and calls that leave the store files as they
+ * were. No model request is made.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { PluginBackendContext, PluginInstructions, PluginTools } from "learnharness-plugin-api";
-import { GAPS_INSTRUCTIONS, GAPS_TOOL_NAME, registerAgentGaps } from "../src/agent-gaps-tools.ts";
+import { GAPS_INSTRUCTIONS, GAPS_TOOL_NAME, NEXT_TOOL_NAME, registerAgentGaps } from "../src/agent-gaps-tools.ts";
 import { openLearningPathStore } from "../src/store.ts";
 import { makePath, AT } from "./fixtures.ts";
 import { createHost } from "./host.ts";
@@ -29,6 +29,7 @@ function temporaryDirectory(): string {
 function hostWithLinkedChat(): { host: TestHost; directory: string } {
   const directory = temporaryDirectory();
   openLearningPathStore(directory).savePath(makePath());
+  // makePath() links chat-1 to n-concept as a teaching chat; chat-unlinked has no link.
   const host = createHost({ dataDirectory: directory, chats: [chat("chat-1"), chat("chat-unlinked")] });
   return { host, directory };
 }
@@ -45,13 +46,13 @@ function turnTools(host: TestHost, chatId: string, agent: "teacher" | "prober"):
     .flatMap((contribution) => contribution.create({ chatId, agent }));
 }
 
-function gapsToolFor(host: TestHost, chatId: string): AgentTool {
-  const tool = turnTools(host, chatId, "teacher").find((candidate) => candidate.name === GAPS_TOOL_NAME);
-  assert.ok(tool, `expected ${GAPS_TOOL_NAME} for ${chatId}`);
+function toolNamed(host: TestHost, chatId: string, name: string): AgentTool {
+  const tool = turnTools(host, chatId, "teacher").find((candidate) => candidate.name === name);
+  assert.ok(tool, `expected ${name} for ${chatId}`);
   return tool;
 }
 
-async function callGaps(tool: AgentTool): Promise<{ isError: boolean; details: Record<string, unknown>; text: string }> {
+async function callTool(tool: AgentTool): Promise<{ isError: boolean; details: Record<string, unknown>; text: string }> {
   const result = await tool.execute("call-1", {} as never, new AbortController().signal);
   const content = result.content as { type: string; text?: string }[];
   return {
@@ -72,30 +73,50 @@ function snapshot(directory: string): Record<string, string> {
   return files;
 }
 
-test("the gap tool is registered for linked teacher chats only, with a description and the teaching instruction", async () => {
+/** A fake host context that captures the tool factory, for driving the tools with a chosen source. */
+function captureFactory(): { ctx: PluginBackendContext; factory: () => PluginTools | undefined } {
+  let captured: PluginTools | undefined;
+  const ctx = {
+    registerInstructions: (_contribution: PluginInstructions) => () => {},
+    registerTools: (contribution: PluginTools) => {
+      captured = contribution;
+      return () => {};
+    },
+  } as unknown as PluginBackendContext;
+  return { ctx, factory: () => captured };
+}
+
+test("both roadmap tools are registered for linked teacher chats only, with descriptions and the teaching instruction", async () => {
   const { host, directory } = hostWithLinkedChat();
   try {
-    // The fixture links chat-1 to n-concept as a teaching chat; chat-unlinked has no link.
     const instruction = host.instructions.find((entry) => entry.text === GAPS_INSTRUCTIONS);
-    assert.ok(instruction, "the gap instruction is registered");
+    assert.ok(instruction, "the gap and next-node instruction is registered");
     assert.deepEqual(instruction.agents, ["teacher"]);
     assert.match(instruction.text, /roadmap_gaps/);
+    assert.match(instruction.text, /roadmap_next/);
 
-    const tool = gapsToolFor(host, "chat-1");
-    assert.equal(tool.name, "roadmap_gaps");
-    assert.match(tool.description, /prerequisite gaps/);
-    assert.match(tool.description, /Read-only/);
+    const gaps = toolNamed(host, "chat-1", GAPS_TOOL_NAME);
+    assert.equal(gaps.name, "roadmap_gaps");
+    assert.match(gaps.description, /prerequisite gaps/);
+    assert.match(gaps.description, /Read-only/);
 
-    assert.equal(
-      turnTools(host, "chat-unlinked", "teacher").some((candidate) => candidate.name === GAPS_TOOL_NAME),
-      false,
-      "an unlinked chat does not receive the gap tool",
-    );
-    assert.equal(
-      turnTools(host, "chat-1", "prober").some((candidate) => candidate.name === GAPS_TOOL_NAME),
-      false,
-      "only teacher turns receive the gap tool",
-    );
+    const next = toolNamed(host, "chat-1", NEXT_TOOL_NAME);
+    assert.equal(next.name, "roadmap_next");
+    assert.match(next.description, /recommended next node/);
+    assert.match(next.description, /Read-only/);
+
+    for (const name of [GAPS_TOOL_NAME, NEXT_TOOL_NAME]) {
+      assert.equal(
+        turnTools(host, "chat-unlinked", "teacher").some((candidate) => candidate.name === name),
+        false,
+        `an unlinked chat does not receive ${name}`,
+      );
+      assert.equal(
+        turnTools(host, "chat-1", "prober").some((candidate) => candidate.name === name),
+        false,
+        `only teacher turns receive ${name}`,
+      );
+    }
   } finally {
     close(host, directory);
   }
@@ -104,7 +125,7 @@ test("the gap tool is registered for linked teacher chats only, with a descripti
 test("a call on a linked chat returns the gaps of its synthetic path, most severe first", async () => {
   const { host, directory } = hostWithLinkedChat();
   try {
-    const result = await callGaps(gapsToolFor(host, "chat-1"));
+    const result = await callTool(toolNamed(host, "chat-1", GAPS_TOOL_NAME));
 
     assert.equal(result.isError, false);
     assert.deepEqual(result.details, {
@@ -124,14 +145,32 @@ test("a call on a linked chat returns the gaps of its synthetic path, most sever
   }
 });
 
-test("a call that leaves the store files unchanged writes nothing", async () => {
+test("a call on a linked chat returns the next node of its synthetic path with its reasons", async () => {
+  const { host, directory } = hostWithLinkedChat();
+  try {
+    const result = await callTool(toolNamed(host, "chat-1", NEXT_TOOL_NAME));
+
+    assert.equal(result.isError, false);
+    assert.equal(result.details.roadmap, "path-linear-algebra");
+    const next = result.details.next as { id: string; title: string; reasons: { key: string }[] };
+    assert.equal(next.id, "n-concept");
+    assert.equal(next.title, "Node n-concept");
+    assert.deepEqual(
+      next.reasons.map((reason) => reason.key),
+      ["next.prereqsDone", "next.inProgress", "next.blocks", "next.direct"],
+    );
+  } finally {
+    close(host, directory);
+  }
+});
+
+test("calls that leave the store files unchanged write nothing", async () => {
   const { host, directory } = hostWithLinkedChat();
   try {
     const before = snapshot(directory);
-    const tool = gapsToolFor(host, "chat-1");
-
-    await callGaps(tool);
-    await callGaps(tool);
+    await callTool(toolNamed(host, "chat-1", GAPS_TOOL_NAME));
+    await callTool(toolNamed(host, "chat-1", GAPS_TOOL_NAME));
+    await callTool(toolNamed(host, "chat-1", NEXT_TOOL_NAME));
 
     assert.deepEqual(snapshot(directory), before, "the data directory is byte-for-byte unchanged");
   } finally {
@@ -139,16 +178,8 @@ test("a call that leaves the store files unchanged writes nothing", async () => 
   }
 });
 
-test("a failed read returns isError and no gap list", async () => {
-  // Fake host context: capture the factory and drive the tool with a source that fails.
-  let factory: PluginTools | undefined;
-  const ctx = {
-    registerInstructions: (_contribution: PluginInstructions) => () => {},
-    registerTools: (contribution: PluginTools) => {
-      factory = contribution;
-      return () => {};
-    },
-  } as unknown as PluginBackendContext;
+test("a failed read returns isError and no gap or next-node data, for both tools", async () => {
+  const { ctx, factory } = captureFactory();
   const broken = {
     linked: () => {
       throw new Error("store unreadable");
@@ -158,36 +189,33 @@ test("a failed read returns isError and no gap list", async () => {
     },
   };
   const unregister = registerAgentGaps(ctx, broken);
-  assert.ok(factory);
-  const [tool] = factory.create({ chatId: "chat-1", agent: "teacher" });
-  assert.ok(tool, "an unreadable store keeps the tool so the failure is reported");
+  const tools = factory()?.create({ chatId: "chat-1", agent: "teacher" }) ?? [];
+  assert.deepEqual(tools.map((tool) => tool.name), [GAPS_TOOL_NAME, NEXT_TOOL_NAME], "an unreadable store keeps both tools");
 
-  const result = await callGaps(tool);
-  assert.equal(result.isError, true);
-  assert.equal(result.details.isError, true);
-  assert.equal(result.details.error, "store unreadable");
-  assert.equal("gaps" in result.details, false);
+  for (const tool of tools) {
+    const result = await callTool(tool);
+    assert.equal(result.isError, true, `${tool.name} reports the failure`);
+    assert.equal(result.details.isError, true);
+    assert.equal(result.details.error, "store unreadable");
+    assert.equal("gaps" in result.details, false);
+    assert.equal("next" in result.details, false);
+  }
   unregister();
 });
 
-test("a malformed path from the store returns isError rather than a partial list", async () => {
-  let factory: PluginTools | undefined;
-  const ctx = {
-    registerInstructions: () => () => {},
-    registerTools: (contribution: PluginTools) => {
-      factory = contribution;
-      return () => {};
-    },
-  } as unknown as PluginBackendContext;
+test("a malformed path from the store returns isError for both tools, not a partial result", async () => {
+  const { ctx, factory } = captureFactory();
   registerAgentGaps(ctx, {
     linked: () => true,
     input: () => ({ path: { id: "broken", modules: "none" }, mastery: [] }),
   });
-  assert.ok(factory);
-  const [tool] = factory.create({ chatId: "chat-1", agent: "teacher" });
-  assert.ok(tool);
+  const tools = factory()?.create({ chatId: "chat-1", agent: "teacher" }) ?? [];
+  assert.equal(tools.length, 2);
 
-  const result = await callGaps(tool);
-  assert.equal(result.isError, true);
-  assert.equal("gaps" in result.details, false);
+  for (const tool of tools) {
+    const result = await callTool(tool);
+    assert.equal(result.isError, true, `${tool.name} reports the malformed path`);
+    assert.equal("gaps" in result.details, false);
+    assert.equal("next" in result.details, false);
+  }
 });

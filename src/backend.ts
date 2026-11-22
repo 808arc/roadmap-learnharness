@@ -67,7 +67,6 @@ import { buildChildSessionBrief } from "./framework.ts";
 import { registerNativeBridge } from "./native-bridge.ts";
 import { registerAgentGaps } from "./agent-gaps-tools.ts";
 import type { LinkedGapsSource } from "./agent-gaps-tools.ts";
-import { readLearnerMap } from "./learner-map.ts";
 import {
   addChildLink,
   findChatLink,
@@ -232,13 +231,7 @@ function linkedGapsSource(ctx: PluginBackendContext, store: LearningPathStore): 
     input: (chatId) => {
       const located = findChatLink(store.paths(), chatId);
       if (!located) throw new Error("This session is not linked to a roadmap node.");
-      const mastery = readLearnerMap({
-        graph: () => {
-          const graph = ctx.learning.graph();
-          return { propositions: graph.propositions ?? [], chains: graph.chains ?? [] };
-        },
-      });
-      return { path: located.path, mastery };
+      return { path: located.path, mastery: readGraphMastery(ctx.learning) };
     },
   };
 }
