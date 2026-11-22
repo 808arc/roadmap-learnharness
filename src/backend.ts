@@ -298,8 +298,9 @@ export function readGraphMastery(learning: { graph(): LearnerGraph }): Mastery[]
 }
 
 /** Why an Architect run left `running`, as a short code. Logged; the message text never is. */
-export type ModelCallCause = "provider_error" | "timeout" | "aborted" | "unknown";
-// user_stop is not derivable: the SDK's abort() does not record who asked for it.
+export type ModelCallCause = "user_stop" | "provider_error" | "timeout" | "aborted" | "unknown";
+// The snapshot cannot tell who aborted a run, so user_stop comes from a flag set by architect.abort.
+// "timeout" is a best-effort label matched on the SDK's free-text error; anything else is provider_error.
 
 /** Classify a finished run from the snapshot alone. The SDK gives a status, a free-text `error`
  * and pi's stopReason (on `partial`, or on an assistant message from this run on). Failed and
@@ -351,10 +352,13 @@ export function activate(ctx: PluginBackendContext): void {
   // One "model call" step per Architect run: opened when a conversation is first
   // seen running, closed when it leaves running. Token counts come from the run's messages.
   const modelRuns = new Map<string, { step: LogStep; from: number }>();
+  // Conversations the learner stopped through architect.abort; read once when the run ends.
+  const userStops = new Set<string>();
   const trackModelRun = (snapshot: PluginAgentSnapshot): void => {
     const open = modelRuns.get(snapshot.id);
     if (snapshot.status === "running") {
       if (open) return;
+      userStops.delete(snapshot.id);
       const model = architect?.definition.model;
       modelRuns.set(snapshot.id, {
         step: architectLog.begin("model call", {
@@ -368,13 +372,15 @@ export function activate(ctx: PluginBackendContext): void {
     }
     if (!open) return;
     modelRuns.delete(snapshot.id);
+    const stoppedByUser = userStops.delete(snapshot.id);
     const finished = snapshot.status === "idle" || snapshot.status === "waiting";
-    open.step.end({
-      ...usageSince(snapshot.messages, open.from),
-      status: snapshot.status,
-      ok: finished,
-      cause: finished ? undefined : modelCallCause(snapshot, open.from),
-    });
+    let cause: ModelCallCause | undefined;
+    if (!finished) {
+      cause = modelCallCause(snapshot, open.from);
+      // A provider failure that lands while the learner stops is still logged as one.
+      if (stoppedByUser && (cause === "aborted" || cause === "unknown")) cause = "user_stop";
+    }
+    open.step.end({ ...usageSince(snapshot.messages, open.from), status: snapshot.status, ok: finished, cause });
   };
   const createRequests = new Map<string, string>();
   let architect: ArchitectRegistration | null = null;
@@ -1337,6 +1343,8 @@ export function activate(ctx: PluginBackendContext): void {
     const id = readText(value.id, "id", { max: 128 });
     // Aborting an idle/interrupted run is already a no-op; a retried request ID is accepted.
     if (value.requestId !== undefined) readRequestId(value.requestId);
+    // Set before abort(): the interrupted snapshot can be published synchronously.
+    if (modelRuns.has(id)) userStops.add(id);
     ctx.agents.abort(id);
     const conversation = ctx.agents.get(id);
     activeChatId = id;

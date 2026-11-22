@@ -57,6 +57,39 @@ test("an aborted generation logs cause aborted", async (t) => {
   assert.equal(end.cause, "aborted");
 });
 
+test("a learner stop through architect.abort logs cause user_stop", async (t) => {
+  const h = createHost();
+  t.after(() => h.close());
+  const created = await h.call<{ conversation: PluginAgentSnapshot }>("architect.create");
+  const id = created.conversation.id;
+  await h.call("architect.get", { id });
+  const base = h.records.get(id);
+  assert.ok(base);
+  h.publish({ ...base, status: "running", messages: [{ role: "user", content: SECRET_GOAL, timestamp: 0 } as never] });
+  await h.call("architect.abort", { id });
+  const end = readLines(h).find((line) => line.event === "step.end" && line.step === "model call");
+  assert.ok(end);
+  assert.equal(end.ok, false);
+  assert.equal(end.status, "interrupted");
+  assert.equal(end.cause, "user_stop");
+});
+
+test("a learner stop does not carry over to a later run", async (t) => {
+  const h = createHost();
+  t.after(() => h.close());
+  const created = await h.call<{ conversation: PluginAgentSnapshot }>("architect.create");
+  const id = created.conversation.id;
+  await h.call("architect.get", { id });
+  const base = h.records.get(id);
+  assert.ok(base);
+  await h.call("architect.abort", { id });
+  h.publish({ ...base, status: "running" });
+  h.publish({ ...base, status: "interrupted" });
+  const end = readLines(h).find((line) => line.event === "step.end" && line.step === "model call");
+  assert.ok(end);
+  assert.equal(end.cause, "unknown");
+});
+
 test("a provider failure logs cause provider_error", async (t) => {
   const { end } = await endRun(t, (run) => ({ ...run, status: "error", error: `Request failed at ${URL_TEXT}` }));
   assert.equal(end.ok, false);
