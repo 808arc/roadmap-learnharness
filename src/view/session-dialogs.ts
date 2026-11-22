@@ -15,6 +15,7 @@ import type {
   SessionLinkResult,
   SessionParentResult,
 } from "../session-types.ts";
+import { el } from "./dom.ts";
 
 interface PathSummaryLike {
   readonly id: string;
@@ -46,17 +47,6 @@ export interface LinkExistingDialogOptions {
   readonly onLinked?: (result: SessionLinkResult) => void;
 }
 
-function element<K extends keyof HTMLElementTagNameMap>(
-  document: Document,
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 /** linkedom does not reflect `select.value`; read the selected option instead. */
 function selectedValue(select: HTMLSelectElement): string {
@@ -99,14 +89,14 @@ export function openAttachSessionDialog(
       content: async (container: HTMLElement, contentSignal: AbortSignal) => {
         const document = container.ownerDocument;
         const handles: PluginWidgetHandle<unknown>[] = [];
-        const root = element(document, "div", "lp-session-dialog");
-        const loading = element(document, "p", "lp-muted", t("d.loadingPaths"));
+        const root = el(document, "div", "lp-session-dialog");
+        const loading = el(document, "p", "lp-muted", t("d.loadingPaths"));
         root.append(loading);
         container.append(root);
 
-        const status = element(document, "p", "lp-dialog-status");
+        const status = el(document, "p", "lp-dialog-status");
         status.setAttribute("role", "status");
-        const error = element(document, "p", "lp-dialog-error");
+        const error = el(document, "p", "lp-dialog-error");
         error.setAttribute("role", "alert");
         error.hidden = true;
 
@@ -126,7 +116,7 @@ export function openAttachSessionDialog(
 
           if (parent.link) {
             root.append(
-              element(
+              el(
                 document,
                 "p",
                 "lp-muted",
@@ -138,7 +128,7 @@ export function openAttachSessionDialog(
 
           if ((listed.paths ?? []).length === 0) {
             root.append(
-              element(
+              el(
                 document,
                 "p",
                 "lp-muted",
@@ -148,26 +138,26 @@ export function openAttachSessionDialog(
             return cleanup;
           }
 
-          const pathLabel = element(document, "label", "lp-field");
-          pathLabel.append(element(document, "span", "lp-field-label", t("d.path")));
-          const pathSelect = element(document, "select", "lp-select");
+          const pathLabel = el(document, "label", "lp-field");
+          pathLabel.append(el(document, "span", "lp-field-label", t("d.path")));
+          const pathSelect = el(document, "select", "lp-select");
           pathSelect.setAttribute("aria-label", t("d.path"));
           for (const summary of listed.paths) {
-            const option = element(document, "option", undefined, summary.title);
+            const option = el(document, "option", undefined, summary.title);
             option.value = summary.id;
             pathSelect.append(option);
           }
           pathLabel.append(pathSelect);
 
-          const nodeLabel = element(document, "label", "lp-field");
-          nodeLabel.append(element(document, "span", "lp-field-label", t("d.node")));
-          const nodeSelect = element(document, "select", "lp-select");
+          const nodeLabel = el(document, "label", "lp-field");
+          nodeLabel.append(el(document, "span", "lp-field-label", t("d.node")));
+          const nodeSelect = el(document, "select", "lp-select");
           nodeSelect.setAttribute("aria-label", t("d.node"));
           nodeLabel.append(nodeSelect);
 
           root.append(pathLabel, nodeLabel, status, error);
 
-          const buttonHost = element(document, "span", "lp-button-host");
+          const buttonHost = el(document, "span", "lp-button-host");
           root.append(buttonHost);
           let currentPath: LearningPath | null = null;
 
@@ -217,7 +207,7 @@ export function openAttachSessionDialog(
               currentPath = result.path;
               if (!currentPath) throw new Error(t("d.pathGone"));
               for (const node of allNodes(currentPath)) {
-                const option = element(
+                const option = el(
                   document,
                   "option",
                   undefined,
@@ -275,14 +265,14 @@ export function openLinkExistingSessionDialog(
       content: async (container: HTMLElement, contentSignal: AbortSignal) => {
         const document = container.ownerDocument;
         const handles: PluginWidgetHandle<unknown>[] = [];
-        const root = element(document, "div", "lp-session-dialog");
-        const loading = element(document, "p", "lp-muted", t("d.loadingSessions"));
+        const root = el(document, "div", "lp-session-dialog");
+        const loading = el(document, "p", "lp-muted", t("d.loadingSessions"));
         root.append(loading);
         container.append(root);
 
-        const status = element(document, "p", "lp-dialog-status");
+        const status = el(document, "p", "lp-dialog-status");
         status.setAttribute("role", "status");
-        const error = element(document, "p", "lp-dialog-error");
+        const error = el(document, "p", "lp-dialog-error");
         error.setAttribute("role", "alert");
         error.hidden = true;
 
@@ -297,7 +287,7 @@ export function openLinkExistingSessionDialog(
           if (contentSignal.aborted || options.signal.aborted) return cleanup;
           loading.remove();
           root.append(
-            element(
+            el(
               document,
               "p",
               "lp-muted",
@@ -310,7 +300,7 @@ export function openLinkExistingSessionDialog(
           );
           if (free.length === 0) {
             root.append(
-              element(
+              el(
                 document,
                 "p",
                 "lp-muted",
@@ -320,17 +310,17 @@ export function openLinkExistingSessionDialog(
             return cleanup;
           }
 
-          const list = element(document, "ul", "lp-session-picker");
+          const list = el(document, "ul", "lp-session-picker");
           root.append(list, status, error);
           for (const session of free) {
-            const item = element(document, "li", "lp-session-picker-row");
-            const label = element(
+            const item = el(document, "li", "lp-session-picker-row");
+            const label = el(
               document,
               "span",
               "lp-session-picker-label",
               `${kindLabel(session.kind)} — ${session.title}`,
             );
-            const host = element(document, "span", "lp-button-host");
+            const host = el(document, "span", "lp-button-host");
             item.append(label, host);
             const link = ctx.ui.mountButton(
               host,

@@ -10,6 +10,7 @@ import type { NodePrerequisites } from "../node-catalog-link.ts";
 import { ICONS, setIcon, statusIcon } from "./icons.ts";
 import { buildDependencyGraph, isDone, layoutRoadmap, moduleCounts } from "./roadmap-layout.ts";
 import type { PlacedModule, RoadmapLayout } from "./roadmap-layout.ts";
+import { el } from "./dom.ts";
 
 export type ViewMode = "graph" | "tree";
 
@@ -37,13 +38,6 @@ export interface RoadmapCanvas {
 
 /** Indent per tree level, in px. */
 const TREE_INDENT = 18;
-
-function el<K extends keyof HTMLElementTagNameMap>(document: Document, tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 export function moduleState(module: PathModule): "done" | "progress" | "todo" {
   const { done, total } = moduleCounts(module);
