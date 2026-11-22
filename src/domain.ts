@@ -153,9 +153,11 @@ export interface DisplaySettings {
   readonly language: LanguagePreference;
   readonly defaultView: ViewMode;
   readonly showOptional: boolean;
+  /** Show the one-line question-template suggestion in the node panel. */
+  readonly patternHints: boolean;
 }
 
-export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "graph", showOptional: true };
+export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "graph", showOptional: true, patternHints: true };
 
 /** How the Architect reaches beyond its own memory. Every channel can be switched off;
  * with all of them off the Architect works offline from what the model knows. */
@@ -892,6 +894,7 @@ function readDisplaySettings(value: unknown, path: string): DisplaySettings {
     language: record.language === undefined ? DEFAULT_DISPLAY.language : readEnum(record.language, LANGUAGE_PREFERENCES, `${path}.language`),
     defaultView: record.defaultView === undefined ? DEFAULT_DISPLAY.defaultView : readEnum(record.defaultView, VIEW_MODES, `${path}.defaultView`),
     showOptional: record.showOptional === undefined ? DEFAULT_DISPLAY.showOptional : readBoolean(record.showOptional, `${path}.showOptional`),
+    patternHints: record.patternHints === undefined ? DEFAULT_DISPLAY.patternHints : readBoolean(record.patternHints, `${path}.patternHints`),
   };
 }
 

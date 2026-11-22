@@ -345,6 +345,18 @@ const en = {
   "graphEmpty.build": "Build from my graph",
   "graphEmpty.hint": "Study some material first: the graph has no topics yet.",
   "graphEmpty.prompt": "Build a roadmap from the topics in my knowledge graph.",
+
+  // Question-pattern suggestions in the node panel (issue #35). Keep this block last.
+  "pattern.hint.overview": "Tip: an overview template fits a lesson on this node.",
+  "pattern.hint.explainBack": "Tip: an explain-back template fits a lesson on this node.",
+  "pattern.hint.compare": "Tip: a compare-and-contrast template fits this node.",
+  "pattern.hint.bridge": "Tip: a connecting-ideas template fits a lesson on this node.",
+  "pattern.hint.worked": "Tip: a worked-problems template fits practice on this node.",
+  "pattern.hint.recall": "Tip: a recall template fits practice on this node.",
+  "pattern.hint.scenario": "Tip: a scenario template fits practice on this node.",
+  "pattern.hint.selfTest": "Tip: a self-test template fits practice on this node.",
+  "s.patternHints": "Show question-template tips",
+  "s.patternHintsDesc": "Suggests a question template for a node. It is only a suggestion; nothing is selected for you.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -688,9 +700,21 @@ const ru: Record<MessageKey, string> = {
   "graphEmpty.build": "Собрать из моего графа",
   "graphEmpty.hint": "Сначала изучите материал: в графе пока нет тем.",
   "graphEmpty.prompt": "Составь дорожную карту из тем в моём графе знаний.",
+
+  // Question-pattern suggestions in the node panel (issue #35). Keep this block last.
+  "pattern.hint.overview": "Подсказка: шаблон обзора подойдёт для урока по этому узлу.",
+  "pattern.hint.explainBack": "Подсказка: шаблон «объясни своими словами» подойдёт для урока по этому узлу.",
+  "pattern.hint.compare": "Подсказка: шаблон сравнения подойдёт для этого узла.",
+  "pattern.hint.bridge": "Подсказка: шаблон связывания идей подойдёт для урока по этому узлу.",
+  "pattern.hint.worked": "Подсказка: шаблон разбора задач подойдёт для практики по этому узлу.",
+  "pattern.hint.recall": "Подсказка: шаблон припоминания подойдёт для практики по этому узлу.",
+  "pattern.hint.scenario": "Подсказка: шаблон сценария подойдёт для практики по этому узлу.",
+  "pattern.hint.selfTest": "Подсказка: шаблон самопроверки подойдёт для практики по этому узлу.",
+  "s.patternHints": "Показывать подсказки о шаблонах вопросов",
+  "s.patternHintsDesc": "Подсказывает шаблон вопросов для узла. Это только совет: ничего не выбирается за вас.",
 };
 
-const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };
+export const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };
 let current: Locale = "en";
 
 export function resolveLocale(preference: LocalePreference | undefined, systemLanguage?: string): Locale {

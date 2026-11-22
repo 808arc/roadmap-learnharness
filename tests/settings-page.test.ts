@@ -39,7 +39,7 @@ test("settings page edits justified artifact defaults and persists them", async 
 
     const artifactRows = fixture.find(
       "mountSettingsRows",
-      (record) => record.props.rows.length === 6,
+      (record) => record.props.rows.some((row: { key: string }) => row.key === "artifact-concept"),
     );
     const concept = artifactRow(artifactRows, "artifact-concept");
     assert.equal(concept.type, "dropdown");
@@ -58,7 +58,7 @@ test("settings page edits justified artifact defaults and persists them", async 
     assert.equal(fixture.settings.artifactDefaults.concept, "derivation_trace");
     assert.deepEqual(
       fixture.calls.filter((call) => call.name === "settings.save").at(-1)?.input,
-      { artifactDefaults: { concept: "derivation_trace" }, display: { language: "en", defaultView: "graph", showOptional: true } },
+      { artifactDefaults: { concept: "derivation_trace" }, display: { language: "en", defaultView: "graph", showOptional: true, patternHints: true } },
     );
     const updated = artifactRow(liveRows(fixture, "artifact-concept"), "artifact-concept");
     assert.equal(updated.value, "derivation_trace");
