@@ -330,24 +330,18 @@ export interface LearningPath {
   readonly architectChatId?: string | null;
 }
 
-/** Architect model preference: follow the host strong slot or override explicitly. */
+/** Architect model preference: follow a host model slot, or override explicitly. */
 export interface ArchitectPreferences {
   readonly followHostSlot: boolean;
+  /** Which host slot to follow when `followHostSlot` is true. Absent means strong. */
+  readonly slot?: "strong" | "cheap";
   /** Required when `followHostSlot` is false. */
   readonly model?: { readonly provider: string; readonly id: string };
   readonly thinkingLevel?: ThinkingLevelName;
 }
 
-/**
- * Cheapest Architect model, used for new installs and for saved settings that
- * predate the architect record. The id is the cheapest one the repo already
- * names (tests use `anthropic:claude-haiku-5-5`); the SDK ships no model list.
- */
-export const DEFAULT_ARCHITECT_MODEL = { provider: "anthropic", id: "claude-haiku-5-5" } as const;
-export const DEFAULT_ARCHITECT_PREFERENCES: ArchitectPreferences = {
-  followHostSlot: false,
-  model: DEFAULT_ARCHITECT_MODEL,
-};
+/** New installs follow the host's cheap slot: no model id is hardcoded. */
+export const DEFAULT_ARCHITECT_PREFERENCES: ArchitectPreferences = { followHostSlot: true, slot: "cheap" };
 
 export interface PluginSettings {
   /** Explicit per-node-type defaults; absent entries fall back to the catalog. */
@@ -983,11 +977,9 @@ function readArchitectPreferences(value: unknown, path: string): ArchitectPrefer
   const record = readObject(value, path);
   const followHostSlot =
     record.followHostSlot === undefined ? false : readBoolean(record.followHostSlot, `${path}.followHostSlot`);
+  const slot = record.slot === undefined ? undefined : readEnum(record.slot, ["strong", "cheap"] as const, `${path}.slot`);
   let model: { provider: string; id: string } | undefined;
-  if (record.model === undefined && !followHostSlot && record.followHostSlot === undefined) {
-    // A record with no choice at all falls back to the cheapest model.
-    model = { ...DEFAULT_ARCHITECT_MODEL };
-  } else if (record.model !== undefined) {
+  if (record.model !== undefined) {
     const choice = readObject(record.model, `${path}.model`);
     model = {
       provider: readString(choice.provider, `${path}.model.provider`, { max: 200 }),
@@ -1002,7 +994,7 @@ function readArchitectPreferences(value: unknown, path: string): ArchitectPrefer
     if (model !== undefined || thinkingLevel !== undefined) {
       fail(path, "must not carry a model or thinking level while following the host slot");
     }
-    return { followHostSlot };
+    return { followHostSlot, ...(slot === undefined ? {} : { slot }) };
   }
   if (model === undefined) {
     fail(`${path}.model`, "is required when not following the host slot");

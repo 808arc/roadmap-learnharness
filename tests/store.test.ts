@@ -42,7 +42,7 @@ test("saves, replaces and reloads paths with a versioned envelope", (t) => {
   assert.equal(store.path("path-linear-algebra"), null);
   assert.deepEqual(store.settings(), {
     artifactDefaults: {},
-    architect: { followHostSlot: false, model: { provider: "anthropic", id: "claude-haiku-5-5" } },
+    architect: { followHostSlot: true, slot: "cheap" },
   });
 
   const saved = store.savePath(makePath());
@@ -338,10 +338,10 @@ test("Architect model config round-trips and rejects invalid choices", (t) => {
   assert.deepEqual(openLearningPathStore(dir).architectModel(), model);
 });
 
-test("a fresh settings read defaults the Architect to the cheapest model, not the host slot", (t) => {
+test("a fresh settings read follows the host cheap slot", (t) => {
   const dir = directory(t);
   const settings = openLearningPathStore(dir).settings();
-  assert.deepEqual(settings.architect, { followHostSlot: false, model: { provider: "anthropic", id: "claude-haiku-5-5" } });
+  assert.deepEqual(settings.architect, { followHostSlot: true, slot: "cheap" });
 });
 
 test("a saved Architect choice is kept, and old settings without an architect record still validate", (t) => {

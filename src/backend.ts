@@ -644,7 +644,7 @@ export function activate(ctx: PluginBackendContext): void {
       // An explicit plugin override wins over a model saved by an older activation.
       choice = preferenceModel(preferences) as ArchitectModelConfig;
     } else if (preferences.followHostSlot) {
-      const slot = catalog.slots.strong;
+      const slot = catalog.slots[preferences.slot ?? "strong"];
       if (slot) {
         choice = {
           provider: slot.model.provider,
