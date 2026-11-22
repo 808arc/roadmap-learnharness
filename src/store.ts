@@ -848,11 +848,12 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
     }
     if (disk.kind === "absent") {
       if (known) {
+        // The removal may be deliberate (a Git pull, or the learner), so the roadmap is never silently recreated.
         roadmapState.delete(id);
         fileDigests.set(id, null);
         throw new StoreError(
           "stale",
-          `Roadmap file ${filename} was removed on disk after the store last read it. The roadmap was dropped from memory and your change was NOT saved; save it again to recreate it.`,
+          `Roadmap file ${filename} was removed on disk after the store last read it. The roadmap was dropped from memory and your change was NOT saved. If it was removed by mistake, restore it in the Git view.`,
         );
       }
       if (refusals.has(id)) {

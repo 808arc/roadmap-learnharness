@@ -56,8 +56,23 @@ export interface PathSummary {
   readonly architectChatId?: string | null;
 }
 
+/** A roadmap file the store refused (for example after a Git merge); it is hidden and never written. */
+interface RefusedRoadmap {
+  readonly filename: string;
+  readonly code: string;
+}
+
 interface PathsListResult {
   readonly paths: readonly PathSummary[];
+  readonly refused?: readonly RefusedRoadmap[];
+}
+
+/** The hub banner text for refused roadmap files, or null when every file read cleanly. */
+function refusedNotice(refused: readonly RefusedRoadmap[] | undefined): string | null {
+  if (!refused || refused.length === 0) return null;
+  return refused
+    .map((entry) => t(entry.code === "newer-schema" ? "error.refusedNewer" : "error.refused", { file: entry.filename }))
+    .join(" ");
 }
 
 interface PathResult {
@@ -184,6 +199,8 @@ export function mountPathHub(
 
   // ── State ────────────────────────────────────────────────────────────
   let summaries: PathSummary[] = [];
+  /** Banner text for refused roadmap files from the last list; shown whenever no other error is. */
+  let refused: string | null = null;
   let path: LearningPath | null = null;
   let selectedPathId: string | null = null;
   let selectedNodeId: string | null = null;
@@ -511,6 +528,7 @@ export function mountPathHub(
       const listed = await ctx.call<PathsListResult>("paths.list");
       if (!live(token)) return;
       summaries = [...(listed.paths ?? [])];
+      refused = refusedNotice(listed.refused);
       if (createdPathId) {
         const created = summaries.find((entry) => entry.id === createdPathId);
         createdPathId = null;
@@ -545,7 +563,7 @@ export function mountPathHub(
         if (!live(token)) return;
       }
       ensureSelection();
-      showError(null);
+      showError(refused);
       renderAll();
 
       if (path?.architectChatId && !pane.isNewDraft() && path.id !== autoLoadedPathId) {
@@ -596,7 +614,7 @@ export function mountPathHub(
       if (disposed || signal.aborted) return null;
       path = result.path;
       ensureSelection();
-      showError(null);
+      showError(refused);
       return result;
     } catch (problem) {
       if (!disposed && !signal.aborted) showError(t(failure, { message: problemText(problem) }));

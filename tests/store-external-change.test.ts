@@ -159,3 +159,20 @@ test("a newer roadmap file that appears after open is refused and never overwrit
   assert.equal(read(roadmapFile(dir)), newer);
   assert.equal(store.refusals()[0]?.code, "newer-schema");
 });
+
+test("a roadmap file removed on disk is dropped from memory and never recreated by a save", (t) => {
+  const dir = directory(t);
+  const store = openLearningPathStore(dir);
+  store.savePath(makePath());
+
+  // A Git pull (or the learner) removes the file on purpose while the store is open.
+  fs.rmSync(roadmapFile(dir));
+
+  assert.throws(
+    () => store.savePath(titled("Edited from stale memory")),
+    (error: unknown) => error instanceof StoreError && error.code === "stale" && error.message.includes(roadmapFile(dir)),
+  );
+  assert.equal(fs.existsSync(roadmapFile(dir)), false, "the removed file is not recreated");
+  assert.equal(store.path(ID), null);
+  assert.deepEqual(store.refusals(), []);
+});

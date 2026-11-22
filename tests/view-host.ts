@@ -199,6 +199,8 @@ export interface FixtureOptions {
   mastery?: readonly Mastery[];
   /** Make `graph.mastery` reject, as a failed backend read would. */
   masteryFails?: boolean;
+  /** Roadmap files the store refused, as `paths.list` reports them. */
+  refused?: readonly { readonly filename: string; readonly code: string }[];
 }
 
 export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
@@ -424,6 +426,7 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
       case "paths.list":
         return Promise.resolve({
           paths: [...paths.values()].map(summarize),
+          refused: structuredClone(options.refused ?? []),
         } as T);
       case "paths.get": {
         const found = paths.get(value.id);
