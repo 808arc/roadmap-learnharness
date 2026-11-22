@@ -67,9 +67,11 @@ test("Architect definition is reconstructed on activation and released on cleanu
   assert.ok(definition);
   assert.deepEqual(
     (definition.tools ?? []).map((tool) => tool.name),
-    // Issue #19 upstream mode: the learner's graph, the two developer-roadmap reads and the path tools only.
+    // Issue #19 upstream mode: the graph and the two developer-roadmap reads first, then the path tools.
+    // Books and web (the research tools) come last and only enrich existing nodes.
     ["read_learner_graph", "list_roadmap_topics", "read_roadmap_topic", "get_learning_path", "save_learning_path",
-      "save_learning_path_json"],
+      "save_learning_path_json",
+      "list_research_notes", "read_research_note", "read_page", "find_books", "book_contents", "find_papers", "search_wikipedia"],
   );
   assert.match(definition.instructions, /Roadmap Architect/);
   assert.deepEqual(definition.model, {

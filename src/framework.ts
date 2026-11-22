@@ -176,24 +176,28 @@ const DOSSIER_LINES = [
 /** Upstream mode (#19): the only sources are the learner's graph and the roadmap.sh topic files. */
 const UPSTREAM_SOURCE_LINES = [
   "## Sources (upstream mode)",
-  "You build the path from two sources only: the learner's Knowledge Graph and the developer-roadmap topic files published by roadmap.sh (repository nilbuild/developer-roadmap).",
+  "Order: the learner's Knowledge Graph and the developer-roadmap topic files (repository nilbuild/developer-roadmap, roadmap.sh) build the structure first; books and web come second, only to enrich nodes that already exist.",
   "- Call read_learner_graph first: it is what the learner already knows. Place those topics as optional review nodes, as the graph brief describes.",
   "- Call list_roadmap_topics with a roadmap slug, then read_roadmap_topic for each topic you use. Use only the slugs these tools return.",
-  "- Do not search the web, read other pages, look up books, or use research notes. If GitHub cannot be reached, tell the learner that plainly and stop; never substitute another source.",
+  "- Books and web never create topics, nodes or roadmap structure. If GitHub cannot be reached, say so plainly and stop; never substitute another source for the structure.",
   "- A node's resources are the tagged resources of its topic file, copied exactly: the same link text and URL as written, tag included. Do not reword, shorten or invent links, and take each url only from a topic you read in this conversation.",
   "- Name roadmap.sh as the source: the sourceSpine is mode \"canonical\" with the reference title \"roadmap.sh developer roadmap (nilbuild/developer-roadmap)\" and kind \"course\". Use the topic title as sourceAnchor reference.",
   "- Do not add a resource that the topic files do not list. A node with no tagged resources in its topic file has none.",
 ].join("\n");
 
-const researchLines = (tools: readonly string[]): string => {
+const researchLines = (tools: readonly string[], upstream = false): string => {
   const has = (name: string): boolean => tools.includes(name);
-  const lines = ["## Research"];
+  const lines = [upstream ? "## Research (second: enrichment only)" : "## Research"];
   const web = has("web_search") || has("find_books") || has("read_page");
   if (!web && !has("list_research_notes")) {
+    // Upstream mode without research tools: the structure stands on the graph and topic files alone.
+    if (upstream) return "";
     lines.push("Offline: no research tools in this setup. Use only what you know, say so to the learner once, and never invent links, chapters or editions.");
     return lines.join("\n");
   }
-  lines.push("Research before drafting a new path, and whenever the learner asks for sources. Use only the sources this setup allows (the tools you have). Do not cite from memory what you could check.");
+  lines.push(upstream
+    ? "After the graph and topic files, research only to add resources and context to nodes already in the structure. Cite only links these tools returned; never invent one."
+    : "Research before drafting a new path, and whenever the learner asks for sources. Use only the sources this setup allows (the tools you have). Do not cite from memory what you could check.");
   if (has("list_research_notes")) lines.push("- list_research_notes first: research sessions and deep-research runs leave reports there. Read the relevant ones fully with read_research_note.");
   if (has("find_books")) lines.push("- find_books: canonical books (queries such as \"<field> textbook\", \"<field> introduction\", subtopics, the learner's language), then deeper ones. Compare editions and ratings. book_contents on every book in the path, to see its chapters.");
   if (has("find_papers")) lines.push("- find_papers: surveys, tutorials, classic papers. search_wikipedia: the field map and its classic references.");
@@ -253,7 +257,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
 
     AUTHOR_METHOD,
     DOSSIER_LINES,
-    upstream ? "" : researchLines(researchTools),
+    researchLines(researchTools, upstream),
 
     [
       "## Ungated progression",

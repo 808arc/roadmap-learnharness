@@ -447,10 +447,12 @@ export function activate(ctx: PluginBackendContext): void {
     architect?.unregister();
     architect = null;
     registeredResearch = researchSignature();
-    // Issue #19: the Architect builds only from the learner's graph and the pinned developer-roadmap
-    // commit. Its research tools (web, books, pages, deep research, notes) are not offered in this mode.
+    // Issue #19: the Architect builds the structure from the learner's graph and the pinned developer-roadmap
+    // commit. Books and web (research tools) only enrich existing nodes, and come last.
     const registration = registerArchitect(ctx, model, {
       store,
+      // Book and web tools for the enrichment step only; they come last in the Architect's tool list.
+      researchTools: researchTools(),
       activeChatId: () => activeChatId,
       graphBrief: () => (activeChatId === null ? null : (graphBriefs.get(activeChatId) ?? null)),
       upstream: {

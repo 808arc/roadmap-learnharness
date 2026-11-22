@@ -10,6 +10,7 @@ import path from "node:path";
 import { test } from "node:test";
 import type { PluginAgentTool, PluginBackendContext } from "learnharness-plugin-api";
 import { buildArchitectDefinition } from "../src/architect-agent.ts";
+import { buildArchitectSystemPrompt } from "../src/framework.ts";
 import type { ArchitectModelConfig } from "../src/store.ts";
 import { openLearningPathStore } from "../src/store.ts";
 import {
@@ -362,4 +363,58 @@ test("no graph statement, goal or learner name appears in any request to GitHub"
       assert.equal(JSON.stringify(call.headers).includes(secret), false, "no learner text in headers");
     }
   }
+});
+
+test("a link a book or web tool returned may enrich a node; an invented link is still refused", async (t) => {
+  const store = openLearningPathStore(workspace(t));
+  const findBooks = {
+    name: "find_books",
+    description: "synthetic book search",
+    parameters: { type: "object", properties: {} },
+    execute: async () => ({
+      content: [{ type: "text", text: "Found: https://books.example.test/found-1." }],
+      details: {},
+    }),
+  } as unknown as PluginAgentTool;
+  const definition = buildArchitectDefinition(learnerContext(), model, {
+    store,
+    activeChatId: () => "chat-synthetic",
+    researchTools: [findBooks],
+    upstream: { fetch: fakeFetch(standardRoutes()).fetch, commit: COMMIT },
+  });
+  const tool = (name: string) => definition.tools?.find((candidate: PluginAgentTool) => candidate.name === name) as unknown as {
+    execute(id: string, params: unknown, signal: undefined): Promise<ToolResult>;
+  };
+  // Books and web come last in the tool list.
+  assert.equal(definition.tools?.at(-1)?.name, "find_books");
+
+  const draft = rawPath();
+  draft.sourceSpine = {
+    mode: "canonical",
+    references: [{ title: "roadmap.sh developer roadmap (nilbuild/developer-roadmap)", kind: "course" }],
+  };
+  draft.modules[0].nodes[0].resources = [{ title: "Invented", kind: "docs", url: "https://invented.example.test/nope" }];
+  assert.equal((await tool("save_learning_path").execute("c1", draft, undefined)).isError, true);
+
+  await tool("find_books").execute("c2", {}, undefined);
+  draft.modules[0].nodes[0].resources = [{ title: "Found Book", kind: "book", url: "https://books.example.test/found-1" }];
+  const saved = await tool("save_learning_path").execute("c3", draft, undefined);
+  assert.equal(saved.isError, undefined, saved.content[0]?.text);
+  assert.equal(store.paths().length, 1);
+});
+
+test("the instructions put the graph and the topic files before the book and web tools", () => {
+  const prompt = buildArchitectSystemPrompt({
+    upstream: true,
+    researchTools: ["find_books", "read_page", "list_research_notes"],
+  });
+  const graph = prompt.indexOf("read_learner_graph");
+  const topics = prompt.indexOf("read_roadmap_topic");
+  const research = prompt.indexOf("## Research");
+  assert.ok(graph >= 0, "the graph is named");
+  assert.ok(topics > graph, "the topic files come after the graph");
+  assert.ok(research > topics, "the research section comes after the topic files");
+  assert.match(prompt.slice(research), /enrich/);
+  assert.match(prompt, /Books and web never create topics, nodes or roadmap structure/);
+  assert.equal(prompt.includes("Do not search the web"), false, "the old ban is gone");
 });

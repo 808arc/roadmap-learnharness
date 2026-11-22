@@ -728,6 +728,8 @@ const isRecordValue = (value: unknown): value is Record<string, unknown> =>
 
 /** Each citable url with the titles it may carry: as the topic file writes them, or as a stored path has them. */
 type CitableResources = ReadonlyMap<string, ReadonlySet<string>>;
+/** Marks a url that a book or web result returned: it may carry any title. */
+const ANY_TITLE = "\u0000any";
 
 /** A topic link's title as a learner reads it: the link text, and the same text without its `@tag@`. */
 function citableTitles(label: string): string[] {
@@ -742,8 +744,13 @@ function addCitable(map: Map<string, Set<string>>, url: string, titles: readonly
   map.set(url, set);
 }
 
-/** Resources a save may cite: the links read in this conversation, and those of stored paths (a refinement may echo them). */
-function citableResources(readUrls: ReadonlyMap<string, ReadonlySet<string>>, store: LearningPathStore): CitableResources {
+/** Resources a save may cite: the links read in this conversation, those of stored paths (a refinement may
+ * echo them), and urls that book or web results returned (enrichment; any title). */
+function citableResources(
+  readUrls: ReadonlyMap<string, ReadonlySet<string>>,
+  researchUrls: ReadonlySet<string>,
+  store: LearningPathStore,
+): CitableResources {
   const map = new Map<string, Set<string>>();
   for (const [url, titles] of readUrls) addCitable(map, url, [...titles]);
   for (const path of store.paths()) {
@@ -753,7 +760,26 @@ function citableResources(readUrls: ReadonlyMap<string, ReadonlySet<string>>, st
       }
     }
   }
+  for (const url of researchUrls) if (!map.has(url)) addCitable(map, url, [ANY_TITLE]);
   return map;
+}
+
+/** Wrap a book or web tool: the urls its results return become citable, so enrichment is not refused. */
+function withResearchCitations(tool: PluginAgentTool, researchUrls: Set<string>): PluginAgentTool {
+  if (!tool.execute) return tool;
+  const execute = tool.execute;
+  return {
+    ...tool,
+    execute: async (...args: Parameters<typeof execute>) => {
+      const result = await execute(...args);
+      for (const part of result.content ?? []) {
+        const text: unknown = isRecordValue(part) ? part.text : undefined;
+        if (typeof text !== "string") continue;
+        for (const match of text.matchAll(/https?:\/\/[^\s)\]"'<>]+/g)) researchUrls.add(match[0].replace(/[.,;]+$/, ""));
+      }
+      return result;
+    },
+  } as PluginAgentTool;
 }
 
 /** Draft resources whose url or title was not read from a topic file, read the way the save tools read them. */
@@ -771,7 +797,9 @@ function uncitedResources(args: unknown, allowed: CitableResources): string[] {
         if (typeof url !== "string" || url === "") continue;
         const titles = allowed.get(url);
         if (!titles) uncited.push(url);
-        else if (typeof title === "string" && !titles.has(title.trim())) uncited.push(`"${title}" for ${url}`);
+        else if (typeof title === "string" && !titles.has(ANY_TITLE) && !titles.has(title.trim())) {
+          uncited.push(`"${title}" for ${url}`);
+        }
       }
     }
   }
@@ -895,13 +923,18 @@ function buildUpstreamDefinition(
   upstream: UpstreamArchitectOptions,
 ): PluginAgentDefinition {
   const readUrls = new Map<string, Set<string>>();
-  const allowed = (): CitableResources => citableResources(readUrls, options.store);
+  const researchUrls = new Set<string>();
+  const allowed = (): CitableResources => citableResources(readUrls, researchUrls, options.store);
+  // Books and web come last and only enrich: they are offered after the graph, topic and path tools.
+  const enrichmentTools = (options.researchTools ?? []).map((tool) =>
+    withResearchCitations(timedResearchTool(tool, options.log), researchUrls),
+  );
   return {
     id: ARCHITECT_DEFINITION_ID,
     model: toModelSpec(model),
     instructions: buildArchitectSystemPrompt({
       settings: options.store.settings(),
-      researchTools: [],
+      researchTools: (options.researchTools ?? []).map((tool) => tool.name),
       upstream: true,
     }),
     maxTurns: ARCHITECT_MAX_TURNS,
@@ -911,6 +944,7 @@ function buildUpstreamDefinition(
       getLearningPathTool(ctx, options),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options), allowed),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options, true), allowed),
+      ...enrichmentTools,
     ],
   };
 }
