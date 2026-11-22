@@ -908,7 +908,7 @@ async function readTopicBatch(roadmapSlug: unknown, topicSlugs: unknown, upstrea
 }
 
 /** `list_roadmap_topics`, `read_roadmap_topic` and `read_roadmap_topics`: the upstream operations, nothing else. */
-function upstreamReadTools(
+export function upstreamReadTools(
   ctx: PluginBackendContext,
   upstream: UpstreamArchitectOptions,
   readUrls: Map<string, Set<string>>,
@@ -923,7 +923,7 @@ function upstreamReadTools(
       name: "list_roadmap_topics",
       description:
         "List the topic slugs of one developer-roadmap roadmap (for example \"frontend\" or \"devops\"). " +
-        "Then use read_roadmap_topic for the topics you need.",
+        "Then read them with read_roadmap_topics in batches (up to 10 slugs per call), or read_roadmap_topic for one topic.",
       parameters: objectSchema({
         roadmapSlug: { type: "string", description: "Lowercase slug of the roadmap, e.g. \"backend\"." },
       }, ["roadmapSlug"]),
