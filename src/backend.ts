@@ -45,6 +45,8 @@ import {
 } from "./architect-agent.ts";
 import type { ArchitectRegistration } from "./architect-agent.ts";
 import type { GraphBrief } from "./graph-brief.ts";
+import { deriveMastery } from "./learner-map.ts";
+import type { LearnerGraph, Mastery } from "./learner-map.ts";
 import { architectLogPath, createPluginLog } from "./plugin-log.ts";
 import type { LogStep } from "./plugin-log.ts";
 import {
@@ -266,6 +268,12 @@ function updateNodeInPath(
 /** Number of graph topics the learner has studied, read through the same brief the Architect gets (read-only). */
 export function readGraphTopicCount(learning: { graph(): BriefGraph }): number {
   return buildGraphBrief(learning.graph()).counts.topics;
+}
+
+/** Per-topic mastery derived from the learner's Knowledge Graph (read-only: no writes, no model call). */
+export function readGraphMastery(learning: { graph(): LearnerGraph }): Mastery[] {
+  const graph = learning.graph();
+  return deriveMastery({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
 }
 
 export function activate(ctx: PluginBackendContext): void {
@@ -629,6 +637,8 @@ export function activate(ctx: PluginBackendContext): void {
   handle("paths.list", () => ({ paths: store.paths().map(summarize) }));
 
   handle("graph.topicCount", () => ({ topics: readGraphTopicCount(ctx.learning) }));
+
+  handle("graph.mastery", () => ({ mastery: readGraphMastery(ctx.learning) }));
 
   handle("paths.get", (input) => {
     const id = readText(object(input, "paths.get").id, "id", { max: 128 });

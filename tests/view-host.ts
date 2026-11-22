@@ -30,6 +30,7 @@ import type {
   PluginView,
 } from "learnharness-plugin-api";
 import type { ChildSessionKind, ChildSessionLink, LearningPath, PluginSettings } from "../src/domain.ts";
+import type { Mastery } from "../src/learner-map.ts";
 import { buildChildSessionBrief } from "../src/framework.ts";
 import { resolvePivotSuggestion, updateErrorEntry } from "../src/session-links.ts";
 import type { PathSummary } from "../src/view/path-hub.ts";
@@ -194,6 +195,10 @@ export interface FixtureOptions {
   settings?: PluginSettings;
   /** Topics in the learner's graph, as the backend brief counts them (`graph.topicCount`). */
   graphTopics?: number;
+  /** Knowledge Graph mastery returned by `graph.mastery`; empty when absent. */
+  mastery?: readonly Mastery[];
+  /** Make `graph.mastery` reject, as a failed backend read would. */
+  masteryFails?: boolean;
 }
 
 export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
@@ -216,6 +221,7 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
   for (const chat of options.nativeChats ?? []) nativeChats.set(chat.id, { ...chat });
   const paths = new Map<string, LearningPath>();
   const graphTopics = options.graphTopics ?? 0;
+  const mastery = options.mastery ?? [];
   for (const path of options.paths ?? []) paths.set(path.id, structuredClone(path));
   // Tests pin English so assertions do not depend on the machine language.
   let settingsState: PluginSettings = options.settings ?? { artifactDefaults: {}, display: { language: "en", defaultView: "graph", showOptional: true } };
@@ -412,6 +418,9 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
     switch (name) {
       case "graph.topicCount":
         return Promise.resolve({ topics: graphTopics } as T);
+      case "graph.mastery":
+        if (options.masteryFails) return Promise.reject(new Error("graph.mastery failed"));
+        return Promise.resolve({ mastery: structuredClone(mastery) } as T);
       case "paths.list":
         return Promise.resolve({
           paths: [...paths.values()].map(summarize),
