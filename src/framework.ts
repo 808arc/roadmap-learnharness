@@ -452,6 +452,9 @@ export function buildChildSessionBrief(input: ChildSessionBriefInput): ChildSess
     "## Node",
     `${node.title} (${node.type}: ${guide.label})`,
     `Goal: ${node.goal}`,
+    ...(node.codeRepo
+      ? [`Code repository for this node: "${node.codeRepo.location}" (roadmap only names it; it does not read the repo).`]
+      : []),
     `Progression: ${node.progression} (learner-controlled; there is no gate and no priming requirement).`,
     ...(node.outcomes?.length
       ? ["After this node the learner should be able to:", ...node.outcomes.map((outcome) => `- ${outcome}`), "Aim the session at these abilities; where the session format allows, check them in the form they are applied."]
