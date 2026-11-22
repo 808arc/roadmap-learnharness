@@ -46,8 +46,9 @@ export interface ArchitectPane {
   refresh(conversationId: string, messageCount?: number): Promise<void>;
   /** Adopt an already authoritative snapshot (from `architect.create/send/get`). */
   setConversation(snapshot: PluginAgentSnapshot | null): void;
-  /** Open a conversation if needed, then send a plugin-authored prompt. */
-  discuss(text: string): Promise<void>;
+  /** Open a conversation if needed, then send a plugin-authored prompt.
+   * `learnerGraph` asks the backend to attach the learner's graph brief to this message. */
+  discuss(text: string, options?: { learnerGraph?: boolean }): Promise<void>;
   conversationId(): string | null;
   /** Whether the user has explicitly opened a fresh unsent draft. */
   isNewDraft(): boolean;
@@ -570,7 +571,7 @@ export function createArchitectPane(
     }
   }
 
-  async function send(): Promise<void> {
+  async function send(options: { learnerGraph?: boolean } = {}): Promise<void> {
     if (signal.aborted || disposed || busy()) return;
     const text = draft.trim();
     if (!text) return;
@@ -588,6 +589,7 @@ export function createArchitectPane(
         id: conversation.id,
         text: deepResearch ? `${DEEP_RESEARCH_PREFIX}${text}` : text,
         requestId: requestId(),
+        ...(options.learnerGraph === true ? { learnerGraph: true } : {}),
       });
       if (signal.aborted || disposed) return;
       draft = "";
@@ -603,7 +605,7 @@ export function createArchitectPane(
     }
   }
 
-  async function discuss(text: string): Promise<void> {
+  async function discuss(text: string, options: { learnerGraph?: boolean } = {}): Promise<void> {
     if (signal.aborted || disposed) return;
     draft = text;
     updateComposer();
@@ -612,7 +614,7 @@ export function createArchitectPane(
       if (!id || signal.aborted || disposed) return;
     }
     if (busy()) return;
-    await send();
+    await send(options);
   }
 
   async function stop(): Promise<void> {

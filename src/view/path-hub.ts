@@ -316,6 +316,14 @@ export function mountPathHub(
     pane.startNew();
   }
 
+  /** "Build from my graph": a fresh Architect draft whose first message carries the learner's graph (learnerGraph). */
+  async function buildFromGraph(): Promise<void> {
+    if (disposed || signal.aborted) return;
+    setTab("architect");
+    pane.startNew();
+    await pane.discuss(t("graphEmpty.prompt"), { learnerGraph: true });
+  }
+
   function renderSide(): void {
     if (disposed || signal.aborted) return;
     const node = path ? nodeById(path, selectedNodeId) : null;
@@ -353,7 +361,7 @@ export function mountPathHub(
     emptyControls = new AbortController();
     const scoped = AbortSignal.any([signal, emptyControls.signal]);
     const hasGraph = graphTopics > 0;
-    const build = button(document, t("graphEmpty.build"), () => startNewRoadmap(), scoped, {
+    const build = button(document, t("graphEmpty.build"), () => void buildFromGraph(), scoped, {
       variant: "outline",
       icon: ICONS.sparkle,
       className: "rm-empty-build",

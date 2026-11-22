@@ -52,18 +52,39 @@ test("with an empty graph the button is disabled and a one-line hint says what i
   }
 });
 
-test("clicking 'Build from my graph' is live with a graph and starts no new backend call", async () => {
-  // The click shares startNewRoadmap() with the "New roadmap" toolbar button; with no roadmap
-  // the Architect is already the open tab, so this test asserts only the click's side effects.
+test("clicking 'Build from my graph' opens the Architect and sends with learnerGraph: true", async () => {
   const fixture = createViewFixture({ paths: [], graphTopics: 2 });
   try {
     const container = await mountEmpty(fixture);
-    const before = fixture.calls.length;
     const build = buildButton(container);
     build.click();
-    await fixture.flush();
-    assert.equal(build.disabled, false);
-    assert.equal(fixture.calls.length, before, "the click starts no new backend call or session flow");
+    for (let i = 0; i < 4; i += 1) await fixture.flush();
+    const names = fixture.calls.map((call) => call.name);
+    const created = names.indexOf("architect.create");
+    const sent = names.indexOf("architect.send");
+    assert.ok(created >= 0 && sent > created, "a fresh Architect conversation is created, then the first message is sent");
+    const sendCall = fixture.calls[sent];
+    assert.ok(sendCall, "the architect.send call is recorded");
+    const send = sendCall.input as { learnerGraph?: boolean; text?: string };
+    assert.equal(send.learnerGraph, true, "the graph flag reaches the architect.send path");
+    assert.equal(send.text, "Build a roadmap from the topics in my knowledge graph.");
+    assert.equal(names.filter((name) => name === "architect.send").length, 1, "one send, carrying the flag");
+  } finally {
+    fixture.controller.abort();
+  }
+});
+
+test("'New roadmap' does not send the graph flag", async () => {
+  const fixture = createViewFixture({ paths: [], graphTopics: 2 });
+  try {
+    await mountEmpty(fixture);
+    const newButton = [...fixture.root.querySelectorAll<HTMLButtonElement>("button")].find(
+      (candidate) => candidate.textContent === "New roadmap",
+    );
+    assert.ok(newButton, "the toolbar offers New roadmap");
+    newButton.click();
+    for (let i = 0; i < 4; i += 1) await fixture.flush();
+    assert.equal(fixture.calls.filter((call) => call.name === "architect.send").length, 0, "New roadmap only opens a draft");
   } finally {
     fixture.controller.abort();
   }
@@ -90,6 +111,6 @@ test("every graph-empty string exists in both English and Russian", () => {
   const ruBlock = source.slice(source.indexOf("const ru:"), source.indexOf("const tables"));
   const keys = (block: string) => [...block.matchAll(/^\s+"(graphEmpty\.[\w.]+)":\s*"[^"]+"/gm)].map((match) => match[1]);
   const enKeys = keys(enBlock);
-  assert.deepEqual(enKeys, ["graphEmpty.build", "graphEmpty.hint"]);
+  assert.deepEqual(enKeys, ["graphEmpty.build", "graphEmpty.hint", "graphEmpty.prompt"]);
   assert.deepEqual(keys(ruBlock), enKeys);
 });
