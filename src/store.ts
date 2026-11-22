@@ -298,12 +298,14 @@ function syncDirectory(directory: string): void {
   }
 }
 
-/** Write a complete file atomically; on failure the previous bytes and temp cleanup win. */
+/** Write a complete file atomically; on failure the previous bytes and temp cleanup win.
+ * Identical bytes are not written again, so an unchanged save leaves the file's mtime alone. */
 function atomicWrite(filename: string, content: string): void {
   const existing = fs.lstatSync(filename, { throwIfNoEntry: false });
   if (existing?.isSymbolicLink()) {
     throw new StoreError("unsafe", `Refusing to overwrite symlinked Learning Path file: ${filename}. No data was changed.`);
   }
+  if (existing?.isFile() && fs.readFileSync(filename, "utf8") === content) return;
   const temporary = `${filename}.${randomUUID()}.tmp`;
   let descriptor: number | undefined;
   try {
@@ -330,8 +332,27 @@ function atomicWrite(filename: string, content: string): void {
   }
 }
 
+/** Object keys sorted at every depth; array order is data and stays as it is. */
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, sortKeys((value as Record<string, unknown>)[key])]),
+    );
+  }
+  return value;
+}
+
+/** Pretty-printed JSON with a stable key order, so the same data always gives the same bytes. */
 function serialize(value: unknown): string {
-  return `${JSON.stringify(value, null, 2)}\n`;
+  return `${JSON.stringify(sortKeys(value), null, 2)}\n`;
+}
+
+/** True when the file already holds this data (revision aside), so a save would change nothing. */
+function sameData(filename: string, revision: number, current: unknown, next: unknown): boolean {
+  return revision > 0 && fs.existsSync(filename) && serialize(current) === serialize(next);
 }
 
 export interface LearningPathStore {
@@ -388,9 +409,11 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
   };
 
   const writeSourceIndex = (sources: UploadedSourceReference[]): void => {
+    const indexFilename = path.join(sourcesDirectory, SOURCE_INDEX_FILE);
+    if (sameData(indexFilename, sourceState.revision, sourceState.sources, sources)) return;
     fs.mkdirSync(sourcesDirectory, { recursive: true, mode: 0o700 });
     atomicWrite(
-      path.join(sourcesDirectory, SOURCE_INDEX_FILE),
+      indexFilename,
       serialize({
         schemaVersion: STORE_SCHEMA_VERSION,
         revision: sourceState.revision + 1,
@@ -441,6 +464,10 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
   };
 
   const writePaths = (paths: LearningPath[]): void => {
+    if (sameData(pathsFilename, pathsState.revision, pathsState.paths, paths)) {
+      pathsState = { paths, revision: pathsState.revision };
+      return;
+    }
     atomicWrite(
       pathsFilename,
       serialize({
@@ -483,6 +510,7 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
 
     saveSettings(value) {
       const parsed = parsePluginSettings(value);
+      if (sameData(settingsFilename, settingsState.revision, settingsState.settings, parsed)) return parsed;
       atomicWrite(
         settingsFilename,
         serialize({
@@ -499,6 +527,7 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
 
     saveArchitectModel(value) {
       const parsed = parseArchitectModel(value);
+      if (sameData(architectFilename, architectState.revision, architectState.model, parsed)) return parsed;
       atomicWrite(
         architectFilename,
         serialize({
