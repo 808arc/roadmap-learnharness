@@ -125,12 +125,18 @@ npm ci
 npm run install:local -- "<plugins-directory>"
 ```
 
-`install:local` builds `dist/` and copies it into `<plugins-directory>/roadmap/`.
+`install:local` builds `dist/` and copies it into `<plugins-directory>/roadmap-learnharness/dist/`.
 It never touches `data/`, so your roadmaps are kept.
 
-For a quick rebuild-and-copy loop during development, `./plugin-sync.sh` builds
-and copies the whole plugin folder into LearnHarness. It deletes the existing
-copy first, including `data/`, so back up roadmaps you care about before running it.
+For a rebuild-and-install loop on macOS, run `./plugin-sync.sh` from the repo. It runs
+`npm ci`, builds, and installs into `~/Library/Application Support/LearnHarness/data/plugins/roadmap-learnharness/`.
+
+- With an existing install it stops. `--force` deletes the installed folder first,
+  **including `data/` (your roadmaps)**, so back them up before using it.
+- `--restart` quits LearnHarness gracefully and opens it again after the install.
+- The install path is macOS only. On Windows or Linux use `install:local` with your
+  plugins directory, and set `LEARNHARNESS_APP` to the app's executable for
+  `npm run restart:learnharness`.
 
 ### Coming from Learning Paths
 
@@ -165,18 +171,40 @@ once to write the roadmap files; it stays in the data folder as `learning-paths.
 Records are versioned and written atomically; corrupt or newer files are refused rather than overwritten. Roadmap never deletes native
 chats or Knowledge Graph records.
 
+## Logs
+
+Architect runs are logged to `data/logs/architect.jsonl`, capped at 512 KB. Each
+line holds timings and counts only: model, provider and token counts per run,
+whether your graph was attached and how many topics and chains it had, each
+research call with its outcome, and a short reason for rejected calls (URLs
+removed). Your goal, notes, graph text and the model's answers are never logged.
+
 ## Development
 
 ```sh
 npm ci
+npm run sdk         # copies the LearnHarness plugin types into .sdk/
 npm test            # Node test runner, no model or network
-npm run typecheck   # needs the LearnHarness plugin SDK types in .sdk/
+npm run typecheck   # needs the SDK types in .sdk/
 npm run build       # bundles into dist/
+npm run check       # typecheck, build, test and version check
 ```
 
 The tests mount the real views against recorded host primitives and an
 in-memory backend; the backend tests run the real `activate` against an
 in-process host.
+
+### CI and releases
+
+- `ci.yml` builds and tests every push and pull request.
+- `close-merged-issues.yml` closes an issue when a commit pushed to `main` ends
+  its subject with `(#N)`.
+- `release.yml` runs on a `v*` tag: it checks the tag matches the version, builds,
+  and attaches `roadmap-<version>.zip` (containing `roadmap-learnharness/dist/`)
+  to a GitHub release.
+
+To release: `node scripts/release.mjs patch` (sets `manifest.json` and
+`package.json`), commit, then tag `v<version>` and push the tag.
 
 ## Credits
 
