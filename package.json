@@ -1,6 +1,6 @@
 {
   "name": "roadmap-learnharness",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -11,7 +11,8 @@
     "typecheck": "node scripts/check-sdk.mjs && tsc --noEmit",
     "test": "node --test tests/*.test.mjs tests/*.test.ts",
     "check": "npm run typecheck && npm run build && npm test && node scripts/check-version.mjs",
-    "install:local": "npm run build && node scripts/install-plugin-local.mjs"
+    "install:local": "npm run build && node scripts/install-plugin-local.mjs",
+    "restart:learnharness": "node scripts/restart-learnharness.mjs --restart"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.4.0",
