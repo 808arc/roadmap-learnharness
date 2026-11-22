@@ -372,10 +372,10 @@ const en = {
   "error.refusedNewer": "Roadmap file {file} was saved by a newer version of this plugin, so it is hidden and never overwritten. Update the plugin.",
 
   // Flashcard seed action on a node (issue #39). Keep after the issue #29 block; new blocks go at the end of the table.
-  "flash.open": "Show graph propositions",
-  "flash.title": "Graph propositions for this node",
-  "flash.reviewNote": "Flashcard review is in LearnHarness's Flashcards view, from the Flashcards plugin. This roadmap cannot open that view. If the Flashcards plugin is not installed, there is no review to open.",
-  "flash.none": "No graph propositions are linked to this node yet. They appear after a lesson or practice session linked to it.",
+  "flash.open": "Show facts from your Knowledge Graph",
+  "flash.title": "Knowledge Graph facts for this node",
+  "flash.reviewNote": "If the Flashcards plugin is installed, it reviews facts from your Knowledge Graph with spaced repetition in its own view. This roadmap cannot open that view or check whether the plugin is installed.",
+  "flash.none": "No Knowledge Graph facts are linked to this node yet. They appear after a lesson or practice session linked to it.",
   "flash.unavailable": "The Knowledge Graph could not be read right now.",
   "flash.close": "Close",
 } as const;
@@ -748,10 +748,10 @@ const ru: Record<MessageKey, string> = {
   "error.refusedNewer": "Файл дорожной карты {file} сохранён более новой версией плагина, поэтому он скрыт и никогда не перезаписывается. Обновите плагин.",
 
   // Flashcard seed action on a node (issue #39). Keep after the issue #29 block; new blocks go at the end of the table.
-  "flash.open": "Показать пропозиции графа",
-  "flash.title": "Пропозиции графа для этого узла",
-  "flash.reviewNote": "Повторение карточек ведётся в представлении «Карточки» LearnHarness, в плагине Flashcards. Эта дорожная карта не может открыть это представление. Если плагин Flashcards не установлен, повторять здесь нечего.",
-  "flash.none": "Пропозиции графа пока не связаны с этим узлом. Они появятся после урока или практики, привязанных к нему.",
+  "flash.open": "Показать факты из графа знаний",
+  "flash.title": "Факты из графа знаний для этого узла",
+  "flash.reviewNote": "Если установлен плагин Flashcards, он предлагает интервальное повторение фактов из вашего графа знаний в своём собственном представлении. Эта дорожная карта не может открыть это представление или проверить, установлен ли плагин.",
+  "flash.none": "С этим узлом пока не связан ни один факт из графа знаний. Факты появятся после урока или практики, привязанных к этому узлу.",
   "flash.unavailable": "Граф знаний сейчас не удалось прочитать.",
   "flash.close": "Закрыть",
 };

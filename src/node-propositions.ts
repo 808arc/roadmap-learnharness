@@ -26,6 +26,6 @@ export function propositionsForChats(
   const chats = new Set(chatIds);
   if (chats.size === 0) return [];
   return propositions
-    .filter((proposition) => proposition.provenance.some((point) => chats.has(point.chatId)))
+    .filter((proposition) => Array.isArray(proposition.provenance) && proposition.provenance.some((point) => chats.has(point.chatId)))
     .map(({ id, name, statement }) => ({ id, name, statement }));
 }

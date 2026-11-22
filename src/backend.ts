@@ -670,12 +670,19 @@ export function activate(ctx: PluginBackendContext): void {
 
   handle("graph.mastery", () => ({ mastery: readGraphMastery(ctx.learning) }));
 
-  // The learner's stored propositions linked to the given native chats (read-only). Used by a node's Flashcard seed action.
+  // One stored node's graph propositions, mapped through that node's own linked chats (read-only; issue #39).
+  // The chats come from the saved node, not from the caller, so the result never covers another node.
   handle("graph.propositions", (input) => {
-    const value = object(input, "graph.propositions").chatIds;
-    if (!Array.isArray(value) || value.length > 200) throw new Error("chatIds must be an array of at most 200 chats.");
-    const chatIds = value.map((chatId) => readText(chatId, "chatId", { max: 128 }));
-    return { propositions: propositionsForChats(chatIds, ctx.learning.graph().propositions ?? []) };
+    const value = object(input, "graph.propositions");
+    const pathId = readText(value.pathId, "pathId", { max: 128 });
+    const nodeId = readText(value.nodeId, "nodeId", { max: 128 });
+    const path = store.path(pathId);
+    if (!path) throw new Error(`Unknown path: ${pathId}`);
+    const node = findNodeById(path, nodeId);
+    if (!node) throw new Error(`Unknown node: ${nodeId}`);
+    const stored = ctx.learning.graph().propositions;
+    const chatIds = node.childSessions.map((link) => link.chatId);
+    return { propositions: propositionsForChats(chatIds, Array.isArray(stored) ? stored : []) };
   });
 
   handle("paths.get", (input) => {

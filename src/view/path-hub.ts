@@ -586,11 +586,13 @@ export function mountPathHub(
     }
   }
 
-  /** The learner's graph propositions linked to a node's native chats, from `graph.propositions`. Null when the read fails. */
+  /** One saved node's graph propositions, from `graph.propositions` (the backend reads the node's own chat links). Null when the read fails. */
   async function readNodePropositions(node: PathNode): Promise<readonly NodeProposition[] | null> {
+    if (!path) return null;
     try {
       const result = await ctx.call<{ propositions: readonly NodeProposition[] }>("graph.propositions", {
-        chatIds: node.childSessions.map((link) => link.chatId),
+        pathId: path.id,
+        nodeId: node.id,
       });
       return Array.isArray(result.propositions) ? result.propositions : null;
     } catch {
