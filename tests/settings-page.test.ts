@@ -34,7 +34,7 @@ test("settings page edits justified artifact defaults and persists them", async 
     assert.match(fixture.root.textContent ?? "", /Roadmap/);
     assert.match(fixture.root.textContent ?? "", /Why each artifact is recommended/);
     assert.match(fixture.root.textContent ?? "", /a small program, interpreter or test case/);
-    assert.match(fixture.root.textContent ?? "", /labelled nodes and arrows/);
+    assert.match(fixture.root.textContent ?? "", /labelled arrows/);
     assert.match(fixture.root.textContent ?? "", /from a blank page in your own words/);
 
     const artifactRows = fixture.find(
@@ -62,7 +62,7 @@ test("settings page edits justified artifact defaults and persists them", async 
     );
     const updated = artifactRow(liveRows(fixture, "artifact-concept"), "artifact-concept");
     assert.equal(updated.value, "derivation_trace");
-    assert.match(updated.description, /checks every step of the reasoning/);
+    assert.match(updated.description, /a step-by-step worked derivation that you check line by line/);
     assert.match(fixture.root.textContent ?? "", /Settings saved/);
 
     // Clearing the plugin default falls back to the framework recommendation.
