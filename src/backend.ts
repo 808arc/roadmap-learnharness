@@ -16,6 +16,7 @@
  * runs, `cleanup` releases handlers, subscriptions, the bridge and the definition,
  * and no tool writes after the signal aborts.
  */
+import { importForkData } from "./fork-import.ts";
 import { importLegacyData } from "./legacy-import.ts";
 import { KEY_ENGINES, effectiveResearch } from "./domain.ts";
 import type { ResearchSettings } from "./domain.ts";
@@ -249,6 +250,13 @@ function updateNodeInPath(
 }
 
 export function activate(ctx: PluginBackendContext): void {
+  // Previous fork id first: its files are newer than the Learning Paths ones.
+  try {
+    importForkData(ctx.dataDirectory);
+  } catch (problem) {
+    // An import failure must never block Roadmap itself; the old data stays untouched.
+    console.warn("[roadmap] could not import data from the previous plugin id:", problem instanceof Error ? problem.message : problem);
+  }
   try {
     importLegacyData(ctx.dataDirectory);
   } catch (problem) {

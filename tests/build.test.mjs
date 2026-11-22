@@ -36,7 +36,7 @@ function built() {
 
 test("manifest is valid for plugin API v1 on LearnHarness 0.6.0", () => {
   assert.equal(sourceManifest.apiVersion, 1);
-  assert.equal(sourceManifest.id, "roadmap");
+  assert.equal(sourceManifest.id, "roadmap-learnharness");
   assert.equal(sourceManifest.name, "Roadmap");
   assert.match(sourceManifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(sourceManifest.version, "0.4.0");
@@ -91,7 +91,7 @@ test("built backend activates and answers its operation", () => {
       registerTools: () => () => {},
     });
     assert.deepEqual(handlers.get("paths.status")(), {
-      id: "roadmap",
+      id: "roadmap-learnharness",
       version: "0.4.0",
       active: true,
     });
