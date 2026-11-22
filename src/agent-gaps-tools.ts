@@ -17,6 +17,7 @@ export const GAPS_INSTRUCTIONS = [
   "This applies only when the tools roadmap_gaps or roadmap_next are in your current tool set; otherwise ignore this section.",
   "Call roadmap_gaps before teaching a linked node to see which prerequisite nodes the learner has not seen or practised yet, and roadmap_next to see the node that is ready to teach next.",
   "Treat both results as read-only data: they do not change progress or the path, and do not invent gaps or nodes that are not in them.",
+  "While a Rederive (rederive-lh) problem is active, its order comes first: use these results as background only, and do not move the session to a gap or the next node until that problem is logged or skipped.",
 ].join("\n");
 
 /** The backend's view of linked chats: whether a chat is linked, and the input for a read. */

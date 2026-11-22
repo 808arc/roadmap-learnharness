@@ -15,6 +15,7 @@ import {
   buildChildSessionBrief,
 } from "../src/framework.ts";
 import { NATIVE_BRIDGE_INSTRUCTIONS } from "../src/native-bridge.ts";
+import { GAPS_INSTRUCTIONS } from "../src/agent-gaps-tools.ts";
 
 /** Every roadmap text a linked session can receive: the bridge instructions and one brief per node. */
 function roadmapTexts(): { label: string; text: string }[] {
@@ -81,6 +82,13 @@ test("no roadmap text tells the model to skip or bypass Rederive's flow", () => 
   for (const { label, text } of roadmapTexts()) {
     for (const pattern of forbidden) assert.doesNotMatch(text, pattern, `${label}: ${pattern}`);
   }
+});
+
+test("the gap check defers to an active Rederive problem and stays read-only", () => {
+  assert.match(GAPS_INSTRUCTIONS, /Call roadmap_gaps before teaching a linked node/);
+  assert.match(GAPS_INSTRUCTIONS, /While a Rederive \(rederive-lh\) problem is active, its order comes first/);
+  assert.match(GAPS_INSTRUCTIONS, /do not move the session to a gap or the next node until that problem is logged or skipped/);
+  assert.match(GAPS_INSTRUCTIONS, /Treat both results as read-only data/);
 });
 
 test("the deferral text does not weaken the roadmap's own tools or the progress rule", () => {
