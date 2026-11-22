@@ -147,6 +147,8 @@ test("a rejected save writes a draft step ending with ok false, without the draf
     store,
     activeChatId: () => "chat-1",
     log: createPluginLog(architectLogPath(dir)),
+    // Upstream is the only mode; the rejected save never fetches.
+    upstream: { fetch: async () => { throw new Error("no fetch expected"); }, commit: "0123456789abcdef0123456789abcdef01234567" },
   });
   const save = definition.tools?.find((tool) => tool.name === "save_learning_path");
   assert.ok(save && save.kind !== "input" && save.execute);

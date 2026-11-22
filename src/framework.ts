@@ -139,6 +139,8 @@ export interface ArchitectPromptOptions {
   readonly settings?: PluginSettings | null;
   /** Names of the research tools this Architect has (empty: offline). */
   readonly researchTools?: readonly string[];
+  /** Upstream mode (#19): sources are the learner's graph and the developer-roadmap topic files only. */
+  readonly upstream?: boolean;
 }
 
 /** Roadmap-author method (approved by the owner, 2026-11-17). Sources: Matt Warden's
@@ -167,19 +169,34 @@ const DOSSIER_LINES = [
   "- Misconceptions: a contrast node for each misconception (a bridge node when its category is prerequisite_gap), where the wrong idea would be reinforced.",
   "- Open questions: ask all in ONE message only if the answers change the path; otherwise build and state your assumption.",
   "- Constraints such as available time only scale depth and size; never turn them into dates or pacing.",
-  "- After save_learning_path, call apply_dossier_misconceptions once with the dossier note id, the path id and, for each misconception number, the node that addresses it.",
   "- Do not link the dossier's source chat to the path; sessions link only when launched from a node.",
 ].join("\n");
 
-const researchLines = (tools: readonly string[]): string => {
+/** Upstream mode (#19): the only sources are the learner's graph and the roadmap.sh topic files. */
+const UPSTREAM_SOURCE_LINES = [
+  "## Sources (upstream mode)",
+  "Order: the learner's Knowledge Graph and the developer-roadmap topic files (repository nilbuild/developer-roadmap, roadmap.sh) build the structure first; books and web come second, only to enrich nodes that already exist.",
+  "- Call read_learner_graph first: it is what the learner already knows. Place those topics as optional review nodes, as the graph brief describes.",
+  "- Call list_roadmap_topics with a roadmap slug, then read_roadmap_topic for each topic you use. Use only the slugs these tools return.",
+  "- Books and web never create topics, nodes or roadmap structure. If GitHub cannot be reached, say so plainly and stop; never substitute another source for the structure.",
+  "- A node's resources are the tagged resources of its topic file, copied exactly: the same link text and URL as written, tag included. Do not reword, shorten or invent links, and take each url only from a topic you read in this conversation.",
+  "- Name roadmap.sh as the source: the sourceSpine is mode \"canonical\" with the reference title \"roadmap.sh developer roadmap (nilbuild/developer-roadmap)\" and kind \"course\". Use the topic title as sourceAnchor reference.",
+  "- Do not add a resource that the topic files do not list. A node with no tagged resources in its topic file has none.",
+].join("\n");
+
+const researchLines = (tools: readonly string[], upstream = false): string => {
   const has = (name: string): boolean => tools.includes(name);
-  const lines = ["## Research"];
+  const lines = [upstream ? "## Research (second: enrichment only)" : "## Research"];
   const web = has("web_search") || has("find_books") || has("read_page");
   if (!web && !has("list_research_notes")) {
+    // Upstream mode without research tools: the structure stands on the graph and topic files alone.
+    if (upstream) return "";
     lines.push("Offline: no research tools in this setup. Use only what you know, say so to the learner once, and never invent links, chapters or editions.");
     return lines.join("\n");
   }
-  lines.push("Research before drafting a new path, and whenever the learner asks for sources. Use only the sources this setup allows (the tools you have). Do not cite from memory what you could check.");
+  lines.push(upstream
+    ? "After the graph and topic files, research only to add resources and context to nodes already in the structure. Cite only links these tools returned; never invent one."
+    : "Research before drafting a new path, and whenever the learner asks for sources. Use only the sources this setup allows (the tools you have). Do not cite from memory what you could check.");
   if (has("list_research_notes")) lines.push("- list_research_notes first: research sessions and deep-research runs leave reports there. Read the relevant ones fully with read_research_note.");
   if (has("find_books")) lines.push("- find_books: canonical books (queries such as \"<field> textbook\", \"<field> introduction\", subtopics, the learner's language), then deeper ones. Compare editions and ratings. book_contents on every book in the path, to see its chapters.");
   if (has("find_papers")) lines.push("- find_papers: surveys, tutorials, classic papers. search_wikipedia: the field map and its classic references.");
@@ -193,7 +210,7 @@ const researchLines = (tools: readonly string[]): string => {
 
 /** The Path Architect system prompt: grounding, taxonomy, pedagogy and hard exclusions. */
 export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {}): string {
-  const { existingPath = null, settings = null, researchTools = [] } = options;
+  const { existingPath = null, settings = null, researchTools = [], upstream = false } = options;
   const sections = [
     [
       "You are the Roadmap Architect for LearnHarness (the Roadmap plugin: a learning path drawn as a roadmap.sh-style map).",
@@ -201,7 +218,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
       "Design structure only. Teaching, practice, diagnostics and artifacts happen in the child sessions launched from each node.",
     ].join("\n"),
 
-    [
+    upstream ? UPSTREAM_SOURCE_LINES : [
       "## Source grounding",
       "Do not require the learner to supply a reference. If they uploaded a source, use it even if unnamed. Otherwise choose one or two reputable primary textbooks, courses or specifications you know well, and tell the learner which. Never block path creation to ask for a source.",
       "Call list_uploaded_sources at the start of a new path. If there is none and no source is named, proceed with your own choice.",
@@ -239,7 +256,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
 
     AUTHOR_METHOD,
     DOSSIER_LINES,
-    researchLines(researchTools),
+    researchLines(researchTools, upstream),
 
     [
       "## Ungated progression",
@@ -303,7 +320,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
       : `## Language\nWrite every learner-facing field (titles, goals, outcomes, pre-reading) in ${language === "ru" ? "Russian" : "English"}, whatever language the learner uses. Keep book and course titles as published.`,
   );
   if (existingPath) sections.push(refinementLines(existingPath));
-  return sections.join("\n\n");
+  return sections.filter(Boolean).join("\n\n");
 }
 
 /** Resolve the artifact a child session should prompt for, in override order. */

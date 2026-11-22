@@ -5,9 +5,9 @@
  * saved conversation keeps working after a restart; unregistering cancels its
  * active runs but never deletes conversation records.
  *
- * The tools are the only way the Architect touches learner data:
- * - `list_uploaded_sources` / `read_uploaded_source_chunk` inspect converted
- *   Markdown that the frontend produced with `ctx.documents.toMarkdown`.
+ * The tools are the only way the Architect touches learner data (upstream mode, #19):
+ * - `read_learner_graph` returns the learner's Knowledge Graph brief.
+ * - `list_roadmap_topics` / `read_roadmap_topic` read the pinned developer-roadmap topic files.
  * - `get_learning_path` returns the id-bearing outline needed for refinement.
  * - `save_learning_path` (or its `save_learning_path_json` fallback) is the single
  *   validated write path for a path, and it links the record to the conversation
@@ -23,18 +23,18 @@ import type {
 } from "learnharness-plugin-api";
 import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, parseLearningPath } from "./domain.ts";
 import type { LearningPath, UploadedSourceReference } from "./domain.ts";
+import { buildGraphBrief } from "./graph-brief.ts";
 import type { GraphBrief } from "./graph-brief.ts";
 import { topicKey } from "./learner-map.ts";
 import { buildArchitectSystemPrompt } from "./framework.ts";
 import { StoreError } from "./store.ts";
 import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
 import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
+import { UpstreamError, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
+import type { UpstreamOptions } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
 export const ARCHITECT_DEFINITION_ID = "path-architect";
-/** Cap on one `read_uploaded_source_chunk` response, in UTF-16 code units. */
-export const MAX_SOURCE_CHUNK_CHARS = 20_000;
-export const DEFAULT_SOURCE_CHUNK_CHARS = 12_000;
 /** A long-running design conversation needs room, but is never unbounded. */
 export const ARCHITECT_MAX_TURNS = 90;
 
@@ -52,7 +52,17 @@ export interface ArchitectAgentOptions {
   readonly graphBrief?: () => GraphBrief | null;
   /** Metadata-only step timings; the Architect behaves the same without it. */
   readonly log?: PluginLog;
+  /** Upstream mode (#19), the only mode: the Architect's structure comes from the learner's graph and
+   * the developer-roadmap topic files at this fetch. `researchTools` only enrich existing nodes. */
+  readonly upstream: UpstreamArchitectOptions;
 }
+
+/** Upstream mode: the developer-roadmap fetch, the pinned commit, and the learner's graph brief. */
+export type UpstreamArchitectOptions = UpstreamOptions & {
+  readonly commit: string;
+  /** The learner's graph brief (the backend's learnerGraphBrief); null when the graph is empty. */
+  readonly readGraph?: () => GraphBrief | null;
+};
 
 export interface ArchitectRegistration {
   readonly definition: PluginAgentDefinition;
@@ -99,112 +109,6 @@ export function toModelSpec(model: ArchitectModelConfig): PluginModelSpec {
     provider: model.provider,
     id: model.id,
     ...(model.thinkingLevel === undefined ? {} : { thinkingLevel: model.thinkingLevel }),
-  };
-}
-
-function sourceSummary(source: UploadedSourceReference): Record<string, unknown> {
-  return {
-    sourceId: source.sourceId,
-    name: source.name,
-    byteSize: source.byteSize,
-    uploadedAt: source.uploadedAt,
-    sha256: source.sha256,
-  };
-}
-
-/** `list_uploaded_sources`: metadata only, so the conversation stays bounded. */
-function listUploadedSourcesTool(
-  ctx: PluginBackendContext,
-  options: ArchitectAgentOptions,
-): PluginAgentTool {
-  return {
-    name: "list_uploaded_sources",
-    description:
-      "List uploaded sources (Markdown from PDFs or UTF-8 files): sourceId, name, byteSize, uploadedAt. " +
-      "Read text with read_uploaded_source_chunk. Empty list: no corpus uploaded.",
-    parameters: objectSchema({}),
-    execute: async (_toolCallId, _params, signal) => {
-      assertLive(ctx, signal);
-      const sources = options.store.sources();
-      return textResult(
-        { sources: sources.map(sourceSummary) },
-        JSON.stringify({ sources: sources.map(sourceSummary) }),
-      );
-    },
-  };
-}
-
-/** `read_uploaded_source_chunk`: bounded character windows, never the whole book. */
-function readUploadedSourceChunkTool(
-  ctx: PluginBackendContext,
-  options: ArchitectAgentOptions,
-): PluginAgentTool {
-  return {
-    name: "read_uploaded_source_chunk",
-    description:
-      "Read one bounded chunk of an uploaded source (offsets in UTF-16 characters). " +
-      `Returns text, chunkStart, chunkEnd, totalCharacters, nextOffset (null at end); pass it as offset to continue. Max ${MAX_SOURCE_CHUNK_CHARS} per call.`,
-    parameters: objectSchema(
-      {
-        sourceId: { type: "string", description: "sourceId from list_uploaded_sources." },
-        offset: {
-          type: "integer",
-          minimum: 0,
-          description: "Start offset; default 0.",
-        },
-        limit: {
-          type: "integer",
-          minimum: 1,
-          maximum: MAX_SOURCE_CHUNK_CHARS,
-          description: `Max characters; default ${DEFAULT_SOURCE_CHUNK_CHARS}.`,
-        },
-      },
-      ["sourceId"],
-    ),
-    execute: async (_toolCallId, rawParams, signal) => {
-      assertLive(ctx, signal);
-      try {
-        const params = readObject(rawParams);
-        if (typeof params.sourceId !== "string") throw new Error("sourceId must be a UUID string.");
-        const offset = params.offset ?? 0;
-        const limit = params.limit ?? DEFAULT_SOURCE_CHUNK_CHARS;
-        if (!Number.isSafeInteger(offset) || (offset as number) < 0) {
-          throw new Error("offset must be a non-negative integer.");
-        }
-        if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > MAX_SOURCE_CHUNK_CHARS) {
-          throw new Error(`limit must be an integer between 1 and ${MAX_SOURCE_CHUNK_CHARS}.`);
-        }
-        const markdown = options.store.readSource(params.sourceId);
-        if (markdown === null) {
-          const known = options.store
-            .sources()
-            .map((source) => `${source.sourceId} (${source.name})`)
-            .join(", ");
-          throw new Error(
-            `Unknown uploaded source "${params.sourceId}". Known sources: ${known || "none"}.`,
-          );
-        }
-        const start = Math.min(offset as number, markdown.length);
-        const end = Math.min(start + (limit as number), markdown.length);
-        const name =
-          options.store.sources().find((source) => source.sourceId === params.sourceId)?.name ??
-          `${params.sourceId}.md`;
-        const result = {
-          sourceId: params.sourceId,
-          name,
-          chunkStart: start,
-          chunkEnd: end,
-          totalCharacters: markdown.length,
-          nextOffset: end < markdown.length ? end : null,
-          text: markdown.slice(start, end),
-        };
-        return textResult(result, JSON.stringify(result));
-      } catch (error) {
-        // Bad arguments and unknown ids are model-correctable, not crashes.
-        if (error instanceof Error) return errorResult(error.message);
-        throw error;
-      }
-    },
   };
 }
 
@@ -674,23 +578,7 @@ export function buildArchitectDefinition(
   model: ArchitectModelConfig,
   options: ArchitectAgentOptions,
 ): PluginAgentDefinition {
-  return {
-    id: ARCHITECT_DEFINITION_ID,
-    model: toModelSpec(model),
-    instructions: buildArchitectSystemPrompt({
-      settings: options.store.settings(),
-      researchTools: (options.researchTools ?? []).map((tool) => tool.name),
-    }),
-    maxTurns: ARCHITECT_MAX_TURNS,
-    tools: [
-      listUploadedSourcesTool(ctx, options),
-      readUploadedSourceChunkTool(ctx, options),
-      getLearningPathTool(ctx, options),
-      saveLearningPathTool(ctx, options),
-      saveLearningPathTool(ctx, options, true),
-      ...(options.researchTools ?? []).map((tool) => timedResearchTool(tool, options.log)),
-    ],
-  };
+  return buildUpstreamDefinition(ctx, model, options, options.upstream);
 }
 
 /** Register the Path Architect for one activation. Throws on an invalid definition. */
@@ -702,4 +590,234 @@ export function registerArchitect(
   const definition = buildArchitectDefinition(ctx, model, options);
   const unregister = ctx.agents.register(definition);
   return { definition, unregister };
+}
+
+/* ---- Upstream mode (#19) -------------------------------------------------------
+ * The only Architect mode: it offers the graph brief, the two upstream reads and the
+ * path tools, then the book and web tools last, only to enrich existing nodes. */
+
+const isRecordValue = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** Each citable url with the titles it may carry: as the topic file writes them, or as a stored path has them. */
+type CitableResources = ReadonlyMap<string, ReadonlySet<string>>;
+/** Marks a url that a book or web result returned: it may carry any title. */
+const ANY_TITLE = "\u0000any";
+
+/** A topic link's title as a learner reads it: the link text, and the same text without its `@tag@`. */
+function citableTitles(label: string): string[] {
+  const bare = label.replace(/^@[^@\s]+@/, "").trim();
+  return bare === label ? [label] : [label, bare];
+}
+
+function addCitable(map: Map<string, Set<string>>, url: string, titles: readonly string[]): void {
+  if (url === "") return;
+  const set = map.get(url) ?? new Set<string>();
+  for (const title of titles) set.add(title);
+  map.set(url, set);
+}
+
+/** Resources a save may cite: the links read in this conversation, those of stored paths (a refinement may
+ * echo them), and urls that book or web results returned (enrichment; any title). */
+function citableResources(
+  readUrls: ReadonlyMap<string, ReadonlySet<string>>,
+  researchUrls: ReadonlySet<string>,
+  store: LearningPathStore,
+): CitableResources {
+  const map = new Map<string, Set<string>>();
+  for (const [url, titles] of readUrls) addCitable(map, url, [...titles]);
+  for (const path of store.paths()) {
+    for (const module of path.modules) {
+      for (const node of module.nodes) {
+        for (const resource of node.resources ?? []) addCitable(map, resource.url ?? "", [resource.title ?? ""]);
+      }
+    }
+  }
+  for (const url of researchUrls) if (!map.has(url)) addCitable(map, url, [ANY_TITLE]);
+  return map;
+}
+
+/** Wrap a book or web tool: the urls its results return become citable, so enrichment is not refused. */
+function withResearchCitations(tool: PluginAgentTool, researchUrls: Set<string>): PluginAgentTool {
+  if (!tool.execute) return tool;
+  const execute = tool.execute;
+  return {
+    ...tool,
+    execute: async (...args: Parameters<typeof execute>) => {
+      const result = await execute(...args);
+      for (const part of result.content ?? []) {
+        const text: unknown = isRecordValue(part) ? part.text : undefined;
+        if (typeof text !== "string") continue;
+        for (const match of text.matchAll(/https?:\/\/[^\s)\]"'<>]+/g)) researchUrls.add(match[0].replace(/[.,;]+$/, ""));
+      }
+      return result;
+    },
+  } as PluginAgentTool;
+}
+
+/** Draft resources whose url or title was not read from a topic file, read the way the save tools read them. */
+function uncitedResources(args: unknown, allowed: CitableResources): string[] {
+  const draft = normalizeDraftArguments(args);
+  if (!isRecordValue(draft) || !Array.isArray(draft.modules)) return [];
+  const uncited: string[] = [];
+  for (const module of draft.modules) {
+    if (!isRecordValue(module) || !Array.isArray(module.nodes)) continue;
+    for (const node of module.nodes) {
+      if (!isRecordValue(node) || !Array.isArray(node.resources)) continue;
+      for (const resource of node.resources) {
+        if (!isRecordValue(resource)) continue;
+        const { url, title } = resource;
+        if (typeof url !== "string" || url === "") continue;
+        const titles = allowed.get(url);
+        if (!titles) uncited.push(url);
+        else if (typeof title === "string" && !titles.has(ANY_TITLE) && !titles.has(title.trim())) {
+          uncited.push(`"${title}" for ${url}`);
+        }
+      }
+    }
+  }
+  return uncited;
+}
+
+/** Refuse a save whose resource urls or titles were not read from a topic file: no invented or reworded links. */
+function withUpstreamLinkCheck(tool: PluginAgentTool, allowed: () => CitableResources): PluginAgentTool {
+  if (!tool.execute) return tool;
+  const execute = tool.execute;
+  return {
+    ...tool,
+    execute: async (...args: Parameters<typeof execute>) => {
+      const params: unknown = args[1];
+      let draft: unknown = params;
+      if (tool.name === "save_learning_path_json" && isRecordValue(params) && typeof params.draftJson === "string") {
+        try {
+          draft = JSON.parse(params.draftJson);
+        } catch {
+          draft = params; // Unparseable: the save tool itself reports it.
+        }
+      }
+      const uncited = uncitedResources(draft, allowed());
+      if (uncited.length > 0) {
+        return errorResult(
+          "Learning path rejected; nothing was written. Resource urls and titles must be copied from topic files read in " +
+            `this conversation (read_roadmap_topic): ${uncited.slice(0, 5).join(", ")}`,
+        );
+      }
+      return execute(...args);
+    },
+  } as PluginAgentTool;
+}
+
+/** `read_learner_graph`: the learner's graph brief, from the backend helper or ctx.learning.graph(). */
+function readLearnerGraphTool(ctx: PluginBackendContext, readGraph?: () => GraphBrief | null): PluginAgentTool {
+  return {
+    name: "read_learner_graph",
+    description:
+      "Read the learner's Knowledge Graph as a compact brief: topics (name, statement, aliases) and chains. " +
+      "Read-only. It is the only view of what the learner already knows.",
+    parameters: objectSchema({}),
+    execute: async (_toolCallId, _params, signal) => {
+      assertLive(ctx, signal);
+      try {
+        const brief = readGraph
+          ? (readGraph() ?? buildGraphBrief({ propositions: [], chains: [] }))
+          : (() => {
+              const graph = ctx.learning.graph();
+              return buildGraphBrief({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
+            })();
+        return textResult(brief, JSON.stringify(brief));
+      } catch (error) {
+        return errorResult(`The learner's graph could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+  };
+}
+
+/** `list_roadmap_topics` and `read_roadmap_topic`: the two upstream operations, nothing else. */
+function upstreamReadTools(
+  ctx: PluginBackendContext,
+  upstream: UpstreamArchitectOptions,
+  readUrls: Map<string, Set<string>>,
+): PluginAgentTool[] {
+  const upstreamFailure = (error: unknown): AgentToolResult<{ error: string }> => {
+    // Bad arguments and upstream failures are both reported to the model, never thrown.
+    if (error instanceof Error) return errorResult(error.message);
+    throw error;
+  };
+  return [
+    {
+      name: "list_roadmap_topics",
+      description:
+        "List the topic slugs of one developer-roadmap roadmap (for example \"frontend\" or \"devops\"). " +
+        "Then use read_roadmap_topic for the topics you need.",
+      parameters: objectSchema({
+        roadmapSlug: { type: "string", description: "Lowercase slug of the roadmap, e.g. \"backend\"." },
+      }, ["roadmapSlug"]),
+      execute: async (_toolCallId, rawParams, signal) => {
+        assertLive(ctx, signal);
+        try {
+          const params = readObject(rawParams);
+          const topics = await listRoadmapTopics(String(params.roadmapSlug), upstream.commit, upstream);
+          const result = { topics: topics.map((topic) => topic.slug) };
+          return textResult(result, JSON.stringify(result));
+        } catch (error) {
+          return upstreamFailure(error);
+        }
+      },
+    },
+    {
+      name: "read_roadmap_topic",
+      description:
+        "Read one topic of a developer-roadmap roadmap: title, description and tagged resources exactly as the " +
+        "topic file writes them (source: roadmap.sh). Copy resources from here; never invent or reword a url.",
+      parameters: objectSchema({
+        roadmapSlug: { type: "string", description: "Lowercase slug of the roadmap." },
+        topicSlug: { type: "string", description: "Topic slug from list_roadmap_topics." },
+      }, ["roadmapSlug", "topicSlug"]),
+      execute: async (_toolCallId, rawParams, signal) => {
+        assertLive(ctx, signal);
+        try {
+          const params = readObject(rawParams);
+          const topic = await readTopic(String(params.roadmapSlug), String(params.topicSlug), upstream.commit, upstream);
+          for (const resource of topic.resources) addCitable(readUrls, resource.url, citableTitles(resource.label));
+          return textResult(topic, JSON.stringify(topic));
+        } catch (error) {
+          return upstreamFailure(error);
+        }
+      },
+    },
+  ];
+}
+
+/** The upstream-mode definition: graph brief, two upstream reads and the path tools. */
+function buildUpstreamDefinition(
+  ctx: PluginBackendContext,
+  model: ArchitectModelConfig,
+  options: ArchitectAgentOptions,
+  upstream: UpstreamArchitectOptions,
+): PluginAgentDefinition {
+  const readUrls = new Map<string, Set<string>>();
+  const researchUrls = new Set<string>();
+  const allowed = (): CitableResources => citableResources(readUrls, researchUrls, options.store);
+  // Books and web come last and only enrich: they are offered after the graph, topic and path tools.
+  const enrichmentTools = (options.researchTools ?? []).map((tool) =>
+    withResearchCitations(timedResearchTool(tool, options.log), researchUrls),
+  );
+  return {
+    id: ARCHITECT_DEFINITION_ID,
+    model: toModelSpec(model),
+    instructions: buildArchitectSystemPrompt({
+      settings: options.store.settings(),
+      researchTools: (options.researchTools ?? []).map((tool) => tool.name),
+      upstream: true,
+    }),
+    maxTurns: ARCHITECT_MAX_TURNS,
+    tools: [
+      readLearnerGraphTool(ctx, upstream.readGraph),
+      ...upstreamReadTools(ctx, upstream, readUrls),
+      getLearningPathTool(ctx, options),
+      withUpstreamLinkCheck(saveLearningPathTool(ctx, options), allowed),
+      withUpstreamLinkCheck(saveLearningPathTool(ctx, options, true), allowed),
+      ...enrichmentTools,
+    ],
+  };
 }
