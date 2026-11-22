@@ -18,7 +18,7 @@
  */
 import { importForkData } from "./fork-import.ts";
 import { importLegacyData } from "./legacy-import.ts";
-import { KEY_ENGINES, effectiveResearch } from "./domain.ts";
+import { DEFAULT_ARCHITECT_PREFERENCES, KEY_ENGINES, effectiveResearch } from "./domain.ts";
 import type { ResearchSettings } from "./domain.ts";
 import { findClaudeBinary, runClaudeResearch } from "./research/claude-cli.ts";
 import { localChannels } from "./research/extensions.ts";
@@ -636,14 +636,14 @@ export function activate(ctx: PluginBackendContext): void {
     const catalog: ModelCatalogResponse = await ctx.inference.catalog();
     if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
 
-    const preferences = store.settings().architect;
+    const preferences = store.settings().architect ?? DEFAULT_ARCHITECT_PREFERENCES;
     let choice: ArchitectModelConfig;
     if (input !== undefined && input !== null) {
       choice = readArchitectModel(input);
-    } else if (preferences && !preferences.followHostSlot && preferences.model) {
+    } else if (preferences.followHostSlot === false && preferences.model) {
       // An explicit plugin override wins over a model saved by an older activation.
       choice = preferenceModel(preferences) as ArchitectModelConfig;
-    } else if (preferences?.followHostSlot || preferences === undefined) {
+    } else if (preferences.followHostSlot) {
       const slot = catalog.slots.strong;
       if (slot) {
         choice = {

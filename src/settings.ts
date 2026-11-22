@@ -41,7 +41,7 @@ import { locale, resolveLocale, setLocale, t } from "./i18n.ts";
 import type { MessageKey } from "./i18n.ts";
 import { artifactName } from "./view/node-inspector.ts";
 import { mountResearchSettings } from "./research-settings.ts";
-import { DEFAULT_DISPLAY, LANGUAGE_PREFERENCES, VIEW_MODES } from "./domain.ts";
+import { DEFAULT_ARCHITECT_PREFERENCES, DEFAULT_DISPLAY, LANGUAGE_PREFERENCES, VIEW_MODES } from "./domain.ts";
 import type { DisplaySettings, LanguagePreference, ViewMode } from "./domain.ts";
 
 const VIEW_LABELS: Record<ViewMode, MessageKey> = { tree: "view.tree", graph: "view.graph", list: "view.list" };
@@ -340,7 +340,7 @@ export function mountSettingsPage(
   }
 
   function preferences(): ArchitectPreferences {
-    return overrideDraft ?? settings.architect ?? { followHostSlot: true };
+    return overrideDraft ?? settings.architect ?? DEFAULT_ARCHITECT_PREFERENCES;
   }
 
   async function setFollowHost(value: boolean): Promise<void> {

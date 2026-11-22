@@ -378,8 +378,10 @@ test("settings validate before writing, persist, and steer the Architect model",
   const h = host(t, { dataDirectory: directory });
   await createConversation(h);
 
+  // The host seeds a host-slot preference (see tests/host.ts); a fresh install defaults to the cheapest model.
   assert.deepEqual((await h.call<{ settings: unknown }>("settings.get")).settings, {
     artifactDefaults: {},
+    architect: { followHostSlot: true },
   });
 
   const saved = await h.call<{ settings: any }>("settings.save", {
