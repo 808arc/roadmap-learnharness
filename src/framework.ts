@@ -139,6 +139,8 @@ export interface ArchitectPromptOptions {
   readonly settings?: PluginSettings | null;
   /** Names of the research tools this Architect has (empty: offline). */
   readonly researchTools?: readonly string[];
+  /** Upstream mode (#19): sources are the learner's graph and the developer-roadmap topic files only. */
+  readonly upstream?: boolean;
 }
 
 /** Roadmap-author method (approved by the owner, 2026-11-17). Sources: Matt Warden's
@@ -171,6 +173,18 @@ const DOSSIER_LINES = [
   "- Do not link the dossier's source chat to the path; sessions link only when launched from a node.",
 ].join("\n");
 
+/** Upstream mode (#19): the only sources are the learner's graph and the roadmap.sh topic files. */
+const UPSTREAM_SOURCE_LINES = [
+  "## Sources (upstream mode)",
+  "You build the path from two sources only: the learner's Knowledge Graph and the developer-roadmap topic files published by roadmap.sh (repository nilbuild/developer-roadmap).",
+  "- Call read_learner_graph first: it is what the learner already knows. Place those topics as optional review nodes, as the graph brief describes.",
+  "- Call list_roadmap_topics with a roadmap slug, then read_roadmap_topic for each topic you use. Use only the slugs these tools return.",
+  "- Do not search the web, read other pages, look up books, or use research notes. If GitHub cannot be reached, tell the learner that plainly and stop; never substitute another source.",
+  "- A node's resources are the tagged resources of its topic file, copied exactly: the same link text and URL as written, tag included. Do not reword, shorten or invent links, and take each url only from a topic you read in this conversation.",
+  "- Name roadmap.sh as the source: the sourceSpine is mode \"canonical\" with the reference title \"roadmap.sh developer roadmap (nilbuild/developer-roadmap)\" and kind \"course\". Use the topic title as sourceAnchor reference.",
+  "- Do not add a resource that the topic files do not list. A node with no tagged resources in its topic file has none.",
+].join("\n");
+
 const researchLines = (tools: readonly string[]): string => {
   const has = (name: string): boolean => tools.includes(name);
   const lines = ["## Research"];
@@ -193,7 +207,7 @@ const researchLines = (tools: readonly string[]): string => {
 
 /** The Path Architect system prompt: grounding, taxonomy, pedagogy and hard exclusions. */
 export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {}): string {
-  const { existingPath = null, settings = null, researchTools = [] } = options;
+  const { existingPath = null, settings = null, researchTools = [], upstream = false } = options;
   const sections = [
     [
       "You are the Roadmap Architect for LearnHarness (the Roadmap plugin: a learning path drawn as a roadmap.sh-style map).",
@@ -201,7 +215,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
       "Design structure only. Teaching, practice, diagnostics and artifacts happen in the child sessions launched from each node.",
     ].join("\n"),
 
-    [
+    upstream ? UPSTREAM_SOURCE_LINES : [
       "## Source grounding",
       "Do not require the learner to supply a reference. If they uploaded a source, use it even if unnamed. Otherwise choose one or two reputable primary textbooks, courses or specifications you know well, and tell the learner which. Never block path creation to ask for a source.",
       "Call list_uploaded_sources at the start of a new path. If there is none and no source is named, proceed with your own choice.",
@@ -239,7 +253,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
 
     AUTHOR_METHOD,
     DOSSIER_LINES,
-    researchLines(researchTools),
+    upstream ? "" : researchLines(researchTools),
 
     [
       "## Ungated progression",
@@ -303,7 +317,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
       : `## Language\nWrite every learner-facing field (titles, goals, outcomes, pre-reading) in ${language === "ru" ? "Russian" : "English"}, whatever language the learner uses. Keep book and course titles as published.`,
   );
   if (existingPath) sections.push(refinementLines(existingPath));
-  return sections.join("\n\n");
+  return sections.filter(Boolean).join("\n\n");
 }
 
 /** Resolve the artifact a child session should prompt for, in override order. */

@@ -23,12 +23,15 @@ import type {
 } from "learnharness-plugin-api";
 import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, parseLearningPath } from "./domain.ts";
 import type { LearningPath, UploadedSourceReference } from "./domain.ts";
+import { buildGraphBrief } from "./graph-brief.ts";
 import type { GraphBrief } from "./graph-brief.ts";
 import { topicKey } from "./learner-map.ts";
 import { buildArchitectSystemPrompt } from "./framework.ts";
 import { StoreError } from "./store.ts";
 import type { ArchitectModelConfig, LearningPathStore } from "./store.ts";
 import type { LogFields, LogStep, PluginLog } from "./plugin-log.ts";
+import { UpstreamError, listRoadmapTopics, readTopic } from "./upstream-roadmaps.ts";
+import type { UpstreamOptions } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
 export const ARCHITECT_DEFINITION_ID = "path-architect";
@@ -52,6 +55,10 @@ export interface ArchitectAgentOptions {
   readonly graphBrief?: () => GraphBrief | null;
   /** Metadata-only step timings; the Architect behaves the same without it. */
   readonly log?: PluginLog;
+  /** Upstream mode (#19): when set, the Architect's only sources are the learner's graph and the
+   * developer-roadmap topic files at this fetch. `researchTools` and the uploaded-source tools are
+   * then not offered at all. */
+  readonly upstream?: UpstreamOptions & { readonly commit: string };
 }
 
 export interface ArchitectRegistration {
@@ -674,6 +681,7 @@ export function buildArchitectDefinition(
   model: ArchitectModelConfig,
   options: ArchitectAgentOptions,
 ): PluginAgentDefinition {
+  if (options.upstream) return buildUpstreamDefinition(ctx, model, options, options.upstream);
   return {
     id: ARCHITECT_DEFINITION_ID,
     model: toModelSpec(model),
@@ -702,4 +710,171 @@ export function registerArchitect(
   const definition = buildArchitectDefinition(ctx, model, options);
   const unregister = ctx.agents.register(definition);
   return { definition, unregister };
+}
+
+/* ---- Upstream mode (#19) -------------------------------------------------------
+ * Kept apart from the default Architect so the two stay easy to merge: this mode
+ * offers the graph brief, the two upstream reads and the path tools, nothing else. */
+
+const isRecordValue = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** Resource urls of the stored paths: a refinement may echo links saved earlier. */
+function storedResourceUrls(store: LearningPathStore): string[] {
+  return store.paths().flatMap((path) =>
+    path.modules.flatMap((module) =>
+      module.nodes.flatMap((node) => (node.resources ?? []).map((resource) => resource.url ?? "")),
+    ),
+  );
+}
+
+/** Draft resource urls that are not in `allowed`, read the way the save tools read them. */
+function unseenResourceUrls(args: unknown, allowed: ReadonlySet<string>): string[] {
+  const draft = normalizeDraftArguments(args);
+  if (!isRecordValue(draft) || !Array.isArray(draft.modules)) return [];
+  const unseen: string[] = [];
+  for (const module of draft.modules) {
+    if (!isRecordValue(module) || !Array.isArray(module.nodes)) continue;
+    for (const node of module.nodes) {
+      if (!isRecordValue(node) || !Array.isArray(node.resources)) continue;
+      for (const resource of node.resources) {
+        const url = isRecordValue(resource) ? resource.url : undefined;
+        if (typeof url === "string" && url !== "" && !allowed.has(url)) unseen.push(url);
+      }
+    }
+  }
+  return unseen;
+}
+
+/** Refuse a save whose resource urls were not read from a topic file: no invented or reworded links. */
+function withUpstreamLinkCheck(tool: PluginAgentTool, allowed: () => ReadonlySet<string>): PluginAgentTool {
+  if (!tool.execute) return tool;
+  const execute = tool.execute;
+  return {
+    ...tool,
+    execute: async (...args: Parameters<typeof execute>) => {
+      const params: unknown = args[1];
+      let draft: unknown = params;
+      if (tool.name === "save_learning_path_json" && isRecordValue(params) && typeof params.draftJson === "string") {
+        try {
+          draft = JSON.parse(params.draftJson);
+        } catch {
+          draft = params; // Unparseable: the save tool itself reports it.
+        }
+      }
+      const unseen = unseenResourceUrls(draft, allowed());
+      if (unseen.length > 0) {
+        return errorResult(
+          "Learning path rejected; nothing was written. Resource urls must be copied from topic files read in " +
+            `this conversation (read_roadmap_topic): ${unseen.slice(0, 5).join(", ")}`,
+        );
+      }
+      return execute(...args);
+    },
+  } as PluginAgentTool;
+}
+
+/** `read_learner_graph`: the learner's graph brief, read through ctx.learning.graph(). */
+function readLearnerGraphTool(ctx: PluginBackendContext): PluginAgentTool {
+  return {
+    name: "read_learner_graph",
+    description:
+      "Read the learner's Knowledge Graph as a compact brief: topics (name, statement, aliases) and chains. " +
+      "Read-only. It is the only view of what the learner already knows.",
+    parameters: objectSchema({}),
+    execute: async (_toolCallId, _params, signal) => {
+      assertLive(ctx, signal);
+      try {
+        const graph = ctx.learning.graph();
+        const brief = buildGraphBrief({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
+        return textResult(brief, JSON.stringify(brief));
+      } catch (error) {
+        return errorResult(`The learner's graph could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+  };
+}
+
+/** `list_roadmap_topics` and `read_roadmap_topic`: the two upstream operations, nothing else. */
+function upstreamReadTools(
+  ctx: PluginBackendContext,
+  upstream: UpstreamOptions & { readonly commit: string },
+  readUrls: Set<string>,
+): PluginAgentTool[] {
+  const upstreamFailure = (error: unknown): AgentToolResult<{ error: string }> => {
+    // Bad arguments and upstream failures are both reported to the model, never thrown.
+    if (error instanceof Error) return errorResult(error.message);
+    throw error;
+  };
+  return [
+    {
+      name: "list_roadmap_topics",
+      description:
+        "List the topic slugs of one developer-roadmap roadmap (for example \"frontend\" or \"devops\"). " +
+        "Then use read_roadmap_topic for the topics you need.",
+      parameters: objectSchema({
+        roadmapSlug: { type: "string", description: "Lowercase slug of the roadmap, e.g. \"backend\"." },
+      }, ["roadmapSlug"]),
+      execute: async (_toolCallId, rawParams, signal) => {
+        assertLive(ctx, signal);
+        try {
+          const params = readObject(rawParams);
+          const topics = await listRoadmapTopics(String(params.roadmapSlug), upstream.commit, upstream);
+          const result = { topics: topics.map((topic) => topic.slug) };
+          return textResult(result, JSON.stringify(result));
+        } catch (error) {
+          return upstreamFailure(error);
+        }
+      },
+    },
+    {
+      name: "read_roadmap_topic",
+      description:
+        "Read one topic of a developer-roadmap roadmap: title, description and tagged resources exactly as the " +
+        "topic file writes them (source: roadmap.sh). Copy resources from here; never invent or reword a url.",
+      parameters: objectSchema({
+        roadmapSlug: { type: "string", description: "Lowercase slug of the roadmap." },
+        topicSlug: { type: "string", description: "Topic slug from list_roadmap_topics." },
+      }, ["roadmapSlug", "topicSlug"]),
+      execute: async (_toolCallId, rawParams, signal) => {
+        assertLive(ctx, signal);
+        try {
+          const params = readObject(rawParams);
+          const topic = await readTopic(String(params.roadmapSlug), String(params.topicSlug), upstream.commit, upstream);
+          for (const resource of topic.resources) readUrls.add(resource.url);
+          return textResult(topic, JSON.stringify(topic));
+        } catch (error) {
+          return upstreamFailure(error);
+        }
+      },
+    },
+  ];
+}
+
+/** The upstream-mode definition: graph brief, two upstream reads and the path tools. */
+function buildUpstreamDefinition(
+  ctx: PluginBackendContext,
+  model: ArchitectModelConfig,
+  options: ArchitectAgentOptions,
+  upstream: UpstreamOptions & { readonly commit: string },
+): PluginAgentDefinition {
+  const readUrls = new Set<string>();
+  const allowed = (): ReadonlySet<string> => new Set([...readUrls, ...storedResourceUrls(options.store)]);
+  return {
+    id: ARCHITECT_DEFINITION_ID,
+    model: toModelSpec(model),
+    instructions: buildArchitectSystemPrompt({
+      settings: options.store.settings(),
+      researchTools: [],
+      upstream: true,
+    }),
+    maxTurns: ARCHITECT_MAX_TURNS,
+    tools: [
+      readLearnerGraphTool(ctx),
+      ...upstreamReadTools(ctx, upstream, readUrls),
+      getLearningPathTool(ctx, options),
+      withUpstreamLinkCheck(saveLearningPathTool(ctx, options), allowed),
+      withUpstreamLinkCheck(saveLearningPathTool(ctx, options, true), allowed),
+    ],
+  };
 }
