@@ -11,14 +11,6 @@ const PROGRESS_KEYS = ["unstarted", "in_progress", "consolidated", "skipped"] as
 import type { PluginFrontendContext, PluginToolRenderer, PluginToolRenderProps } from "learnharness-plugin-api";
 import { LEARNING_PATH_TOOL_NAMES } from "../tool-names.ts";
 import type { ErrorCategory, PivotProposalType } from "../domain.ts";
-import { ERROR_CATEGORY_LABELS } from "./labels.ts";
-
-const PIVOT_LABELS: Record<PivotProposalType, string> = {
-  bridge: "bridge node",
-  contrast: "contrast node",
-  skill: "skill drill",
-  holistic: "holistic node",
-};
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -28,10 +20,6 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
-function number(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function summary(tool: PluginToolRenderProps): { headline: string; detail?: string } {
