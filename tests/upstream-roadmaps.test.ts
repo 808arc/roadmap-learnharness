@@ -298,10 +298,23 @@ test("an uploaded source with mode 000 is refused and no path is written", { ski
   }
 });
 
-test("an id with capital letters matches the file whose name has those capitals", async (t) => {
+test("an id with capital letters is looked up in lowercase: a file named with the capitals is refused as not stored", async (t) => {
   const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
   fs.mkdirSync(path.join(store.directory, "sources"), { recursive: true });
   fs.writeFileSync(path.join(store.directory, "sources", `${CAPITAL_UUID}.md`), "# Capital source");
+  if (fs.existsSync(path.join(store.directory, "sources", `${CAPITAL_UUID.toLowerCase()}.md`))) {
+    t.skip("the filesystem is case-insensitive, so the capitalised name is the lowercase file");
+    return;
+  }
+  const saved = await tool("save_learning_path").execute("c1", uploadedDraft(CAPITAL_UUID), undefined);
+  assert.equal(saved.isError, true);
+  assert.match(saved.content[0]?.text ?? "", /not stored/);
+  assert.equal(store.paths().length, 0);
+});
+
+test("a file named with the lowercase id is accepted for an id with capital letters", async (t) => {
+  const { store, tool } = upstreamDefinition(t, fakeFetch({}).fetch);
+  store.writeSource(CAPITAL_UUID.toLowerCase(), "# Lowercase source");
   const saved = await tool("save_learning_path").execute("c1", uploadedDraft(CAPITAL_UUID), undefined);
   assert.equal(saved.isError, undefined, saved.content[0]?.text);
   assert.equal(store.paths().length, 1);

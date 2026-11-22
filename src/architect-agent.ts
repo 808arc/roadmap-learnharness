@@ -532,28 +532,23 @@ export type StoredSourceCheck =
   | { readonly status: "refused"; readonly message: string };
 
 /** Whether an uploaded source can be read, decided from its file's metadata: the text is never loaded.
- * Refuses what readSource refuses (a symlink, a non-file, a missing file) and what cannot be read (no
- * read permission). The file is looked up by its exact id first, then by its lowercase id, as readSource
- * always did; the id is never lowercased before the lookup, so a file with capitals in its name is found. */
+ * The file is looked up by the lowercased id only, as readSource always did. Refuses what readSource
+ * refuses (a symlink, a non-file, a missing file) and what cannot be read (no read permission). */
 export function checkStoredSource(store: LearningPathStore, sourceId: string): StoredSourceCheck {
   if (!isSourceId(sourceId)) return { status: "refused", message: "Invalid source ID: expected a UUID." };
-  const directory = nodePath.join(store.directory, SOURCES_DIRECTORY);
-  for (const name of new Set([sourceId, sourceId.toLowerCase()])) {
-    const filename = nodePath.join(directory, `${name}.md`);
-    const stat = fs.lstatSync(filename, { throwIfNoEntry: false });
-    if (!stat) continue;
-    if (stat.isSymbolicLink()) {
-      return { status: "refused", message: `Refusing to follow symlinked source file: ${filename}.` };
-    }
-    if (!stat.isFile()) return { status: "refused", message: `Source path is not a regular file: ${filename}.` };
-    try {
-      fs.accessSync(filename, fs.constants.R_OK);
-    } catch {
-      return { status: "refused", message: `Source file cannot be read: ${filename}.` };
-    }
-    return { status: "ok" };
+  const filename = nodePath.join(store.directory, SOURCES_DIRECTORY, `${sourceId.toLowerCase()}.md`);
+  const stat = fs.lstatSync(filename, { throwIfNoEntry: false });
+  if (!stat) return { status: "missing" };
+  if (stat.isSymbolicLink()) {
+    return { status: "refused", message: `Refusing to follow symlinked source file: ${filename}.` };
   }
-  return { status: "missing" };
+  if (!stat.isFile()) return { status: "refused", message: `Source path is not a regular file: ${filename}.` };
+  try {
+    fs.accessSync(filename, fs.constants.R_OK);
+  } catch {
+    return { status: "refused", message: `Source file cannot be read: ${filename}.` };
+  }
+  return { status: "ok" };
 }
 
 function countNodes(path: LearningPath): number {
