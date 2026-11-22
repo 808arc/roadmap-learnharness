@@ -6,6 +6,7 @@
   "license": "AGPL-3.0-only",
   "description": "Roadmap community plugin for LearnHarness: learning roadmaps drawn like roadmap.sh, built by an Architect from real sources.",
   "scripts": {
+    "sdk": "node scripts/sdk.mjs",
     "build": "node scripts/build.mjs",
     "typecheck": "node scripts/check-sdk.mjs && tsc --noEmit",
     "test": "node --test tests/*.test.mjs tests/*.test.ts",

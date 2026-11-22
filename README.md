@@ -110,12 +110,24 @@ To update, replace `roadmap/dist/` and keep `roadmap/data/` (your roadmaps).
 
 ### From source
 
+The plugin API types are not on npm. In LearnHarness open **Settings → Community
+plugins** and use **Download authoring skill**, then extract the downloaded
+`learnharness-plugins/` folder into this repo (it is git-ignored).
+
 ```sh
-git clone https://github.com/Doshhhh/roadmap-learnharness.git
+git clone https://github.com/808arc/roadmap-learnharness.git
 cd roadmap-learnharness
+npm run sdk      # copies learnharness-plugins/types into .sdk/
 npm ci
 npm run install:local -- "<plugins-directory>"
 ```
+
+`install:local` builds `dist/` and copies it into `<plugins-directory>/roadmap/`.
+It never touches `data/`, so your roadmaps are kept.
+
+For a quick rebuild-and-copy loop during development, `./plugin-sync.sh` builds
+and copies the whole plugin folder into LearnHarness. It deletes the existing
+copy first, including `data/`, so back up roadmaps you care about before running it.
 
 ### Coming from Learning Paths
 
