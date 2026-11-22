@@ -567,6 +567,20 @@
   text-overflow: ellipsis;
 }
 
+.rm-box-focus {
+  border-color: var(--rm-acc);
+}
+
+/* Bracket around interchangeable alternatives that share a column. */
+.rm-alt-group {
+  position: absolute;
+  width: 4px;
+  border: 1px solid var(--rm-faint);
+  border-right: 0;
+  border-radius: 3px 0 0 3px;
+  pointer-events: none;
+}
+
 /* Zoom + legend ------------------------------------------------------- */
 
 .rm-zoom {
@@ -653,6 +667,16 @@
   border-top-style: dashed;
 }
 
+.rm-legend-arrow {
+  color: var(--rm-faint);
+  font-size: 12px;
+}
+
+.rm-legend-note {
+  color: var(--rm-muted);
+  font-size: 11.5px;
+}
+
 .rm-legend-alt {
   width: 16px;
   color: var(--rm-faint);
@@ -707,9 +731,45 @@
   font-size: 12px;
 }
 
+.rm-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+}
+
+.rm-tree-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--rm-muted);
+  cursor: pointer;
+}
+
+.rm-tree-toggle:hover {
+  background: var(--rm-panel-2);
+}
+
+.rm-tree-toggle-empty {
+  cursor: default;
+}
+
+.rm-tree-module-tag,
+.rm-tree-also {
+  color: var(--rm-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .rm-node.rm-tree-node {
   position: relative;
-  margin-left: 28px;
   border-color: transparent;
   background: transparent;
 }
