@@ -374,6 +374,7 @@ test("upstream mode offers only the graph brief, the two upstream reads and the 
       "list_roadmap_topics",
       "read_learner_graph",
       "read_roadmap_topic",
+      "read_roadmap_topics",
       "save_learning_path",
       "save_learning_path_json",
     ],
@@ -643,4 +644,105 @@ test("recalledRoadmapPath matches the pinned repo in any case, and leaves other 
   assert.equal(recalledRoadmapPath(UPSTREAM_REPOSITORY.toUpperCase()), null);
   assert.equal(recalledRoadmapPath("metadata/roadmaps and developer-roadmap alone"), null);
   assert.equal(recalledRoadmapPath("see someone/developer-roadmap/tree/master"), "someone/developer-roadmap");
+});
+
+/** Batch reads (read_roadmap_topics): synthetic listing with `count` topics, each file the same synthetic text. */
+function batchRoutes(count: number): Record<string, { status: number; body: string }> {
+  const names = Array.from({ length: count }, (_, index) => `batch-topic-${String(index + 1).padStart(2, "0")}@Bt${index}.md`);
+  const routes: Record<string, { status: number; body: string }> = {
+    [`${ROOT}/synthetic-roadmap/content?ref=${COMMIT}`]: {
+      status: 200,
+      body: JSON.stringify(names.map((name) => ({ name, type: "file" }))),
+    },
+  };
+  for (const name of names) routes[`${ROOT}/synthetic-roadmap/content/${name}?ref=${COMMIT}`] = { status: 200, body: TOPIC_MD };
+  return routes;
+}
+
+const batchSlug = (index: number) => `batch-topic-${String(index + 1).padStart(2, "0")}`;
+
+interface BatchOutcome {
+  slug: string;
+  ok: boolean;
+  topic?: { slug: string; title: string };
+  kind?: string;
+  error?: string;
+}
+
+test("a batch of 3 returns 3 results in the order given, each equal to its single read", async (t) => {
+  const routes = { ...standardRoutes(), [`${ROOT}/synthetic-roadmap/content/other-topic@Qz9-k.md?ref=${COMMIT}`]: { status: 200, body: TOPIC_MD } };
+  const { fetch } = fakeFetch(routes);
+  const { tool } = upstreamDefinition(t, fetch);
+  const order = ["other-topic", "synthetic-topic", "other-topic"];
+  const result = await tool("read_roadmap_topics").execute("b1", { roadmapSlug: "synthetic-roadmap", topicSlugs: order }, undefined);
+  assert.equal(result.isError, undefined);
+  const batch = result.details as { roadmap: string; results: BatchOutcome[] };
+  assert.equal(batch.roadmap, "synthetic-roadmap");
+  assert.deepEqual(batch.results.map((entry) => entry.slug), order);
+  assert.ok(batch.results.every((entry) => entry.ok));
+  for (const [index, slug] of order.entries()) {
+    const single = await readTopic("synthetic-roadmap", slug, COMMIT, { fetch });
+    assert.deepEqual(batch.results[index]?.topic, single, `result ${index} matches the single read of ${slug}`);
+  }
+});
+
+test("a batch with one bad slug is refused before any request is made", async (t) => {
+  for (const bad of ["../etc", "A-Upper", "x--", "frontend?x=1"]) {
+    const { fetch, calls } = fakeFetch(standardRoutes());
+    const { tool } = upstreamDefinition(t, fetch);
+    const result = await tool("read_roadmap_topics").execute("b2", { roadmapSlug: "synthetic-roadmap", topicSlugs: ["synthetic-topic", bad, "other-topic"] }, undefined);
+    assert.equal(result.isError, true, bad);
+    assert.match(result.content[0]?.text ?? "", /topicSlugs\[1\]/);
+    assert.equal(calls.length, 0, `no request when ${JSON.stringify(bad)} is in the batch`);
+  }
+  const { fetch, calls } = fakeFetch(standardRoutes());
+  const { tool } = upstreamDefinition(t, fetch);
+  const badRoadmap = await tool("read_roadmap_topics").execute("b3", { roadmapSlug: "../x", topicSlugs: ["synthetic-topic"] }, undefined);
+  assert.equal(badRoadmap.isError, true);
+  assert.equal(calls.length, 0);
+});
+
+test("a batch with one missing topic returns that one as not found and the others normally", async (t) => {
+  const routes = { ...standardRoutes(), [`${ROOT}/synthetic-roadmap/content/other-topic@Qz9-k.md?ref=${COMMIT}`]: { status: 200, body: TOPIC_MD } };
+  const { fetch } = fakeFetch(routes);
+  const { tool } = upstreamDefinition(t, fetch);
+  const result = await tool("read_roadmap_topics").execute("b4", { roadmapSlug: "synthetic-roadmap", topicSlugs: ["synthetic-topic", "absent-topic", "other-topic"] }, undefined);
+  assert.equal(result.isError, undefined);
+  const results = (result.details as { results: BatchOutcome[] }).results;
+  assert.deepEqual(results.map((entry) => entry.ok), [true, false, true]);
+  assert.equal(results[1]?.kind, "not_found");
+  assert.equal(results[1]?.topic, undefined, "no topic is made up for the missing one");
+  assert.equal(results[0]?.topic?.slug, "synthetic-topic");
+  assert.equal(results[2]?.topic?.slug, "other-topic");
+});
+
+test("a batch may name at most 10 topics: 10 are read, 11 are refused before any request", async (t) => {
+  const { fetch, calls } = fakeFetch(batchRoutes(12));
+  const { tool } = upstreamDefinition(t, fetch);
+  const eleven = Array.from({ length: 11 }, (_, index) => batchSlug(index));
+  const refused = await tool("read_roadmap_topics").execute("b5", { roadmapSlug: "synthetic-roadmap", topicSlugs: eleven }, undefined);
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0]?.text ?? "", /at most 10/);
+  assert.equal(calls.length, 0);
+
+  const ten = eleven.slice(0, 10);
+  const accepted = await tool("read_roadmap_topics").execute("b6", { roadmapSlug: "synthetic-roadmap", topicSlugs: ten }, undefined);
+  assert.equal(accepted.isError, undefined);
+  assert.equal((accepted.details as { results: BatchOutcome[] }).results.length, 10);
+
+  const empty = await tool("read_roadmap_topics").execute("b7", { roadmapSlug: "synthetic-roadmap", topicSlugs: [] }, undefined);
+  assert.equal(empty.isError, true);
+});
+
+test("a batch request goes only to the pinned repo under roadmaps/", async (t) => {
+  const { fetch, calls } = fakeFetch(standardRoutes());
+  const { tool } = upstreamDefinition(t, fetch);
+  await tool("read_roadmap_topics").execute("b8", { roadmapSlug: "synthetic-roadmap", topicSlugs: ["synthetic-topic", "other-topic"] }, undefined);
+  assert.ok(calls.length >= 1);
+  for (const call of calls) {
+    assert.ok(call.url.startsWith(`${UPSTREAM_API_BASE}/repos/${UPSTREAM_REPOSITORY}/contents/roadmaps/`), call.url);
+    assert.ok(call.url.endsWith(`ref=${COMMIT}`), call.url);
+  }
+  const listingCalls = calls.filter((call) => call.url.includes("/content?ref="));
+  assert.equal(listingCalls.length, 1, "the listing is read once for the batch");
 });

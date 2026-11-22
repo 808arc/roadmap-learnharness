@@ -14,7 +14,7 @@ import {
   defaultArtifactFor,
   formatSourceAnchor,
 } from "./domain.ts";
-import { UPSTREAM_REPOSITORY } from "./upstream-roadmaps.ts";
+import { MAX_TOPICS_PER_BATCH, UPSTREAM_REPOSITORY } from "./upstream-roadmaps.ts";
 import type {
   ArtifactConfig,
   ChildSessionKind,
@@ -185,7 +185,8 @@ const UPSTREAM_SOURCE_LINES = [
   "## Sources (upstream mode)",
   `Order: the learner's Knowledge Graph, then the topic files of ${UPSTREAM_REPOSITORY} (roadmap.sh), the only upstream source. Books and web come second, only to enrich nodes that already exist.`,
   "- Call read_learner_graph first: it is what the learner already knows. Place those topics as optional review nodes, as the graph brief describes.",
-  "- Call list_roadmap_topics with a roadmap slug, then read_roadmap_topic for each topic you use. Use only the slugs these tools return.",
+  "- Call list_roadmap_topics with a roadmap slug. Then read topics in two waves with read_roadmap_topics: wave 1 the core topics you judge most important, one call; wave 2 the rest you use, one more call. Use only the slugs these tools return.",
+  `- Cap: at most ${MAX_TOPICS_PER_BATCH} topics per read_roadmap_topics call. read_roadmap_topic reads a single topic.`,
   `- ${REPO_RULE}`,
   "- Books and web never create topics, nodes or roadmap structure. If GitHub cannot be reached, say so plainly and stop; never substitute another source for the structure.",
   "- A node's resources are the tagged resources of its topic file, copied exactly: the same link text and URL as written, tag included. Do not reword, shorten or invent links, and take each url only from a topic you read in this conversation.",
