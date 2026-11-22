@@ -13,6 +13,7 @@ import { ARTIFACT_CATALOG, PROGRESSION_STATES, artifactCatalogEntry, recommended
 import type {
   ArtifactType,
   ChildSessionKind,
+  ChildSessionLink,
   LearningPath,
   NodeResource,
   PathNode,
@@ -103,6 +104,23 @@ function findNode(path: LearningPath, nodeId: string): PathNode | null {
     if (node) return node;
   }
   return null;
+}
+
+/**
+ * The chat "Open" opens for a node: the most recently linked chat that still exists. A chat the status read
+ * reports as missing is skipped; with no status (not read yet) every linked chat counts as present.
+ */
+export function latestOpenableChat(
+  node: PathNode,
+  chatStatus?: ReadonlyMap<string, SessionStatus>,
+): ChildSessionLink | null {
+  let latest: ChildSessionLink | null = null;
+  for (const chat of node.childSessions) {
+    if ((chatStatus?.get(chat.chatId)?.exists ?? true) === false) continue;
+    // Ties go to the later entry, which was linked after the earlier one.
+    if (!latest || chat.createdAt >= latest.createdAt) latest = chat;
+  }
+  return latest;
 }
 
 export function artifactName(type: ArtifactType): string {
@@ -239,6 +257,12 @@ export function createNodeInspector(
       { signal: scoped() },
     );
     handles.push(dialog);
+  };
+
+  const openNode = (node: PathNode): void => {
+    const latest = latestOpenableChat(node, options.chatStatus);
+    if (latest) options.openSession(latest.chatId);
+    else void options.startSession("teaching");
   };
 
   const renderSelected = (path: LearningPath, node: PathNode): void => {
@@ -410,8 +434,10 @@ export function createNodeInspector(
       );
     }
 
+    // Every node can be opened as a chat: the latest linked chat, or a new Lesson when there is none.
     footer.append(
-      button(document, t("action.lesson"), () => void options.startSession("teaching"), scoped(), { variant: "primary" }),
+      button(document, t("action.openNode"), () => openNode(node), scoped(), { variant: "primary" }),
+      button(document, t("action.lesson"), () => void options.startSession("teaching"), scoped(), { variant: "outline" }),
       button(document, t("action.practice"), () => void options.startSession("practice"), scoped(), { variant: "outline" }),
     );
     if (options.findResources) {
