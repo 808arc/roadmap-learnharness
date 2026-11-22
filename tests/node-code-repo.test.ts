@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CODE_REPO_LOCATION_MAX, validateLearningPath } from "../src/domain.ts";
-import type { LearningPath, PathNode } from "../src/domain.ts";
+import type { LearningPath } from "../src/domain.ts";
 import { buildChildSessionBrief } from "../src/framework.ts";
 import { setLocale, t, tables } from "../src/i18n.ts";
 import type { MessageKey } from "../src/i18n.ts";
@@ -13,12 +13,6 @@ function validateWithRepo(codeRepo: unknown) {
   raw.modules[0].nodes[0].codeRepo = codeRepo;
   return validateLearningPath(raw);
 }
-
-const nodeIn = (path: LearningPath, id: string): PathNode => {
-  const node = path.modules.flatMap((module) => module.nodes).find((candidate) => candidate.id === id);
-  assert.ok(node, `node ${id} exists`);
-  return node;
-};
 
 /** Sets codeRepo on one node of a path, leaving the rest untouched. */
 const withNodeRepo = (path: LearningPath, id: string, location: string): LearningPath => ({

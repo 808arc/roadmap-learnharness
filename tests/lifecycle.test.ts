@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import type { PluginMenuProps, PluginTreeRow, PluginView } from "learnharness-plugin-api";
+import type { PluginMenuProps, PluginView } from "learnharness-plugin-api";
 import { activate as activateBackend } from "../src/backend.ts";
 import { activate as activateFrontend } from "../src/main.ts";
 import { mountPathHub } from "../src/view/path-hub.ts";
@@ -41,27 +41,6 @@ function runNode(script: string, args: readonly string[], cwd: string) {
     cwd,
     encoding: "utf8",
   });
-}
-
-function buttonRecord(fixture: ViewFixture, label: string) {
-  const found = fixture.all("mountButton").find((record) => record.props.label === label);
-  assert.ok(found, `Missing button ${label}`);
-  return found;
-}
-
-function selectedNode(fixture: ViewFixture, key: string) {
-  const tree = fixture.find("mountTree");
-  const rows: PluginTreeRow[] = [];
-  const visit = (entries: readonly PluginTreeRow[]) => {
-    for (const row of entries) {
-      rows.push(row);
-      if (row.children) visit(row.children);
-    }
-  };
-  visit(tree.props.rows as readonly PluginTreeRow[]);
-  const found = rows.find((row) => row.key === key);
-  assert.ok(found, `Missing tree row ${key}`);
-  return found;
 }
 
 async function flushAll(fixture: ViewFixture): Promise<void> {
