@@ -85,6 +85,8 @@ export interface TestHost {
   readonly events: EmittedEvent[];
   readonly controller: AbortController;
   call<T = unknown>(name: string, input?: unknown): Promise<T>;
+  /** Store a snapshot as the conversation's record and push it to live listeners, as a model run would. */
+  publish(snapshot: PluginAgentSnapshot): void;
   tool(name: string): NonNullable<PluginAgentDefinition["tools"]>[number];
   runTool<T = unknown>(name: string, args: unknown): Promise<T>;
   nativeTools(chatId: string, agent: PluginToolContext["agent"]): ReturnType<PluginTools["create"]>;
@@ -310,6 +312,10 @@ export function createHost(options: HostOptions = {}): TestHost {
     abortedCalls,
     events,
     controller,
+    publish(snapshot: PluginAgentSnapshot): void {
+      records.set(snapshot.id, snapshot);
+      publish(snapshot);
+    },
     async call<T>(name: string, input?: unknown): Promise<T> {
       const handler = handlers.get(name);
       if (!handler) throw new Error(`Unknown handler: ${name}`);

@@ -297,6 +297,29 @@ export function readGraphMastery(learning: { graph(): LearnerGraph }): Mastery[]
   return deriveMastery({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
 }
 
+/** Why an Architect run left `running`, as a short code. Logged; the message text never is. */
+export type ModelCallCause = "user_stop" | "provider_error" | "timeout" | "aborted" | "unknown";
+// The snapshot cannot tell who aborted a run, so user_stop comes from a flag set by architect.abort.
+// "timeout" is a best-effort label matched on the SDK's free-text error; anything else is provider_error.
+
+/** Classify a finished run from the snapshot alone. The SDK gives a status, a free-text `error`
+ * and pi's stopReason (on `partial`, or on an assistant message from this run on). Failed and
+ * aborted generations are dropped from committed history, so `partial` is the usual source. */
+export function modelCallCause(snapshot: PluginAgentSnapshot, from: number): ModelCallCause {
+  const stopReason = (message: unknown): unknown =>
+    typeof message === "object" && message !== null ? (message as { stopReason?: unknown }).stopReason : undefined;
+  let reason = stopReason(snapshot.partial);
+  if (reason === undefined) {
+    const last = snapshot.messages.slice(from).findLast((message) => (message as { role?: unknown }).role === "assistant");
+    reason = stopReason(last);
+  }
+  if (snapshot.status === "error" || reason === "error") {
+    return /time(d)?[ -]?out/i.test(snapshot.error ?? "") ? "timeout" : "provider_error";
+  }
+  if (reason === "aborted") return "aborted";
+  return "unknown";
+}
+
 export function activate(ctx: PluginBackendContext): void {
   // Keeps secrets and logs out of a Git-versioned data folder. Never throws.
   ensureDataGitignore(ctx.dataDirectory);
@@ -329,10 +352,13 @@ export function activate(ctx: PluginBackendContext): void {
   // One "model call" step per Architect run: opened when a conversation is first
   // seen running, closed when it leaves running. Token counts come from the run's messages.
   const modelRuns = new Map<string, { step: LogStep; from: number }>();
+  // Conversations the learner stopped through architect.abort; read once when the run ends.
+  const userStops = new Set<string>();
   const trackModelRun = (snapshot: PluginAgentSnapshot): void => {
     const open = modelRuns.get(snapshot.id);
     if (snapshot.status === "running") {
       if (open) return;
+      userStops.delete(snapshot.id);
       const model = architect?.definition.model;
       modelRuns.set(snapshot.id, {
         step: architectLog.begin("model call", {
@@ -346,8 +372,15 @@ export function activate(ctx: PluginBackendContext): void {
     }
     if (!open) return;
     modelRuns.delete(snapshot.id);
+    const stoppedByUser = userStops.delete(snapshot.id);
     const finished = snapshot.status === "idle" || snapshot.status === "waiting";
-    open.step.end({ ...usageSince(snapshot.messages, open.from), status: snapshot.status, ok: finished });
+    let cause: ModelCallCause | undefined;
+    if (!finished) {
+      cause = modelCallCause(snapshot, open.from);
+      // A provider failure that lands while the learner stops is still logged as one.
+      if (stoppedByUser && (cause === "aborted" || cause === "unknown")) cause = "user_stop";
+    }
+    open.step.end({ ...usageSince(snapshot.messages, open.from), status: snapshot.status, ok: finished, cause });
   };
   const createRequests = new Map<string, string>();
   let architect: ArchitectRegistration | null = null;
@@ -1310,6 +1343,8 @@ export function activate(ctx: PluginBackendContext): void {
     const id = readText(value.id, "id", { max: 128 });
     // Aborting an idle/interrupted run is already a no-op; a retried request ID is accepted.
     if (value.requestId !== undefined) readRequestId(value.requestId);
+    // Set before abort(): the interrupted snapshot can be published synchronously.
+    if (modelRuns.has(id)) userStops.add(id);
     ctx.agents.abort(id);
     const conversation = ctx.agents.get(id);
     activeChatId = id;
