@@ -62,7 +62,7 @@ test("settings page edits justified artifact defaults and persists them", async 
     assert.equal(fixture.settings.artifactDefaults.concept, "derivation_trace");
     assert.deepEqual(
       fixture.calls.filter((call) => call.name === "settings.save").at(-1)?.input,
-      { artifactDefaults: { concept: "derivation_trace" }, display: { language: "en", defaultView: "graph", showOptional: true, patternHints: true } },
+      { artifactDefaults: { concept: "derivation_trace" }, display: { language: "en", defaultView: "tree", showOptional: true, patternHints: true } },
     );
     const updated = artifactRow(liveRows(fixture, "artifact-concept"), "artifact-concept");
     assert.equal(updated.value, "derivation_trace");

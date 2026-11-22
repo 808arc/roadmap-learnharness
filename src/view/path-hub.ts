@@ -1,8 +1,8 @@
 /** Roadmap view (formerly the Learning Paths "Path Hub").
  *
  * Layout after the Learny roadmap mockup:
- * - a toolbar: roadmap switcher, Graph/Tree, Refine, New roadmap;
- * - the roadmap canvas (bottom-up graph with pan/zoom, or a tree);
+ * - a toolbar: roadmap switcher, Tree/Graph/List, Refine, New roadmap;
+ * - the roadmap canvas (module tree or node graph with pan/zoom, or the list);
  * - a side panel with Node / Errors / Architect tabs;
  * - a status line with progress and open errors.
  *
@@ -152,10 +152,11 @@ export function mountPathHub(
   crumb.append(pathSwitch);
   const spine = el(document, "span", "rm-top-spine");
   const segment = el(document, "div", "rm-seg");
-  const graphTab = el(document, "button");
   const treeTab = el(document, "button");
-  graphTab.type = treeTab.type = "button";
-  segment.append(graphTab, treeTab);
+  const graphTab = el(document, "button");
+  const listTab = el(document, "button");
+  treeTab.type = graphTab.type = listTab.type = "button";
+  segment.append(treeTab, graphTab, listTab);
   const actions = el(document, "div", "rm-top-actions");
   toolbar.append(crumb, el(document, "span", "rm-grow"), spine, segment, actions);
   root.append(toolbar);
@@ -314,10 +315,12 @@ export function mountPathHub(
     pathSwitch.disabled = summaries.length === 0;
     spine.textContent = path ? spineLabel(path) : "";
     spine.title = spine.textContent;
-    graphTab.textContent = t("view.graph");
     treeTab.textContent = t("view.tree");
-    graphTab.className = view === "graph" ? "rm-on" : "";
+    graphTab.textContent = t("view.graph");
+    listTab.textContent = t("view.list");
     treeTab.className = view === "tree" ? "rm-on" : "";
+    graphTab.className = view === "graph" ? "rm-on" : "";
+    listTab.className = view === "list" ? "rm-on" : "";
     segment.hidden = path === null;
     toolbarControls.abort();
     toolbarControls = new AbortController();
@@ -767,16 +770,17 @@ export function mountPathHub(
       { signal },
     );
   }, { signal });
-  graphTab.addEventListener("click", () => {
-    view = "graph";
-    renderCanvas();
-    renderToolbar();
-  }, { signal });
-  treeTab.addEventListener("click", () => {
-    view = "tree";
-    renderCanvas();
-    renderToolbar();
-  }, { signal });
+  for (const [tab, mode] of [
+    [treeTab, "tree"],
+    [graphTab, "graph"],
+    [listTab, "list"],
+  ] as const) {
+    tab.addEventListener("click", () => {
+      view = mode;
+      renderCanvas();
+      renderToolbar();
+    }, { signal });
+  }
   nodeTabButton.addEventListener("click", () => setTab("node"), { signal });
   errorsTabButton.addEventListener("click", () => setTab("errors"), { signal });
   architectTabButton.addEventListener("click", () => openArchitectForPath(), { signal });

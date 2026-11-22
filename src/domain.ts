@@ -143,7 +143,7 @@ export interface NodeResource {
   readonly checked?: boolean;
 }
 
-export const VIEW_MODES = ["graph", "tree"] as const;
+export const VIEW_MODES = ["tree", "graph", "list"] as const;
 export type ViewMode = (typeof VIEW_MODES)[number];
 export const LANGUAGE_PREFERENCES = ["auto", "ru", "en"] as const;
 export type LanguagePreference = (typeof LANGUAGE_PREFERENCES)[number];
@@ -157,7 +157,7 @@ export interface DisplaySettings {
   readonly patternHints: boolean;
 }
 
-export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "graph", showOptional: true, patternHints: true };
+export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "tree", showOptional: true, patternHints: true };
 
 /** How the Architect reaches beyond its own memory. Every channel can be switched off;
  * with all of them off the Architect works offline from what the model knows. */
