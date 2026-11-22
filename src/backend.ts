@@ -39,7 +39,6 @@ import type {
 } from "learnharness-plugin-api";
 import {
   ARCHITECT_DEFINITION_ID,
-  graphBriefMessage,
   registerArchitect,
   usageSince,
 } from "./architect-agent.ts";
@@ -1313,7 +1312,8 @@ export function activate(ctx: PluginBackendContext): void {
     const requestId = readRequestId(value.requestId);
     activeChatId = id;
     watch(id);
-    // Opt-in: the learner's graph travels as quoted data ahead of the message.
+    // Opt-in: the graph is not sent with the message. It is kept for this conversation's draft checks,
+    // and the model reads it through read_learner_graph (the same capped brief, as quoted data).
     const brief = value.learnerGraph === true ? learnerGraphBrief(ctx) : null;
     if (brief) graphBriefs.set(id, brief);
     architectLog.event("graph brief", {
@@ -1323,9 +1323,8 @@ export function activate(ctx: PluginBackendContext): void {
       topics: brief?.counts.topics ?? 0,
       chains: brief?.counts.chains ?? 0,
     });
-    const sent = brief ? `${graphBriefMessage(brief)}\n\n${text}` : text;
     debug("architect.send.request", { id, requestId, characters: text.length, graphTopics: brief?.topics.length ?? 0 });
-    const conversation = await ctx.agents.send(id, sent, { requestId, purpose: "user" });
+    const conversation = await ctx.agents.send(id, text, { requestId, purpose: "user" });
     debug("architect.send.accepted", { id, status: conversation.status });
     emit(EVENT_ARCHITECT_CHANGED, {
       id: conversation.id,

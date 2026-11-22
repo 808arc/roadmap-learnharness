@@ -8,12 +8,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { GraphChain, GraphNode } from "learnharness-plugin-api";
 import { readGraphTopicCount } from "../src/backend.ts";
-import {
-  GRAPH_BRIEF_CLOSE,
-  GRAPH_BRIEF_MAX_CHARS,
-  GRAPH_BRIEF_OPEN,
-  quoteGraphBrief,
-} from "../src/architect-agent.ts";
+import { GRAPH_BRIEF_MAX_CHARS, quoteGraphBrief } from "../src/architect-agent.ts";
 import {
   BRIEF_MAX_NAME_CHARS,
   BRIEF_MAX_STATEMENT_CHARS,
@@ -84,12 +79,10 @@ function host(t: { after: (fn: () => void) => void }, graph?: BriefGraph): TestH
   return created;
 }
 
-/** The text between the brief markers, parsed as the JSON the model is sent. */
-function quotedBody(message: string): any {
-  const start = message.indexOf(GRAPH_BRIEF_OPEN);
-  const end = message.indexOf(GRAPH_BRIEF_CLOSE);
-  assert.ok(start >= 0 && end > start, "the brief is quoted between the markers");
-  return JSON.parse(message.slice(start + GRAPH_BRIEF_OPEN.length, end));
+/** The brief the model receives: what read_learner_graph returns for the learner's graph (quoted JSON text). */
+async function modelBriefText(h: TestHost): Promise<string> {
+  const result = await h.runTool<{ content: { text: string }[] }>("read_learner_graph", {});
+  return result.content[0]?.text ?? "";
 }
 
 /** Create an Architect conversation, send one message, and return the text the model is sent. */
@@ -168,8 +161,8 @@ test("the backend topic count and the Architect message both come from the same 
   assert.equal(readGraphTopicCount({ graph: () => FIXTURE }), 36);
 
   const { content } = await sentText(h, true);
-  assert.ok(content.startsWith("Context: the learner's Knowledge Graph"));
-  const quoted = quotedBody(content);
+  assert.equal(content, "Build my roadmap", "the chat shows only the learner's request");
+  const quoted = JSON.parse(await modelBriefText(h));
   assert.equal(quoted.topics.length, 36, "every fixture topic fits under the prompt cap");
   assert.equal(quoted.chains.length, 34);
   assert.deepEqual(quoted, JSON.parse(quoteGraphBrief(buildGraphBrief(FIXTURE))));
@@ -193,8 +186,9 @@ test("a large fixture is capped in the quoted prompt text", async (t) => {
   const large = syntheticGraph(75, 70);
   const h = host(t, large);
   const { content } = await sentText(h, true);
-  const quoted = quotedBody(content);
-  const body = content.slice(content.indexOf(GRAPH_BRIEF_OPEN) + GRAPH_BRIEF_OPEN.length, content.indexOf(GRAPH_BRIEF_CLOSE));
+  assert.equal(content, "Build my roadmap");
+  const body = await modelBriefText(h);
+  const quoted = JSON.parse(body);
   assert.ok(body.length <= GRAPH_BRIEF_MAX_CHARS, `the quoted data stays within ${GRAPH_BRIEF_MAX_CHARS} characters`);
   const full = buildGraphBrief(large);
   assert.equal(quoted.chains.length, full.chains.length, "chains are kept: they carry the structure");
@@ -229,10 +223,11 @@ test("a very long statement is capped in the quoted prompt text", async (t) => {
   const long = "lorem ipsum ".repeat(1_000);
   const h = host(t, { propositions: [makeTopic(1, { statement: long })], chains: [] } as BriefGraph);
   const { content } = await sentText(h, true);
-  assert.ok(content.length < long.length, "the full statement is not sent");
-  const quoted = quotedBody(content);
+  assert.equal(content, "Build my roadmap", "the full statement is not shown in the chat");
+  const body = await modelBriefText(h);
+  const quoted = JSON.parse(body);
   assert.equal(quoted.topics[0].statement.length, BRIEF_MAX_STATEMENT_CHARS);
-  const occurrences = content.split("lorem ipsum").length - 1;
+  const occurrences = body.split("lorem ipsum").length - 1;
   assert.ok(occurrences <= Math.ceil(BRIEF_MAX_STATEMENT_CHARS / "lorem ipsum ".length), `only the capped part is quoted (${occurrences})`);
 });
 
