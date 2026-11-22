@@ -20,21 +20,35 @@ jobs:
             // A commit subject ending in "(#N)" names issue N. Only open issues are closed.
             // Issues are never reopened. Each closed issue gets a comment naming the short sha.
             const CLOSING_REF = /\(#(\d+)\)\s*$/;
-            const commits = context.payload.commits ?? [];
-            core.info(`Pushed range ${context.payload.before}..${context.payload.after}: ${commits.length} commit(s).`);
+            const { owner, repo } = context.repo;
+            const { before, after } = context.payload;
+            // The push payload lists at most 20 commits, so read the full range from the
+            // compare API. A new-branch push (before is all zeros) falls back to the payload.
+            let commits = [];
+            if (/^0+$/.test(before)) {
+              commits = (context.payload.commits ?? []).map((c) => ({ sha: c.id, message: c.message }));
+            } else {
+              for (let page = 1; ; page++) {
+                const { data } = await github.rest.repos.compareCommitsWithBasehead({
+                  owner, repo, basehead: `${before}...${after}`, per_page: 100, page,
+                });
+                commits.push(...data.commits.map((c) => ({ sha: c.sha, message: c.commit.message })));
+                if (data.commits.length < 100) break;
+              }
+            }
+            core.info(`Pushed range ${before}..${after}: ${commits.length} commit(s).`);
 
-            // Push payloads list commits oldest first. Walk newest first so the first commit
-            // naming an issue is the one cited in its comment.
+            // Commits come oldest first. Walk newest first so the first commit naming an
+            // issue is the one cited in its comment.
             const shaByIssue = new Map();
             for (const commit of [...commits].reverse()) {
               const subject = (commit.message ?? "").split("\n")[0];
               const match = CLOSING_REF.exec(subject);
               if (match && !shaByIssue.has(Number(match[1]))) {
-                shaByIssue.set(Number(match[1]), commit.id.slice(0, 7));
+                shaByIssue.set(Number(match[1]), commit.sha.slice(0, 7));
               }
             }
 
-            const { owner, repo } = context.repo;
             const failures = [];
             for (const [number, shortSha] of shaByIssue) {
               try {
