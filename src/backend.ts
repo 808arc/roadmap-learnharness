@@ -31,6 +31,7 @@ import { sessionMetrics } from "./session-metrics.ts";
 import { buildGraphBrief } from "./graph-brief.ts";
 import type { BriefGraph } from "./graph-brief.ts";
 import { randomUUID } from "node:crypto";
+import nodePath from "node:path";
 import type {
   ModelCatalogResponse,
   PluginAgentDefinition,
@@ -44,6 +45,7 @@ import {
 } from "./architect-agent.ts";
 import type { ArchitectRegistration } from "./architect-agent.ts";
 import { UPSTREAM_PINNED_COMMIT, withUpstreamTimeout } from "./upstream-roadmaps.ts";
+import { createTopicDiskCache } from "./topic-cache.ts";
 import type { UpstreamFetch } from "./upstream-roadmaps.ts";
 
 /** The only network seam of the Architect's upstream reads (issue #19). Tests inject their own. */
@@ -511,6 +513,7 @@ export function activate(ctx: PluginBackendContext): void {
       upstream: {
         fetch: upstreamFetch,
         commit: UPSTREAM_PINNED_COMMIT,
+        topicCache: createTopicDiskCache(nodePath.join(ctx.dataDirectory, "topic-cache")),
         readGraph: () => learnerGraphBrief(ctx),
       },
       log: architectLog,

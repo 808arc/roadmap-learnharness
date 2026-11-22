@@ -83,6 +83,16 @@ const standardRoutes = () => ({
 
 const isUpstreamError = (kind: string) => (error: unknown) => error instanceof UpstreamError && error.kind === kind;
 
+/** Let background work (a prefetch) finish its requests before a test counts them. */
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 10));
+
+/** The listing is read once, and each topic file at most once (a listed topic may be prefetched and read). */
+function assertListingOnceAndTopicsOnce(calls: readonly Recorded[]): void {
+  const urls = calls.map((call) => call.url);
+  assert.equal(urls.filter((url) => url.includes("/content?ref=")).length, 1, "the listing is read once");
+  assert.equal(new Set(urls).size, urls.length, "no request is repeated");
+}
+
 test("listRoadmapTopics returns the topic slugs and files, and ignores other names", async () => {
   const { fetch, calls } = fakeFetch(standardRoutes());
   const topics = await listRoadmapTopics("synthetic-roadmap", COMMIT, { fetch });
@@ -417,7 +427,8 @@ test("the graph brief is read through ctx.learning.graph() and upstream calls ca
   );
   assert.equal(refused.isError, true);
 
-  assert.equal(calls.length, 2, "one listing (reused by the topic read) and one topic file");
+  await settle();
+  assertListingOnceAndTopicsOnce(calls);
   for (const call of calls) {
     assert.equal(call.url.includes(SECRET), false, "no learner text in a URL");
     assert.equal(JSON.stringify(call.headers).includes(SECRET), false, "no learner text in headers");
@@ -530,7 +541,8 @@ test("no graph statement, goal or learner name appears in any request to GitHub"
   await tool("read_learner_graph").execute("c2", {}, undefined);
   await tool("list_roadmap_topics").execute("c3", { roadmapSlug: "synthetic-roadmap" }, undefined);
   await tool("read_roadmap_topic").execute("c4", { roadmapSlug: "synthetic-roadmap", topicSlug: "synthetic-topic" }, undefined);
-  assert.equal(calls.length, 2, "one listing (reused by the topic read) and one topic file");
+  await settle();
+  assertListingOnceAndTopicsOnce(calls);
   for (const call of calls) {
     assert.match(call.url, new RegExp(`^${UPSTREAM_API_BASE}/repos/${UPSTREAM_REPOSITORY}/contents/roadmaps/`));
     for (const secret of [SECRET, GOAL, NAME]) {

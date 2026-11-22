@@ -9,7 +9,6 @@
  * network: no learner text, statements, goals or headers derived from them.
  * The fetch function is injected, so tests never touch the network.
  */
-
 export const UPSTREAM_REPOSITORY = "nilbuild/developer-roadmap";
 export const UPSTREAM_API_BASE = "https://api.github.com";
 /** The pinned upstream commit: nilbuild/developer-roadmap master when this release was cut.
@@ -47,6 +46,8 @@ export type UpstreamFetch = (
 export const UPSTREAM_TIMEOUT_MS = 15_000;
 /** Most topics one batch read may name (read_roadmap_topics). The Architect prompt states the same cap. */
 export const MAX_TOPICS_PER_BATCH = 10;
+/** Most topic requests in flight at once, for a batch read or a background prefetch. */
+export const TOPIC_READ_CONCURRENCY = 12;
 
 /** Wrap a real fetch so every request is bounded by `timeoutMs`. The caller's init is passed through unchanged. */
 export function withUpstreamTimeout(
@@ -61,6 +62,18 @@ export interface UpstreamOptions {
   /** Topic listings already read, keyed by roadmap and commit. Optional: when given, a listing is fetched once
    * and reused, because a pinned commit never changes. A failed read is not kept, so the next call retries. */
   readonly listings?: Map<string, Promise<UpstreamTopicRef[]>>;
+  /** Disk cache of successful topic reads, provided by the backend (src/topic-cache.ts). Absent: no disk cache.
+   * Only successful reads are written; the commit is part of every key, so a commit change misses. */
+  readonly topicCache?: TopicDiskCache;
+  /** Topic reads in progress or done, keyed by roadmap, topic and commit. A prefetch and a batch read
+   * that ask for the same topic share one request. A failed read is removed, so the next call retries. */
+  readonly topics?: Map<string, Promise<UpstreamTopic>>;
+}
+
+/** Storage for successful topic reads. `read` resolves what was stored (validated here) or null. */
+export interface TopicDiskCache {
+  read(roadmap: string, topic: string, commit: string): Promise<unknown>;
+  write(topic: UpstreamTopic): Promise<void>;
 }
 
 export type UpstreamErrorKind = "invalid" | "not_found" | "unreachable";
@@ -214,16 +227,50 @@ export function parseTopicMarkdown(markdown: string): { title: string; descripti
   return { title, description: paragraph.join(" "), resources };
 }
 
-/** One topic: its title, description and resources, read from its file at the pinned commit. */
-export async function readTopic(
-  roadmapSlug: string,
-  topicSlug: string,
-  commit: string,
-  options: UpstreamOptions,
-): Promise<UpstreamTopic> {
-  const roadmap = assertSlug(roadmapSlug, "roadmapSlug");
-  const topic = assertSlug(topicSlug, "topicSlug");
-  const sha = assertCommit(commit);
+/** Run `work` over `items` with at most `limit` in flight. Results keep the input order. */
+export async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await work(items[index] as T);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+function isCachedTopic(value: unknown, roadmap: string, topic: string, commit: string): value is UpstreamTopic {
+  if (typeof value !== "object" || value === null) return false;
+  const cached = value as Partial<UpstreamTopic>;
+  return (
+    cached.roadmap === roadmap &&
+    cached.slug === topic &&
+    cached.commit === commit &&
+    cached.source === UPSTREAM_SOURCE &&
+    cached.repository === UPSTREAM_REPOSITORY &&
+    typeof cached.title === "string" &&
+    typeof cached.description === "string" &&
+    Array.isArray(cached.resources)
+  );
+}
+
+/** A cached topic, or null. Any unreadable or mismatched entry is a miss, never an error. */
+async function readTopicCache(cache: TopicDiskCache | undefined, roadmap: string, topic: string, commit: string): Promise<UpstreamTopic | null> {
+  if (!cache) return null;
+  try {
+    const stored = await cache.read(roadmap, topic, commit);
+    return isCachedTopic(stored, roadmap, topic, commit) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadTopic(roadmap: string, topic: string, sha: string, options: UpstreamOptions): Promise<UpstreamTopic> {
+  const cached = await readTopicCache(options.topicCache, roadmap, topic, sha);
+  if (cached) return cached;
   const ref = (await listRoadmapTopics(roadmap, sha, options)).find((candidate) => candidate.slug === topic);
   if (!ref) throw new UpstreamError("not_found", `Topic "${topic}" was not found in roadmap "${roadmap}".`);
   const markdown = await request(
@@ -233,7 +280,7 @@ export async function readTopic(
     `topic "${topic}" of roadmap "${roadmap}"`,
   );
   if (markdown.length > MAX_TOPIC_CHARS) throw new UpstreamError("invalid", `Topic "${topic}" is larger than the reader accepts.`);
-  return {
+  const result: UpstreamTopic = {
     roadmap,
     slug: topic,
     ...parseTopicMarkdown(markdown),
@@ -241,4 +288,54 @@ export async function readTopic(
     repository: UPSTREAM_REPOSITORY,
     commit: sha,
   };
+  // Best effort: a cache that cannot be written only costs a later request.
+  if (options.topicCache) await options.topicCache.write(result).catch(() => undefined);
+  return result;
+}
+
+/** One topic: its title, description and resources, read from its file at the pinned commit.
+ * A cache hit (see `topicCacheDirectory`) makes no request. Errors are never cached. */
+export async function readTopic(
+  roadmapSlug: string,
+  topicSlug: string,
+  commit: string,
+  options: UpstreamOptions,
+): Promise<UpstreamTopic> {
+  const roadmap = assertSlug(roadmapSlug, "roadmapSlug");
+  const topic = assertSlug(topicSlug, "topicSlug");
+  const sha = assertCommit(commit);
+  const key = `${roadmap}/${topic}@${sha}`;
+  const shared = options.topics?.get(key);
+  if (shared) return shared;
+  const pending = loadTopic(roadmap, topic, sha, options);
+  const topics = options.topics;
+  if (topics) {
+    topics.set(key, pending);
+    pending.catch(() => {
+      if (topics.get(key) === pending) topics.delete(key);
+    });
+  }
+  return pending;
+}
+
+/** Start reading the listed topics of one roadmap in the background, bounded by TOPIC_READ_CONCURRENCY, so later
+ * batch reads are cache hits. Best effort: it never rejects and a failed topic is simply not cached. */
+export async function prefetchRoadmapTopics(
+  roadmapSlug: string,
+  topicSlugs: readonly string[],
+  commit: string,
+  options: UpstreamOptions,
+): Promise<void> {
+  try {
+    const roadmap = assertSlug(roadmapSlug, "roadmapSlug");
+    const sha = assertCommit(commit);
+    await mapWithConcurrency(topicSlugs, TOPIC_READ_CONCURRENCY, (slug) =>
+      readTopic(roadmap, slug, sha, options).then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+  } catch {
+    // Best effort: a prefetch never breaks a read.
+  }
 }
