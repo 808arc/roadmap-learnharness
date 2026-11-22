@@ -297,6 +297,28 @@ export function readGraphMastery(learning: { graph(): LearnerGraph }): Mastery[]
   return deriveMastery({ propositions: graph.propositions ?? [], chains: graph.chains ?? [] });
 }
 
+/** Why an Architect run left `running`, as a short code. Logged; the message text never is. */
+export type ModelCallCause = "provider_error" | "timeout" | "aborted" | "unknown";
+// user_stop is not derivable: the SDK's abort() does not record who asked for it.
+
+/** Classify a finished run from the snapshot alone. The SDK gives a status, a free-text `error`
+ * and pi's stopReason (on `partial`, or on an assistant message from this run on). Failed and
+ * aborted generations are dropped from committed history, so `partial` is the usual source. */
+export function modelCallCause(snapshot: PluginAgentSnapshot, from: number): ModelCallCause {
+  const stopReason = (message: unknown): unknown =>
+    typeof message === "object" && message !== null ? (message as { stopReason?: unknown }).stopReason : undefined;
+  let reason = stopReason(snapshot.partial);
+  if (reason === undefined) {
+    const last = snapshot.messages.slice(from).findLast((message) => (message as { role?: unknown }).role === "assistant");
+    reason = stopReason(last);
+  }
+  if (snapshot.status === "error" || reason === "error") {
+    return /time(d)?[ -]?out/i.test(snapshot.error ?? "") ? "timeout" : "provider_error";
+  }
+  if (reason === "aborted") return "aborted";
+  return "unknown";
+}
+
 export function activate(ctx: PluginBackendContext): void {
   // Keeps secrets and logs out of a Git-versioned data folder. Never throws.
   ensureDataGitignore(ctx.dataDirectory);
@@ -347,7 +369,12 @@ export function activate(ctx: PluginBackendContext): void {
     if (!open) return;
     modelRuns.delete(snapshot.id);
     const finished = snapshot.status === "idle" || snapshot.status === "waiting";
-    open.step.end({ ...usageSince(snapshot.messages, open.from), status: snapshot.status, ok: finished });
+    open.step.end({
+      ...usageSince(snapshot.messages, open.from),
+      status: snapshot.status,
+      ok: finished,
+      cause: finished ? undefined : modelCallCause(snapshot, open.from),
+    });
   };
   const createRequests = new Map<string, string>();
   let architect: ArchitectRegistration | null = null;
