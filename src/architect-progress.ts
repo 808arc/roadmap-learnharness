@@ -44,6 +44,7 @@ export function stepForTool(name: string): ArchitectStep | null {
     case "list_roadmap_topics":
       return "findTopics";
     case "read_roadmap_topic":
+    case "read_roadmap_topics":
       return "readTopics";
     case "get_learning_path":
       return "draft";
@@ -80,6 +81,17 @@ function toolCallsOf(message: unknown): ToolCallRef[] {
     }
   }
   return calls;
+}
+
+/** Topics a batch read returned without error; its text is the JSON of `{ results }`. */
+function okTopicCount(text: string): number {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!isRecord(parsed) || !Array.isArray(parsed.results)) return 0;
+    return parsed.results.filter((entry) => isRecord(entry) && entry.ok === true).length;
+  } catch {
+    return 0;
+  }
 }
 
 function resultOf(message: unknown): ToolResultRef | null {
@@ -163,7 +175,11 @@ export function architectSteps(
   const frontier = Math.max(reached, runningIndex ?? -1);
 
   const total = topicTotal(results);
-  const topicsDone = results.filter((result) => result.toolName === "read_roadmap_topic" && !result.isError).length;
+  const topicsDone = results.reduce((done, result) => {
+    if (result.isError) return done;
+    if (result.toolName === "read_roadmap_topic") return done + 1;
+    return result.toolName === "read_roadmap_topics" ? done + okTopicCount(result.text) : done;
+  }, 0);
 
   return ARCHITECT_STEPS.map((step, index) => {
     const state: ArchitectStepState =

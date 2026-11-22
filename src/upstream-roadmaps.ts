@@ -45,6 +45,8 @@ export type UpstreamFetch = (
 
 /** Longest wait for one GitHub response, headers and body together. A slower request is reported as unreachable. */
 export const UPSTREAM_TIMEOUT_MS = 15_000;
+/** Most topics one batch read may name (read_roadmap_topics). The Architect prompt states the same cap. */
+export const MAX_TOPICS_PER_BATCH = 10;
 
 /** Wrap a real fetch so every request is bounded by `timeoutMs`. The caller's init is passed through unchanged. */
 export function withUpstreamTimeout(
