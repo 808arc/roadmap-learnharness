@@ -9,7 +9,7 @@
  * A chat link's createdAt is not an action, so it does not make a day on its own.
  */
 import type { LearningPath } from "./domain.ts";
-import { localDay } from "./follow-through.ts";
+import { sessionActivity } from "./follow-through.ts";
 import type { NativeSessionActivity } from "./follow-through.ts";
 
 export interface NodeDayWork {
@@ -30,14 +30,6 @@ export interface StudyDayWork {
   readonly roadmaps: readonly RoadmapDayWork[];
 }
 
-/** Local days with an action in one native session. Same fallback as `follow-through.ts`. */
-function actionDays(session: NativeSessionActivity): string[] {
-  const raw = session.actionTimes && session.actionTimes.length > 0
-    ? session.actionTimes.map((time) => Date.parse(time))
-    : [Date.parse(session.createdAt), Date.parse(session.updatedAt)];
-  return [...new Set(raw.filter((ms) => Number.isFinite(ms)).map(localDay))];
-}
-
 /** For each study day, the roadmaps and nodes the learner worked on that day. Sorted by day, then roadmap id. */
 export function studyDayWork(
   paths: readonly LearningPath[],
@@ -45,8 +37,8 @@ export function studyDayWork(
 ): StudyDayWork[] {
   const daysById = new Map<string, readonly string[]>();
   for (const session of sessions) {
-    const days = actionDays(session);
-    if (days.length > 0) daysById.set(session.id, days);
+    const activity = sessionActivity(session);
+    if (activity) daysById.set(session.id, activity.days);
   }
 
   // day -> roadmap id -> node id -> node work
