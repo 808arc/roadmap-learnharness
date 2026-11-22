@@ -5,9 +5,9 @@
  * saved conversation keeps working after a restart; unregistering cancels its
  * active runs but never deletes conversation records.
  *
- * The tools are the only way the Architect touches learner data:
- * - `list_uploaded_sources` / `read_uploaded_source_chunk` inspect converted
- *   Markdown that the frontend produced with `ctx.documents.toMarkdown`.
+ * The tools are the only way the Architect touches learner data (upstream mode, #19):
+ * - `read_learner_graph` returns the learner's Knowledge Graph brief.
+ * - `list_roadmap_topics` / `read_roadmap_topic` read the pinned developer-roadmap topic files.
  * - `get_learning_path` returns the id-bearing outline needed for refinement.
  * - `save_learning_path` (or its `save_learning_path_json` fallback) is the single
  *   validated write path for a path, and it links the record to the conversation
@@ -35,9 +35,6 @@ import type { UpstreamOptions } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
 export const ARCHITECT_DEFINITION_ID = "path-architect";
-/** Cap on one `read_uploaded_source_chunk` response, in UTF-16 code units. */
-export const MAX_SOURCE_CHUNK_CHARS = 20_000;
-export const DEFAULT_SOURCE_CHUNK_CHARS = 12_000;
 /** A long-running design conversation needs room, but is never unbounded. */
 export const ARCHITECT_MAX_TURNS = 90;
 
@@ -55,10 +52,9 @@ export interface ArchitectAgentOptions {
   readonly graphBrief?: () => GraphBrief | null;
   /** Metadata-only step timings; the Architect behaves the same without it. */
   readonly log?: PluginLog;
-  /** Upstream mode (#19): when set, the Architect's only sources are the learner's graph and the
-   * developer-roadmap topic files at this fetch. `researchTools` and the uploaded-source tools are
-   * then not offered at all. */
-  readonly upstream?: UpstreamArchitectOptions;
+  /** Upstream mode (#19), the only mode: the Architect's structure comes from the learner's graph and
+   * the developer-roadmap topic files at this fetch. `researchTools` only enrich existing nodes. */
+  readonly upstream: UpstreamArchitectOptions;
 }
 
 /** Upstream mode: the developer-roadmap fetch, the pinned commit, and the learner's graph brief. */
@@ -113,112 +109,6 @@ export function toModelSpec(model: ArchitectModelConfig): PluginModelSpec {
     provider: model.provider,
     id: model.id,
     ...(model.thinkingLevel === undefined ? {} : { thinkingLevel: model.thinkingLevel }),
-  };
-}
-
-function sourceSummary(source: UploadedSourceReference): Record<string, unknown> {
-  return {
-    sourceId: source.sourceId,
-    name: source.name,
-    byteSize: source.byteSize,
-    uploadedAt: source.uploadedAt,
-    sha256: source.sha256,
-  };
-}
-
-/** `list_uploaded_sources`: metadata only, so the conversation stays bounded. */
-function listUploadedSourcesTool(
-  ctx: PluginBackendContext,
-  options: ArchitectAgentOptions,
-): PluginAgentTool {
-  return {
-    name: "list_uploaded_sources",
-    description:
-      "List uploaded sources (Markdown from PDFs or UTF-8 files): sourceId, name, byteSize, uploadedAt. " +
-      "Read text with read_uploaded_source_chunk. Empty list: no corpus uploaded.",
-    parameters: objectSchema({}),
-    execute: async (_toolCallId, _params, signal) => {
-      assertLive(ctx, signal);
-      const sources = options.store.sources();
-      return textResult(
-        { sources: sources.map(sourceSummary) },
-        JSON.stringify({ sources: sources.map(sourceSummary) }),
-      );
-    },
-  };
-}
-
-/** `read_uploaded_source_chunk`: bounded character windows, never the whole book. */
-function readUploadedSourceChunkTool(
-  ctx: PluginBackendContext,
-  options: ArchitectAgentOptions,
-): PluginAgentTool {
-  return {
-    name: "read_uploaded_source_chunk",
-    description:
-      "Read one bounded chunk of an uploaded source (offsets in UTF-16 characters). " +
-      `Returns text, chunkStart, chunkEnd, totalCharacters, nextOffset (null at end); pass it as offset to continue. Max ${MAX_SOURCE_CHUNK_CHARS} per call.`,
-    parameters: objectSchema(
-      {
-        sourceId: { type: "string", description: "sourceId from list_uploaded_sources." },
-        offset: {
-          type: "integer",
-          minimum: 0,
-          description: "Start offset; default 0.",
-        },
-        limit: {
-          type: "integer",
-          minimum: 1,
-          maximum: MAX_SOURCE_CHUNK_CHARS,
-          description: `Max characters; default ${DEFAULT_SOURCE_CHUNK_CHARS}.`,
-        },
-      },
-      ["sourceId"],
-    ),
-    execute: async (_toolCallId, rawParams, signal) => {
-      assertLive(ctx, signal);
-      try {
-        const params = readObject(rawParams);
-        if (typeof params.sourceId !== "string") throw new Error("sourceId must be a UUID string.");
-        const offset = params.offset ?? 0;
-        const limit = params.limit ?? DEFAULT_SOURCE_CHUNK_CHARS;
-        if (!Number.isSafeInteger(offset) || (offset as number) < 0) {
-          throw new Error("offset must be a non-negative integer.");
-        }
-        if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > MAX_SOURCE_CHUNK_CHARS) {
-          throw new Error(`limit must be an integer between 1 and ${MAX_SOURCE_CHUNK_CHARS}.`);
-        }
-        const markdown = options.store.readSource(params.sourceId);
-        if (markdown === null) {
-          const known = options.store
-            .sources()
-            .map((source) => `${source.sourceId} (${source.name})`)
-            .join(", ");
-          throw new Error(
-            `Unknown uploaded source "${params.sourceId}". Known sources: ${known || "none"}.`,
-          );
-        }
-        const start = Math.min(offset as number, markdown.length);
-        const end = Math.min(start + (limit as number), markdown.length);
-        const name =
-          options.store.sources().find((source) => source.sourceId === params.sourceId)?.name ??
-          `${params.sourceId}.md`;
-        const result = {
-          sourceId: params.sourceId,
-          name,
-          chunkStart: start,
-          chunkEnd: end,
-          totalCharacters: markdown.length,
-          nextOffset: end < markdown.length ? end : null,
-          text: markdown.slice(start, end),
-        };
-        return textResult(result, JSON.stringify(result));
-      } catch (error) {
-        // Bad arguments and unknown ids are model-correctable, not crashes.
-        if (error instanceof Error) return errorResult(error.message);
-        throw error;
-      }
-    },
   };
 }
 
@@ -688,24 +578,7 @@ export function buildArchitectDefinition(
   model: ArchitectModelConfig,
   options: ArchitectAgentOptions,
 ): PluginAgentDefinition {
-  if (options.upstream) return buildUpstreamDefinition(ctx, model, options, options.upstream);
-  return {
-    id: ARCHITECT_DEFINITION_ID,
-    model: toModelSpec(model),
-    instructions: buildArchitectSystemPrompt({
-      settings: options.store.settings(),
-      researchTools: (options.researchTools ?? []).map((tool) => tool.name),
-    }),
-    maxTurns: ARCHITECT_MAX_TURNS,
-    tools: [
-      listUploadedSourcesTool(ctx, options),
-      readUploadedSourceChunkTool(ctx, options),
-      getLearningPathTool(ctx, options),
-      saveLearningPathTool(ctx, options),
-      saveLearningPathTool(ctx, options, true),
-      ...(options.researchTools ?? []).map((tool) => timedResearchTool(tool, options.log)),
-    ],
-  };
+  return buildUpstreamDefinition(ctx, model, options, options.upstream);
 }
 
 /** Register the Path Architect for one activation. Throws on an invalid definition. */
@@ -720,8 +593,8 @@ export function registerArchitect(
 }
 
 /* ---- Upstream mode (#19) -------------------------------------------------------
- * Kept apart from the default Architect so the two stay easy to merge: this mode
- * offers the graph brief, the two upstream reads and the path tools, nothing else. */
+ * The only Architect mode: it offers the graph brief, the two upstream reads and the
+ * path tools, then the book and web tools last, only to enrich existing nodes. */
 
 const isRecordValue = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);

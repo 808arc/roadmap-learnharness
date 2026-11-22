@@ -10,11 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  ARCHITECT_DEFINITION_ID,
-  DEFAULT_SOURCE_CHUNK_CHARS,
-  MAX_SOURCE_CHUNK_CHARS,
-} from "../src/architect-agent.ts";
+import { ARCHITECT_DEFINITION_ID } from "../src/architect-agent.ts";
 import { ARCHITECT_FILE, SOURCES_DIRECTORY } from "../src/store.ts";
 import { AT, makePath, rawPath } from "./fixtures.ts";
 import { validateToolArguments } from "@earendil-works/pi-ai";

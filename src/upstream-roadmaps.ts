@@ -20,14 +20,14 @@ export const UPSTREAM_SOURCE = "roadmap.sh";
 /** Longest topic file accepted, in UTF-16 code units. Real topic files are far smaller. */
 export const MAX_TOPIC_CHARS = 200_000;
 
-/** A slug is lowercase letters and digits, joined by single hyphens or single dots (`node.js`).
- * Every separator sits between two alphanumerics, so `.`, `..`, `../x`, `a/b`, `a..b` and
- * anything with a slash, `?`, `#` or `%` are all refused. */
-const SLUG_PATTERN = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
+/** A slug is lowercase letters and digits, joined by a single hyphen, a double hyphen (`ci--cd`) or a
+ * single dot (`node.js`). Every separator sits between two alphanumerics, so `.`, `..`, `../x`, `a/b`,
+ * `a..b`, `--x`, `x--` and anything with a backslash, slash, `?`, `#` or `%` are all refused. */
+const SLUG_PATTERN = /^[a-z0-9]+(?:(?:--|[-.])[a-z0-9]+)*$/;
 const MAX_SLUG_CHARS = 80;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 /** Topic file names are `<slug>@<id>.md`. */
-const TOPIC_FILE_PATTERN = /^([a-z0-9]+(?:[-.][a-z0-9]+)*)@[A-Za-z0-9_-]+\.md$/;
+const TOPIC_FILE_PATTERN = /^([a-z0-9]+(?:(?:--|[-.])[a-z0-9]+)*)@[A-Za-z0-9_-]+\.md$/;
 /** A tagged resource: `[@book@Title](https://...)`. The link text and URL are kept as written. */
 const RESOURCE_PATTERN = /\[(@[^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
 
@@ -87,7 +87,7 @@ export interface UpstreamTopic {
 /** Slug check. Rejects anything that could name a path other than one plain folder or file stem. */
 export function assertSlug(value: unknown, what: string): string {
   if (typeof value !== "string" || value.length > MAX_SLUG_CHARS || !SLUG_PATTERN.test(value)) {
-    throw new UpstreamError("invalid", `${what} must be a lowercase slug (letters, digits and single hyphens).`);
+    throw new UpstreamError("invalid", `${what} must be a lowercase slug (letters, digits, single dots, and hyphens that are not at the start or end).`);
   }
   return value;
 }

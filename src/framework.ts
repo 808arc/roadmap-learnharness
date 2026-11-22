@@ -169,7 +169,6 @@ const DOSSIER_LINES = [
   "- Misconceptions: a contrast node for each misconception (a bridge node when its category is prerequisite_gap), where the wrong idea would be reinforced.",
   "- Open questions: ask all in ONE message only if the answers change the path; otherwise build and state your assumption.",
   "- Constraints such as available time only scale depth and size; never turn them into dates or pacing.",
-  "- After save_learning_path, call apply_dossier_misconceptions once with the dossier note id, the path id and, for each misconception number, the node that addresses it.",
   "- Do not link the dossier's source chat to the path; sessions link only when launched from a node.",
 ].join("\n");
 

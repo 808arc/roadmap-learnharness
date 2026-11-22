@@ -116,7 +116,7 @@ test("parseTopicMarkdown copes with a file that has no title or description", ()
 });
 
 test("slugs that are not plain slugs are rejected before any request", async () => {
-  const bad = ["", "../etc", "a/b", "A-Upper", "has space", "x@y", "a--b", "-lead", "trail-", "%2e%2e", "a".repeat(81), "frontend?x=1"];
+  const bad = ["", "../etc", "a/b", "A-Upper", "has space", "x@y", "a---b", "-lead", "trail-", "--x", "x--", "%2e%2e", "a".repeat(81), "frontend?x=1"];
   for (const slug of bad) {
     const { fetch, calls } = fakeFetch(standardRoutes());
     await assert.rejects(listRoadmapTopics(slug, COMMIT, { fetch }), isUpstreamError("invalid"), `roadmap ${slug}`);
@@ -230,9 +230,15 @@ test("upstream mode offers only the graph brief, the two upstream reads and the 
     "read_research_note",
     "list_uploaded_sources",
     "read_uploaded_source_chunk",
+    "apply_dossier_misconceptions",
   ]) {
     assert.equal(definition.tools?.some((tool) => tool.name === banned), false, banned);
   }
+});
+
+test("the misconception-apply tool is not offered to the Architect, in upstream mode or by default", (t) => {
+  const { definition } = upstreamDefinition(t, fakeFetch({}).fetch);
+  assert.equal(definition.tools?.some((tool) => tool.name === "apply_dossier_misconceptions"), false);
 });
 
 test("the graph brief is read through ctx.learning.graph() and upstream calls carry no learner content", async (t) => {
@@ -289,6 +295,16 @@ test("an upstream failure is returned to the Architect as an error, with no othe
   assert.equal(result.isError, true);
   assert.match(result.content[0]?.text ?? "", /could not be reached/);
   assert.equal(calls.length, 1);
+});
+
+test("a double hyphen inside a slug is accepted; edge hyphens, traversal and bare separators are refused", async () => {
+  assert.equal(assertSlug("ci--cd", "slug"), "ci--cd");
+  for (const slug of ["../x", "a/b", "--x", "x--", "a..b"]) {
+    assert.throws(() => assertSlug(slug, "slug"), isUpstreamError("invalid"), slug);
+  }
+  const { fetch, calls } = fakeFetch({});
+  await assert.rejects(readTopic("synthetic-roadmap", "--x", COMMIT, { fetch }), isUpstreamError("invalid"));
+  assert.equal(calls.length, 0, "no request for a refused slug");
 });
 
 test("the pinned upstream commit is a full 40-character lowercase SHA", () => {
