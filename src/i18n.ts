@@ -59,7 +59,7 @@ const en = {
   "insp.free": "free",
   "insp.essential": "essential",
   "insp.checked": "checked",
-  "insp.related": "Builds on",
+  "insp.interleaves": "Interleaves with",
   "insp.sessions": "Sessions",
   "insp.noSessions": "No sessions yet. Start a lesson or practice.",
   "insp.missing": "chat was deleted",
@@ -392,6 +392,11 @@ const en = {
   "archProgress.draft": "Draft",
   "archProgress.save": "Save",
   "archProgress.count": "{done}/{total}",
+  // Node connections: builds on, needed by, created from (issue #53). New blocks go at the end of the table.
+  "conn.title": "Connections",
+  "conn.buildsOn": "Builds on",
+  "conn.neededBy": "Needed by",
+  "conn.createdFrom": "Created from",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -449,7 +454,7 @@ const ru: Record<MessageKey, string> = {
   "insp.free": "бесплатно",
   "insp.essential": "обязательно",
   "insp.checked": "проверено",
-  "insp.related": "Опирается на",
+  "insp.interleaves": "Чередуется с",
   "insp.sessions": "Сессии",
   "insp.noSessions": "Сессий пока нет. Начните урок или практику.",
   "insp.missing": "чат удалён",
@@ -782,6 +787,11 @@ const ru: Record<MessageKey, string> = {
   "archProgress.draft": "Черновик",
   "archProgress.save": "Сохранение",
   "archProgress.count": "{done}/{total}",
+  // Связи узла: опирается на, нужен для, создан из (issue #53). Новые блоки добавляются в конец таблицы.
+  "conn.title": "Связи",
+  "conn.buildsOn": "Опирается на",
+  "conn.neededBy": "Нужен для",
+  "conn.createdFrom": "Создан из",
 };
 
 export const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };

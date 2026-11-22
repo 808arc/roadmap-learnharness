@@ -24,6 +24,7 @@ import type {
 import { locale, t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import type { Mastery } from "../learner-map.ts";
+import { nodeConnections } from "../node-connections.ts";
 import { nodeEvidence } from "../node-evidence.ts";
 import { nodePatternHintKey } from "../pattern-hint.ts";
 import type { NodeProposition } from "../node-propositions.ts";
@@ -342,12 +343,32 @@ export function createNodeInspector(
 
     const related = node.interleavesNodeIds.map((id) => findNode(path, id)).filter((entry): entry is PathNode => entry !== null);
     if (related.length > 0) {
-      const relatedSection = section(t("insp.related"));
+      const relatedSection = section(t("insp.interleaves"));
       const row = el(document, "div", "rm-chips");
       for (const prior of related) {
         row.append(button(document, prior.title, () => options.selectNode(prior.id), scoped(), { variant: "ghost", className: "rm-chip" }));
       }
       relatedSection.append(row);
+    }
+
+    // Connections (issue #53): each group shows only when it has links; with none, the section is absent.
+    const connections = nodeConnections(path, node);
+    const linkGroups: [string, readonly PathNode[]][] = [
+      [t("conn.buildsOn"), connections.buildsOn],
+      [t("conn.neededBy"), connections.neededBy],
+      [t("conn.createdFrom"), connections.createdFrom ? [connections.createdFrom] : []],
+    ];
+    if (linkGroups.some(([, linked]) => linked.length > 0)) {
+      const connectionsSection = section(t("conn.title"));
+      for (const [label, linked] of linkGroups) {
+        if (linked.length === 0) continue;
+        connectionsSection.append(el(document, "div", "rm-li-sub", label));
+        const row = el(document, "div", "rm-chips");
+        for (const other of linked) {
+          row.append(button(document, other.title, () => options.selectNode(other.id), scoped(), { variant: "ghost", className: "rm-chip" }));
+        }
+        connectionsSection.append(row);
+      }
     }
 
     const sessions = section(t("insp.sessions"));
