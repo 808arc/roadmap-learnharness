@@ -153,9 +153,9 @@ export function rankNextNodes(input: NextInput): NextRecommendation[] {
 }
 
 /**
- * Next nodes for a roadmap as the view has it. The view has no catalog, so prerequisites follow module
- * order (nodePrerequisites with an empty catalog). `mastery` is the Knowledge Graph mastery (default
- * empty). Throws on the same data errors as findNodeGaps.
+ * Next nodes for a roadmap as the view has it. The view has no catalog, so prerequisites are each
+ * node's own (issue #44), else module order (nodePrerequisites with an empty catalog). `mastery` is
+ * the Knowledge Graph mastery (default empty). Throws on the same data errors as findNodeGaps.
  */
 export function nextUpForPath(path: LearningPath, limit: number = NEXT_LIMIT, mastery: readonly Mastery[] = []): NextRecommendation[] {
   const nodes = path.modules.flatMap(module => module.nodes);

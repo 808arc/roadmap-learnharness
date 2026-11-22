@@ -283,6 +283,11 @@ export interface PathNode {
   readonly lightPreReading?: string;
   /** Meso-interleaving callbacks: earlier nodes to weave into this one. */
   readonly interleavesNodeIds: readonly string[];
+  /**
+   * Node ids in the same roadmap this node depends on. Absent on older data: arrows then follow
+   * module order. An empty array is a deliberate root, a node that starts a branch.
+   */
+  readonly prerequisites?: readonly string[];
   readonly progression: ProgressionState;
   /** Per-node override; absent or null inherits the path/plugin default. */
   readonly artifactConfig?: ArtifactConfig | null;
@@ -705,6 +710,11 @@ function readPathNode(value: unknown, path: string): PathNode {
       `${path}.interleavesNodeIds`,
       readId,
     ),
+    ...(record.prerequisites === undefined
+      ? {}
+      : {
+          prerequisites: readStringArray(record.prerequisites, `${path}.prerequisites`, readId),
+        }),
     progression: readEnum(record.progression, PROGRESSION_STATES, `${path}.progression`),
     ...(record.artifactConfig === undefined
       ? {}
@@ -852,8 +862,47 @@ function assertPathGraph(path: LearningPath): void {
           fail(`node "${node.id}".pivotSuggestions`, `unknown inserted node id "${pivot.insertedNodeId}"`);
         }
       }
+      for (const prerequisite of node.prerequisites ?? []) {
+        if (prerequisite === node.id) {
+          fail(`node "${node.id}".prerequisites`, "must not depend on the node itself");
+        }
+        if (!nodes.has(prerequisite)) {
+          fail(`node "${node.id}".prerequisites`, `unknown node id "${prerequisite}"`);
+        }
+      }
     }
   }
+  const cycle = findPrerequisiteCycle(nodes);
+  if (cycle !== null) {
+    fail("path.modules", `prerequisites form a cycle: ${cycle.join(" -> ")}`);
+  }
+}
+
+/** The first prerequisite cycle, as node ids from the cycle's start back to itself, or null. */
+function findPrerequisiteCycle(nodes: ReadonlyMap<string, PathNode>): string[] | null {
+  const state = new Map<string, "open" | "done">();
+  const walk = (id: string, stack: string[]): string[] | null => {
+    state.set(id, "open");
+    stack.push(id);
+    for (const prerequisite of nodes.get(id)?.prerequisites ?? []) {
+      if (state.get(prerequisite) === "open") {
+        return [...stack.slice(stack.indexOf(prerequisite)), prerequisite];
+      }
+      if (state.get(prerequisite) === undefined) {
+        const found = walk(prerequisite, stack);
+        if (found !== null) return found;
+      }
+    }
+    stack.pop();
+    state.set(id, "done");
+    return null;
+  };
+  for (const id of nodes.keys()) {
+    if (state.has(id)) continue;
+    const found = walk(id, []);
+    if (found !== null) return found;
+  }
+  return null;
 }
 
 /** Validate a learning path without throwing; invalid input yields precise issues. */

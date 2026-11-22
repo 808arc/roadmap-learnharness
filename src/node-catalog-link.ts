@@ -159,25 +159,34 @@ export type EdgeCatalogView = {
   roadmaps: { slug: string; topics: { slug: string; prerequisites: readonly string[] }[] }[];
 };
 
-/** A path node reduced to what prerequisites need: its id and its catalog link, if any. */
-export type LinkedNode = { id: string; catalogTopic?: CatalogTopicLink };
+/**
+ * A path node reduced to what prerequisites need: its id, its own prerequisites (absent on older
+ * data) and its catalog link, if any.
+ */
+export type LinkedNode = { id: string; prerequisites?: readonly string[]; catalogTopic?: CatalogTopicLink };
 
 export type NodePrerequisites = {
   nodeId: string;
   /** Node ids this node depends on, in module order. */
   prerequisiteIds: string[];
-  /** "catalog": linked catalog edges. "module-order": the fallback (the previous node, if any). */
-  source: "catalog" | "module-order";
+  /**
+   * "node": the node's own prerequisites, as set by the Architect (an empty list is a root).
+   * "catalog": linked catalog edges. "module-order": the fallback (the previous node, if any).
+   */
+  source: "node" | "catalog" | "module-order";
 };
 
 /**
- * Prerequisites for each node in module order. A linked node depends on the other linked nodes
- * whose catalog topic is a catalog prerequisite of its own topic. Otherwise, including every
- * unlinked node, it depends on the node before it in module order, and the first node depends on
- * nothing.
+ * Prerequisites for each node in module order. A node with its own `prerequisites` depends on
+ * exactly those. Otherwise a linked node depends on the other linked nodes whose catalog topic is a
+ * catalog prerequisite of its own topic. Otherwise, including every unlinked node, it depends on
+ * the node before it in module order, and the first node depends on nothing.
  */
 export function nodePrerequisites(nodes: readonly LinkedNode[], catalog: EdgeCatalogView): NodePrerequisites[] {
   return nodes.map((node, index) => {
+    if (node.prerequisites !== undefined) {
+      return { nodeId: node.id, prerequisiteIds: [...node.prerequisites], source: "node" as const };
+    }
     const link = node.catalogTopic;
     const topic =
       link === undefined

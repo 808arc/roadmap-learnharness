@@ -160,7 +160,8 @@ const pairKey = (from: string, to: string): string => `${from}\u0000${to}`;
 
 /** Dependency depth for every shown node, the arrows between them and the tree parents.
  *
- * Prerequisites come from `prerequisites` (default: module order via nodePrerequisites).
+ * Prerequisites come from `prerequisites` (default: nodePrerequisites, which uses each node's own
+ * prerequisites, then catalog edges, then module order).
  * A hidden optional node is passed through: its prerequisites stand in for it.
  *
  * Cycles: units are walked depth-first in path order, following prerequisites. When the

@@ -378,6 +378,8 @@ const en = {
   "flash.none": "No Knowledge Graph facts are linked to this node yet. They appear after a lesson or practice session linked to it.",
   "flash.unavailable": "The Knowledge Graph could not be read right now.",
   "flash.close": "Close",
+  // Node prerequisites (issue #44). New blocks go at the end of the table.
+  "legend.prerequisitesNote": "arrows run from each prerequisite to the node that needs it; no arrow in starts a branch",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -754,6 +756,8 @@ const ru: Record<MessageKey, string> = {
   "flash.none": "С этим узлом пока не связан ни один факт из графа знаний. Факты появятся после урока или практики, привязанных к этому узлу.",
   "flash.unavailable": "Граф знаний сейчас не удалось прочитать.",
   "flash.close": "Закрыть",
+  // Предпосылки узлов (issue #44). Новые блоки добавляются в конец таблицы.
+  "legend.prerequisitesNote": "стрелки ведут от каждой предпосылки к узлу, которому она нужна; без входящей стрелки узел начинает ветку",
 };
 
 export const tables: Record<Locale, Record<MessageKey, string>> = { en, ru };

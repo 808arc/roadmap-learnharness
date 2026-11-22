@@ -319,8 +319,9 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
     [
       "## Output contract",
       "Call save_learning_path with title, goal, sourceSpine and modules. Each module has a title and nodes. Each node has type, title, goal and a sourceAnchor OBJECT (reference title; optional chapter, section, pages).",
-      "New path: omit ids, timestamps, progression, interleavesNodeIds, childSessions, errors and pivotSuggestions. The server fills them, including links to preceding nodes. Example node: {\"type\":\"concept\",\"title\":\"Hash functions\",\"goal\":\"Explain why hashes appear irregular\",\"sourceAnchor\":{\"reference\":\"The Book of Shaders\",\"chapter\":\"Random\"}}.",
-      "Refinement: call get_learning_path first, then save the full outline with every existing id. The server always preserves learner state on existing nodes. Never invent ids for an existing path.",
+      "New path: omit ids (except draft ids, below), timestamps, progression, interleavesNodeIds, childSessions, errors and pivotSuggestions. The server fills them, including links to preceding nodes. Example node: {\"type\":\"concept\",\"title\":\"Hash functions\",\"goal\":\"Explain why hashes appear irregular\",\"sourceAnchor\":{\"reference\":\"The Book of Shaders\",\"chapter\":\"Random\"},\"prerequisites\":[]}.",
+      "Refinement: call get_learning_path first, then save the full outline with every existing id. The server always preserves learner state on existing nodes. Never invent ids for existing nodes.",
+      "Prerequisites: required on every new node. Ids of nodes needed first, same draft; [] = starts a branch. To name a new node, set id \"draft:<name>\" (e.g. \"draft:hashing\"); only for prerequisites in this draft; the server replaces it. Only dependencies from the learner's graph chains or the topic files; never invent one.",
       "Several nodes: prefer save_learning_path_json, with the whole draft as one JSON string in draftJson. Small drafts: save_learning_path. If nested modules arrive as a string or a call fails to parse, switch to save_learning_path_json; never retry hand-written XML/DSML tags. Never print tool-call tags or JSON code blocks in chat. On validation failure, fix the named field, then retry.",
     ].join("\n"),
   ];
