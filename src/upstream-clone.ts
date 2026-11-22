@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { UPSTREAM_REPOSITORY } from "./upstream-roadmaps.ts";
 import type { LocalRoadmapSource } from "./upstream-roadmaps.ts";
+import type { PluginLog } from "./plugin-log.ts";
 
 /** The repository cloned. A constant: it is never built from input. */
 const CLONE_URL = `https://github.com/${UPSTREAM_REPOSITORY}.git`;
@@ -43,6 +44,8 @@ export interface LocalRoadmapCopyOptions {
   readonly commit: string;
   /** Test seam; the default is runGit. */
   readonly git?: GitRunner;
+  /** Writes one "upstream clone" step: outcome created | reused | fallback, a reason code, the commit and durationMs. */
+  readonly log?: PluginLog;
 }
 
 export interface LocalRoadmapCopy extends LocalRoadmapSource {
@@ -54,10 +57,12 @@ export interface LocalRoadmapCopy extends LocalRoadmapSource {
  * use GitHub rather than wait for a clone. */
 export function createLocalRoadmapCopy(options: LocalRoadmapCopyOptions): LocalRoadmapCopy {
   const git = options.git ?? runGit;
+  const step = options.log?.begin("upstream clone", { commit: options.commit });
   let available = false;
-  const ready = prepareClone(options.directory, options.commit, git).then((ok) => {
-    available = ok;
-    return ok;
+  const ready = prepareClone(options.directory, options.commit, git).then((result) => {
+    available = result.ok;
+    step?.end(result.ok ? { outcome: result.outcome, reason: result.reason } : { outcome: "fallback", reason: result.reason, ok: false });
+    return result.ok;
   });
 
   const contentFolder = (roadmap: string): string | null =>
@@ -97,27 +102,52 @@ async function headIs(directory: string, commit: string, git: GitRunner): Promis
   }
 }
 
+async function exists(target: string): Promise<boolean> {
+  return fs.stat(target).then(
+    () => true,
+    () => false,
+  );
+}
+
 /** Removes the clone folder. It is the fixed plugin path, never input. */
 async function discard(directory: string): Promise<void> {
   await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
 }
 
-/** Verify an existing clone, or make one. Resolves true only when HEAD equals the pinned commit. */
-async function prepareClone(directory: string, commit: string, git: GitRunner): Promise<boolean> {
+/** The outcome of preparing the clone. `reason` is a fixed code, never a message from git. */
+type CloneResult =
+  | { readonly ok: true; readonly outcome: "created" | "reused"; readonly reason: string }
+  | { readonly ok: false; readonly reason: string };
+
+/** Git is absent when spawning it fails with ENOENT. */
+function gitMissing(error: unknown): boolean {
+  return (error as { readonly code?: unknown } | null)?.code === "ENOENT";
+}
+
+/** Verify an existing clone, or make one. Ok only when HEAD equals the pinned commit. Never rejects. */
+async function prepareClone(directory: string, commit: string, git: GitRunner): Promise<CloneResult> {
+  let stage = "setup";
   try {
-    if (await headIs(directory, commit, git)) return true;
+    if (await headIs(directory, commit, git)) return { ok: true, outcome: "reused", reason: "head_matches" };
     // Not a clone at the pinned commit (or none yet): start again from an empty folder.
+    const stale = await exists(directory);
     await discard(directory);
     await fs.mkdir(directory, { recursive: true });
     await git(["init", "--quiet"], directory);
     await git(["remote", "add", "origin", CLONE_URL], directory);
     await git(["sparse-checkout", "set", "roadmaps"], directory);
+    stage = "fetch";
     await git(["fetch", "--quiet", "--depth", "1", "origin", commit], directory);
+    stage = "checkout";
     await git(["checkout", "--quiet", commit], directory);
-    if (await headIs(directory, commit, git)) return true;
-  } catch {
+    if (await headIs(directory, commit, git)) {
+      return { ok: true, outcome: "created", reason: stale ? "replaced_stale_clone" : "fresh_clone" };
+    }
+    await discard(directory);
+    return { ok: false, reason: "head_mismatch" };
+  } catch (error) {
     // No git, a network failure or a refused fetch: the clone is unusable and GitHub answers instead.
+    await discard(directory);
+    return { ok: false, reason: gitMissing(error) ? "no_git" : `${stage}_failed` };
   }
-  await discard(directory);
-  return false;
 }
