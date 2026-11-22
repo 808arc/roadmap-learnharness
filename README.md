@@ -31,7 +31,8 @@ Russian (Settings → Roadmap → Interface language; *Auto* follows the system)
   *After this node I can…*, the source anchor with a pre-reading pointer, typed
   resources (book, article, video, course, docs, exercises; free or not), the
   nodes it builds on, linked sessions with focused minutes and correct answers,
-  and the recommended artifact with the reason for it.
+  and the recommended artifact with the reason for it. **Open** goes to the node's
+  latest linked chat, or starts a Lesson if it has none, so every node opens as a chat.
 - **Status line**: required nodes done, nodes in progress, open errors.
 
 ![The roadmap with the legend](docs/roadmap-map.png)
