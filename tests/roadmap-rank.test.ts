@@ -47,3 +47,30 @@ test("ties go to the more focused roadmap, then by name", () => {
   ]));
   assert.deepEqual(ranking.candidates.map((match) => match.roadmap), ["beta", "zeta", "alpha"]);
 });
+
+test("roadmap names come from the git copy after its fetch has finished, with no GitHub request", async () => {
+  const { listRoadmapNames } = await import("../src/upstream-roadmaps.ts");
+  const order: string[] = [];
+  let calls = 0;
+  const fetch = async () => {
+    calls += 1;
+    throw new Error("no request expected");
+  };
+  let finish!: (ok: boolean) => void;
+  const ready = new Promise<boolean>((resolve) => (finish = resolve));
+  const local = {
+    ready,
+    listFiles: async () => null,
+    readFile: async () => null,
+    listRoadmaps: async () => {
+      order.push("listed");
+      return ["frontend", "backend"];
+    },
+  };
+  const pending = listRoadmapNames("a".repeat(40), { local, fetch } as never);
+  order.push("waiting");
+  finish(true);
+  assert.deepEqual(await pending, ["backend", "frontend"]);
+  assert.deepEqual(order, ["waiting", "listed"]);
+  assert.equal(calls, 0);
+});

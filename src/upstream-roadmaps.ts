@@ -63,6 +63,8 @@ export interface LocalRoadmapSource {
   listFiles(roadmap: string): Promise<readonly string[] | null>;
   /** Slugs of the roadmaps in the local copy, or null when the copy is not available. */
   listRoadmaps?(): Promise<readonly string[] | null>;
+  /** Settles when the git fetch of the copy has finished: true when the copy is usable. */
+  readonly ready?: Promise<boolean>;
   /** Text of one file in that folder, or null when it is not available locally. */
   readFile(roadmap: string, file: string): Promise<string | null>;
 }
@@ -250,6 +252,31 @@ function githubTopicListing(roadmap: string, sha: string, options: UpstreamOptio
 /** Topic refs from a folder's file names; names that are not topic files are ignored. */
 /** One topic per slug. Upstream has a few slugs with more than one file (the name carries a random suffix); the
  * first one listed is kept, so the listing, the reads and the counts all agree. */
+/** Slugs of every roadmap at the pinned commit. Waits for the git fetch of the local copy; when that copy is not
+ * usable, the roadmaps folder is listed from GitHub. */
+export async function listRoadmapNames(commit: string, options: UpstreamOptions): Promise<string[]> {
+  const sha = assertCommit(commit);
+  if (options.local?.listRoadmaps) {
+    await options.local.ready;
+    const names = await options.local.listRoadmaps();
+    if (names && names.length > 0) return [...names].sort();
+  }
+  const body = await request(options.fetch, `${UPSTREAM_API_BASE}/repos/${UPSTREAM_REPOSITORY}/contents/roadmaps?ref=${sha}`, HEADERS_JSON, "the roadmaps folder");
+  let entries: unknown;
+  try {
+    entries = JSON.parse(body);
+  } catch {
+    throw new UpstreamError("unreachable", "GitHub returned an unreadable roadmaps folder.");
+  }
+  if (!Array.isArray(entries)) return [];
+  const names: string[] = [];
+  for (const entry of entries) {
+    const name = (entry as { name?: unknown; type?: unknown } | null);
+    if (name?.type === "dir" && typeof name.name === "string" && /^[a-z0-9]+(?:(?:--|[-.])[a-z0-9]+)*$/.test(name.name)) names.push(name.name);
+  }
+  return names.sort();
+}
+
 export function topicRefsOf(names: readonly unknown[]): UpstreamTopicRef[] {
   const topics: UpstreamTopicRef[] = [];
   const seen = new Set<string>();
