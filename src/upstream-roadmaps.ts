@@ -246,12 +246,17 @@ function githubTopicListing(roadmap: string, sha: string, options: UpstreamOptio
 }
 
 /** Topic refs from a folder's file names; names that are not topic files are ignored. */
-function topicRefsOf(names: readonly unknown[]): UpstreamTopicRef[] {
+/** One topic per slug. Upstream has a few slugs with more than one file (the name carries a random suffix); the
+ * first one listed is kept, so the listing, the reads and the counts all agree. */
+export function topicRefsOf(names: readonly unknown[]): UpstreamTopicRef[] {
   const topics: UpstreamTopicRef[] = [];
+  const seen = new Set<string>();
   for (const name of names) {
     if (typeof name !== "string") continue;
     const match = TOPIC_FILE_PATTERN.exec(name);
-    if (match) topics.push({ slug: match[1] as string, file: name });
+    if (!match || seen.has(match[1] as string)) continue;
+    seen.add(match[1] as string);
+    topics.push({ slug: match[1] as string, file: name });
   }
   return topics;
 }
