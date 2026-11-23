@@ -194,8 +194,6 @@ export interface FixtureOptions {
   settings?: PluginSettings;
   /** Topics in the learner's graph, as the backend brief counts them (`graph.topicCount`). */
   graphTopics?: number;
-  /** The learner's Knowledge Graph returned by `graph.knowledge`; empty when absent. */
-  knowledge?: { nodes: readonly { id: string; name: string; statement: string }[]; edges: readonly { from: string; to: string }[] };
   /** Knowledge Graph mastery returned by `graph.mastery`; empty when absent. */
   mastery?: readonly Mastery[];
   /** Make `graph.mastery` reject, as a failed backend read would. */
@@ -227,7 +225,7 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
   const mastery = options.mastery ?? [];
   for (const path of options.paths ?? []) paths.set(path.id, structuredClone(path));
   // Tests pin English so assertions do not depend on the machine language.
-  let settingsState: PluginSettings = options.settings ?? { artifactDefaults: {}, display: { language: "en", defaultView: "tree", showOptional: true, graphDirection: "bottom-to-top", patternHints: true } };
+  let settingsState: PluginSettings = options.settings ?? { artifactDefaults: {}, display: { language: "en", showOptional: true, graphDirection: "bottom-to-top", patternHints: true } };
   // A fixture path normally points at live chats; tests delete one to model a
   // deleted native session instead of every fixture starting "missing".
   for (const path of paths.values()) {
@@ -421,8 +419,6 @@ export function createViewFixture(options: FixtureOptions = {}): ViewFixture {
     switch (name) {
       case "graph.topicCount":
         return Promise.resolve({ topics: graphTopics } as T);
-      case "graph.knowledge":
-        return Promise.resolve(structuredClone(options.knowledge ?? { nodes: [], edges: [] }) as T);
       case "graph.mastery":
         if (options.masteryFails) return Promise.reject(new Error("graph.mastery failed"));
         return Promise.resolve({ mastery: structuredClone(mastery) } as T);

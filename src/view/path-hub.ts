@@ -40,9 +40,6 @@ import type { NodeInspectorChange } from "./node-inspector.ts";
 import { pivotDiscussionPrompt } from "./pivot-banner.ts";
 import type { PivotDecision } from "./pivot-banner.ts";
 import { createRoadmapCanvas } from "./roadmap-canvas.ts";
-import type { ViewMode } from "./roadmap-canvas.ts";
-import { EMPTY_KNOWLEDGE, readKnowledge } from "./knowledge-layout.ts";
-import type { KnowledgeData } from "./knowledge-layout.ts";
 import type { GraphDirection } from "./roadmap-layout.ts";
 import { defaultExpandedModule, isDone, progressCounts } from "./roadmap-layout.ts";
 import { openLinkExistingSessionDialog } from "./session-dialogs.ts";
@@ -154,13 +151,8 @@ export function mountPathHub(
   pathSwitch.append(pathSwitchTitle, pathSwitchChevron);
   crumb.append(pathSwitch);
   const spine = el(document, "span", "rm-top-spine");
-  const segment = el(document, "div", "rm-seg");
-  const treeTab = el(document, "button");
-  const graphTab = el(document, "button");
-  treeTab.type = graphTab.type = "button";
-  segment.append(treeTab, graphTab);
   const actions = el(document, "div", "rm-top-actions");
-  toolbar.append(crumb, el(document, "span", "rm-grow"), spine, segment, actions);
+  toolbar.append(crumb, el(document, "span", "rm-grow"), spine, actions);
   root.append(toolbar);
 
   const hubError = el(document, "p", "rm-hub-error");
@@ -209,8 +201,7 @@ export function mountPathHub(
   let selectedNodeId: string | null = null;
   let expandedModuleId: string | null = null;
   let display: DisplaySettings = DEFAULT_DISPLAY;
-  let view: ViewMode = display.defaultView;
-  // The graph view's direction: read from the saved display settings; the toggle on the canvas saves it.
+  // The graph's direction: read from the saved display settings; the toggle on the canvas saves it.
   let graphDirection: GraphDirection = display.graphDirection;
   let tab: Tab = "node";
   let sideOpen = true;
@@ -218,10 +209,6 @@ export function mountPathHub(
   let createdPathId: string | null = null;
   /** Graph topics the learner has studied, from the backend brief; read only for the empty state. */
   let graphTopics = 0;
-  // The learner's Knowledge Graph, drawn in the Graph view; read through `graph.knowledge`.
-  let knowledge: KnowledgeData = EMPTY_KNOWLEDGE;
-  // The Tree view's text-only rendering (this session only).
-  let textOnly = false;
   let emptyControls = new AbortController();
   let loadToken = 0;
   let disposed = false;
@@ -245,11 +232,6 @@ export function mountPathHub(
       if (disposed || signal.aborted) return;
       // A module head always focuses its module; it never unfocuses (as in the module drawing before).
       expandedModuleId = moduleId;
-      renderCanvas();
-    },
-    setTextOnly(next) {
-      if (disposed || signal.aborted) return;
-      textOnly = next;
       renderCanvas();
     },
     setGraphDirection(direction) {
@@ -335,11 +317,6 @@ export function mountPathHub(
     pathSwitch.disabled = summaries.length === 0;
     spine.textContent = path ? spineLabel(path) : "";
     spine.title = spine.textContent;
-    treeTab.textContent = t("view.tree");
-    graphTab.textContent = t("view.graph");
-    treeTab.className = view === "tree" ? "rm-on" : "";
-    graphTab.className = view === "graph" ? "rm-on" : "";
-    segment.hidden = path === null;
     toolbarControls.abort();
     toolbarControls = new AbortController();
     const scoped = AbortSignal.any([signal, toolbarControls.signal]);
@@ -400,7 +377,7 @@ export function mountPathHub(
       return;
     }
     delete canvasHost.dataset.empty;
-    canvas.render({ path, selectedNodeId, expandedModuleId, view, showOptional: display.showOptional, showLegend: side.hidden, graphDirection, knowledge, textOnly });
+    canvas.render({ path, selectedNodeId, expandedModuleId, showOptional: display.showOptional, showLegend: side.hidden, graphDirection });
   }
 
   /** Empty state: the Architect text, plus "Build from my graph" once the graph has a topic. */
@@ -527,10 +504,8 @@ export function mountPathHub(
       const result = await ctx.call<{ settings: PluginSettings }>("settings.get");
       if (disposed || signal.aborted) return;
       const next = result.settings?.display ?? DEFAULT_DISPLAY;
-      const viewChanged = next.defaultView !== display.defaultView;
       display = next;
       graphDirection = display.graphDirection;
-      if (viewChanged) view = display.defaultView;
     } catch {
       display = DEFAULT_DISPLAY;
     }
@@ -598,8 +573,6 @@ export function mountPathHub(
         if (!live(token)) return;
         mastery = read ?? [];
         masteryReady = read !== null;
-        await refreshKnowledge();
-        if (!live(token)) return;
       } else {
         chatStatuses.clear();
         tab = "architect";
@@ -641,18 +614,6 @@ export function mountPathHub(
       return Array.isArray(result.propositions) ? result.propositions : null;
     } catch {
       return null;
-    }
-  }
-
-  /** The learner's Knowledge Graph from `graph.knowledge`. A failed read leaves the last one in place. */
-  async function refreshKnowledge(): Promise<void> {
-    try {
-      const next = readKnowledge(await ctx.call("graph.knowledge"));
-      if (disposed || signal.aborted) return;
-      knowledge = next;
-      if (view === "graph") renderCanvas();
-    } catch {
-      // Keep what was drawn.
     }
   }
 
@@ -821,17 +782,6 @@ export function mountPathHub(
       { signal },
     );
   }, { signal });
-  for (const [tab, mode] of [
-    [treeTab, "tree"],
-    [graphTab, "graph"],
-  ] as const) {
-    tab.addEventListener("click", () => {
-      view = mode;
-      renderCanvas();
-      renderToolbar();
-      if (mode === "graph") void refreshKnowledge();
-    }, { signal });
-  }
   nodeTabButton.addEventListener("click", () => setTab("node"), { signal });
   errorsTabButton.addEventListener("click", () => setTab("errors"), { signal });
   architectTabButton.addEventListener("click", () => openArchitectForPath(), { signal });

@@ -1,5 +1,6 @@
-/** Roadmap canvas: the module tree (nodes with module labels, pan + zoom), the flat graph (nodes and
- * arrows, pan + zoom).
+/** Roadmap canvas: the one graph view. Every node is a dot with a short title beside it; thin arrows run from each
+ * prerequisite to its dependent, bottom to top by default; each module shows as a small coloured label at its first
+ * node and a tint on its nodes' titles, never as a frame. Pan + zoom.
  *
  * Controlled component: `render` receives the authoritative path and UI state;
  * clicks are reported through callbacks. All listeners belong to the signal.
@@ -8,35 +9,24 @@ import type { LearningPath, PathModule, PathNode } from "../domain.ts";
 import { locale, t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import type { NodePrerequisites } from "../node-prerequisites.ts";
-import { ICONS, setIcon, statusIcon } from "./icons.ts";
+import { ICONS, setIcon } from "./icons.ts";
 import { EMPTY_SNAPSHOT, edgeKey, growthPlan, snapshotOf } from "./graph-growth.ts";
 import type { GraphSnapshot, GrowthPlan } from "./graph-growth.ts";
 import type { GraphDirection } from "./roadmap-layout.ts";
-import { buildDependencyGraph, isDone, layoutRoadmap, moduleCounts } from "./roadmap-layout.ts";
+import { isDone, layoutGraph, moduleCounts } from "./roadmap-layout.ts";
 import type { PlacedModule, PlacedNode, RoadmapLayout } from "./roadmap-layout.ts";
 import { el } from "./dom.ts";
-import { layoutKnowledge } from "./knowledge-layout.ts";
-import type { KnowledgeData, KnowledgeLayout } from "./knowledge-layout.ts";
-
-/** "tree": the roadmap, nodes with a label per module (or as plain text); "graph": the learner's Knowledge Graph. */
-export type ViewMode = "tree" | "graph";
-
 export interface CanvasState {
   readonly path: LearningPath;
   readonly selectedNodeId: string | null;
   readonly expandedModuleId: string | null;
-  readonly view: ViewMode;
   readonly showOptional: boolean;
   /** The legend shows only when the side panel is closed, as in the mockups. */
   readonly showLegend: boolean;
-  /** Which way the graph view runs. Absent: bottom to top. */
+  /** Which way the graph runs. Absent: bottom to top. */
   readonly graphDirection?: GraphDirection;
   /** Prerequisites per node. Absent: each node's own, else module order. */
   readonly prerequisites?: readonly NodePrerequisites[];
-  /** The learner's Knowledge Graph, drawn in the graph view. Absent: nothing read yet. */
-  readonly knowledge?: KnowledgeData;
-  /** Tree view only: the same modules and nodes as a nested text list, without the diagram. */
-  readonly textOnly?: boolean;
 }
 
 export interface CanvasCallbacks {
@@ -44,8 +34,6 @@ export interface CanvasCallbacks {
   toggleModule(moduleId: string): void;
   /** The user picked a graph direction. */
   setGraphDirection?(direction: GraphDirection): void;
-  /** The user switched the tree's text-only rendering. */
-  setTextOnly?(textOnly: boolean): void;
 }
 
 export interface RoadmapCanvas {
@@ -70,6 +58,9 @@ export function moduleSource(module: PathModule): string | null {
   if (!anchor.chapter) return short;
   return `${short} ${locale() === "ru" ? "гл." : "ch."} ${anchor.chapter}`;
 }
+
+/** How many module colours the canvas cycles through (rm-mod-0 .. rm-mod-5 in the stylesheet). */
+const MODULE_HUES = 6;
 
 function unresolved(node: PathNode): number {
   return node.errors.filter((entry) => !entry.resolved).length;
@@ -109,17 +100,12 @@ export function createRoadmapCanvas(
     directionButtons.set(direction, button);
     directionBar.append(button);
   }
-  const textToggle = el(document, "button", "rm-zoom rm-text-toggle", t("tree.textOnly"));
-  textToggle.type = "button";
-  textToggle.addEventListener("click", () => callbacks.setTextOnly?.(textToggle.getAttribute("aria-pressed") !== "true"), { signal });
-  const textList = el(document, "div", "rm-text-tree");
-  textList.hidden = true;
   const legend = el(document, "div", "rm-legend");
   // Announces how many nodes a save added; the graph itself is not a live region.
   const growStatus = el(document, "p", "rm-grow-status");
   growStatus.setAttribute("role", "status");
   growStatus.setAttribute("aria-live", "polite");
-  root.append(viewport, textList, controls, directionBar, textToggle, legend, growStatus);
+  root.append(viewport, controls, directionBar, legend, growStatus);
   host.append(root);
 
   let state: CanvasState | null = null;
@@ -128,8 +114,8 @@ export function createRoadmapCanvas(
   let tx = 0;
   let ty = 0;
   let placedViewKey: string | null = null;
-  /** What was drawn last: a snapshot of the same roadmap and view, "empty" after clear(), or null at mount. */
-  let drawn: { readonly pathId: string; readonly view: ViewMode; readonly snapshot: GraphSnapshot } | "empty" | null = null;
+  /** What was drawn last: a snapshot of the same roadmap, "empty" after clear(), or null at mount. */
+  let drawn: { readonly pathId: string; readonly snapshot: GraphSnapshot } | "empty" | null = null;
   let disposed = false;
 
   const applyTransform = (): void => {
@@ -239,14 +225,13 @@ export function createRoadmapCanvas(
       : null;
   resize?.observe(viewport);
 
-  /** One node: a box in the tree view, a small pill in the graph view (`pill`). */
-  const nodeButton = (placed: PlacedNode, selected: boolean, pill: boolean): HTMLButtonElement => {
+  /** One node: a dot (a flag for a checkpoint) with its title beside it. */
+  const nodeButton = (placed: PlacedNode, selected: boolean, moduleTitle: string): HTMLButtonElement => {
     const { node } = placed;
-    const button = el(document, "button", "rm-node");
+    const button = el(document, "button", `rm-node rm-mod-${placed.moduleIndex % MODULE_HUES}`);
     button.type = "button";
     button.dataset.nodeId = node.id;
-    if (selected) button.classList.add("rm-sel", "rm-highlight");
-    if (pill) button.classList.add("rm-pill");
+    if (selected) button.classList.add("rm-sel");
     if (node.optional) button.classList.add("rm-opt");
     if (node.alternativeGroup) button.classList.add("rm-alt");
     if (node.progression === "skipped") button.classList.add("rm-skip");
@@ -257,15 +242,9 @@ export function createRoadmapCanvas(
     button.style.top = `${placed.y}px`;
     button.style.width = `${placed.w}px`;
     button.style.height = `${placed.h}px`;
-    const icon = el(document, "span", "rm-node-icon");
-    if (node.type === "checkpoint") {
-      icon.classList.add("rm-flag");
-      if (node.progression === "consolidated") icon.classList.add("rm-flag-done");
-      setIcon(icon, ICONS.flag);
-    } else {
-      setIcon(icon, statusIcon(node.progression));
-    }
-    button.append(icon, el(document, "span", "rm-node-title", node.title));
+    const marker = el(document, "span", node.type === "checkpoint" ? "rm-dot rm-flag" : "rm-dot");
+    if (node.type === "checkpoint") setIcon(marker, ICONS.flag);
+    button.append(marker, el(document, "span", "rm-node-title", node.title));
     const tag = node.alternativeGroup ? t("mark.alternativeShort") : node.optional ? t("mark.optionalShort") : null;
     if (tag) button.append(el(document, "span", "rm-node-tag", tag));
     if (node.reviewMark) button.append(el(document, "span", "rm-node-review", t("mark.shortReviewShort")));
@@ -276,7 +255,7 @@ export function createRoadmapCanvas(
       setIcon(warn, ICONS.warn);
       button.append(warn);
     }
-    button.title = node.title;
+    button.title = `${node.title}\n${moduleTitle}`;
     button.addEventListener("click", () => {
       if (!disposed && !signal.aborted) callbacks.selectNode(node.id);
     }, { signal });
@@ -295,14 +274,14 @@ export function createRoadmapCanvas(
     return parts.join(" · ");
   };
 
-  /** A module's plain text label above its first column. It toggles the focus highlight. */
+  /** A module's small label above its first node. Clicking it focuses the module. */
   const renderModule = (placed: PlacedModule): HTMLElement => {
     const { module } = placed;
-    const label = el(document, "button", placed.expanded ? "rm-module-label rm-module-label-focus" : "rm-module-label", module.title);
+    const label = el(document, "button", `${placed.expanded ? "rm-module-label rm-module-label-focus" : "rm-module-label"} rm-mod-${placed.index % MODULE_HUES}`, module.title);
     label.type = "button";
     label.dataset.moduleId = module.id;
-    label.style.left = `${(placed.labelAt ?? placed).x}px`;
-    label.style.top = `${(placed.labelAt ?? placed).y}px`;
+    label.style.left = `${placed.x}px`;
+    label.style.top = `${placed.y}px`;
     label.title = [module.goal ?? module.title, moduleHeaderText(module)].join("\n");
     label.addEventListener("click", () => {
       if (!disposed && !signal.aborted) callbacks.toggleModule(module.id);
@@ -358,30 +337,27 @@ export function createRoadmapCanvas(
     return svg;
   };
 
-  /** The pannable roadmap canvas of the tree view: module labels, nodes and arrows. */
+  /** The pannable graph: edges, module labels and nodes. */
   const renderGraph = (current: CanvasState): void => {
-    const roadmap = layoutRoadmap(current.path, { showOptional: current.showOptional, prerequisites: current.prerequisites, expandedModuleId: current.expandedModuleId });
+    const roadmap = layoutGraph(current.path, {
+      showOptional: current.showOptional,
+      prerequisites: current.prerequisites,
+      direction: current.graphDirection ?? "bottom-to-top",
+      expandedModuleId: current.expandedModuleId,
+    });
     layout = roadmap;
     stage.style.width = `${roadmap.width}px`;
     stage.style.height = `${roadmap.height}px`;
     // Only items new since the last drawing animate; a re-render of the same graph animates nothing.
-    const before =
-      drawn === "empty" ? EMPTY_SNAPSHOT : drawn !== null && drawn.pathId === current.path.id && drawn.view === current.view ? drawn.snapshot : null;
+    const before = drawn === "empty" ? EMPTY_SNAPSHOT : drawn !== null && drawn.pathId === current.path.id ? drawn.snapshot : null;
     const plan = growthPlan(before, roadmap);
-    drawn = { pathId: current.path.id, view: current.view, snapshot: snapshotOf(roadmap) };
+    drawn = { pathId: current.path.id, snapshot: snapshotOf(roadmap) };
     growStatus.textContent = plan.addedNodes > 0 ? t("graph.grew", { n: plan.addedNodes }) : "";
+    const moduleTitles = new Map(current.path.modules.map((module) => [module.id, module.title] as const));
     const children: Element[] = [renderEdges(roadmap, plan)];
     for (const placed of roadmap.modules) children.push(renderModule(placed));
-    for (const group of roadmap.groups) {
-      const bracket = el(document, "div", "rm-alt-group");
-      bracket.style.left = `${group.x}px`;
-      bracket.style.top = `${group.y1}px`;
-      bracket.style.height = `${group.y2 - group.y1}px`;
-      bracket.title = t("mark.alternative");
-      children.push(bracket);
-    }
     for (const placed of roadmap.nodes) {
-      const button = nodeButton(placed, placed.node.id === current.selectedNodeId, false);
+      const button = nodeButton(placed, placed.node.id === current.selectedNodeId, moduleTitles.get(placed.moduleId) ?? "");
       const delay = plan.delays.get(placed.node.id);
       if (delay !== undefined) {
         button.classList.add("rm-grow");
@@ -390,109 +366,14 @@ export function createRoadmapCanvas(
       children.push(button);
     }
     stage.replaceChildren(...children);
-    const viewKey = `${current.path.id}\u0000${current.view}`;
-    const viewChanged = placedViewKey !== viewKey;
-    placedViewKey = viewKey;
+    const viewChanged = placedViewKey !== current.path.id;
+    placedViewKey = current.path.id;
     if (viewChanged) {
       scale = 1;
       // Wait one frame so the viewport has its real size on first mount.
       const schedule = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => setTimeout(run, 0);
       schedule(() => {
         if (!disposed) focus(current.expandedModuleId);
-      });
-    } else {
-      clampPan();
-      applyTransform();
-    }
-  };
-
-  /** The tree as text: modules as headings, their nodes as buttons in a nested list. Same structure, no diagram. */
-  const renderTextTree = (current: CanvasState): void => {
-    layout = null;
-    const list = el(document, "ul", "rm-text-modules");
-    for (const module of current.path.modules) {
-      const item = el(document, "li", "rm-text-module");
-      const heading = el(document, "button", module.id === current.expandedModuleId ? "rm-module-label rm-module-label-focus" : "rm-module-label", module.title);
-      heading.type = "button";
-      heading.dataset.moduleId = module.id;
-      heading.title = moduleHeaderText(module);
-      heading.addEventListener("click", () => {
-        if (!disposed && !signal.aborted) callbacks.toggleModule(module.id);
-      }, { signal });
-      const nodes = el(document, "ul", "rm-text-nodes");
-      for (const node of module.nodes) {
-        if (node.optional && !current.showOptional) continue;
-        const row = el(document, "li", "rm-text-node");
-        const open = el(document, "button", node.id === current.selectedNodeId ? "rm-text-open rm-sel" : "rm-text-open");
-        open.type = "button";
-        open.dataset.nodeId = node.id;
-        const state = node.progression === "consolidated" ? t("status.consolidated") : node.progression === "in_progress" ? t("status.in_progress") : node.progression === "skipped" ? t("status.skipped") : t("status.unstarted");
-        open.textContent = `${node.title} · ${state}${node.optional ? ` · ${t("mark.optionalShort")}` : ""}`;
-        open.addEventListener("click", () => {
-          if (!disposed && !signal.aborted) callbacks.selectNode(node.id);
-        }, { signal });
-        row.append(open);
-        nodes.append(row);
-      }
-      item.append(heading, nodes);
-      list.append(item);
-    }
-    textList.replaceChildren(list);
-  };
-
-  /** The learner's Knowledge Graph: a pill per proposition, an arrow per premise of each reasoning chain. */
-  const renderKnowledge = (current: CanvasState): void => {
-    const data = current.knowledge ?? { nodes: [], edges: [] };
-    const placed: KnowledgeLayout = layoutKnowledge(data, current.graphDirection ?? "bottom-to-top");
-    layout = placed;
-    drawn = null;
-    growStatus.textContent = "";
-    stage.style.width = `${placed.width}px`;
-    stage.style.height = `${placed.height}px`;
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("class", "rm-edges");
-    svg.setAttribute("width", String(placed.width));
-    svg.setAttribute("height", String(placed.height));
-    for (const edge of placed.edges) {
-      const line = document.createElementNS(ns, "line");
-      line.setAttribute("x1", String(edge.x1));
-      line.setAttribute("y1", String(edge.y1));
-      line.setAttribute("x2", String(edge.x2));
-      line.setAttribute("y2", String(edge.y2));
-      svg.append(line);
-      const length = Math.hypot(edge.x2 - edge.x1, edge.y2 - edge.y1) || 1;
-      const ux = (edge.x2 - edge.x1) / length;
-      const uy = (edge.y2 - edge.y1) / length;
-      const baseX = edge.x2 - ux * 7;
-      const baseY = edge.y2 - uy * 7;
-      const head = document.createElementNS(ns, "path");
-      head.setAttribute("d", `M${baseX - uy * 4} ${baseY + ux * 4} L${edge.x2} ${edge.y2} L${baseX + uy * 4} ${baseY - ux * 4}`);
-      head.setAttribute("class", "rm-arrow");
-      svg.append(head);
-    }
-    const children: Element[] = [svg];
-    for (const entry of placed.nodes) {
-      const box = el(document, "div", "rm-node rm-pill rm-kg-node");
-      box.dataset.propositionId = entry.node.id;
-      box.style.left = `${entry.x}px`;
-      box.style.top = `${entry.y}px`;
-      box.style.width = `${entry.w}px`;
-      box.style.height = `${entry.h}px`;
-      box.title = entry.node.statement || entry.node.name;
-      box.append(el(document, "span", "rm-node-title", entry.node.name));
-      children.push(box);
-    }
-    if (data.nodes.length === 0) children.push(el(document, "p", "rm-kg-empty", t("graph.knowledgeEmpty")));
-    stage.replaceChildren(...children);
-    const viewKey = "knowledge";
-    const viewChanged = placedViewKey !== viewKey;
-    placedViewKey = viewKey;
-    if (viewChanged) {
-      scale = 1;
-      const schedule = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => setTimeout(run, 0);
-      schedule(() => {
-        if (!disposed) focus(null);
       });
     } else {
       clampPan();
@@ -519,9 +400,8 @@ export function createRoadmapCanvas(
     alt.append(el(document, "span", "rm-legend-alt", t("mark.alternativeShort")), el(document, "span", undefined, t("mark.alternative")));
     const swatch = (state: "consolidated" | "in_progress" | "unstarted" | "skipped", key: MessageKey): HTMLElement => {
       const span = el(document, "span", "rm-legend-item");
-      const chip = el(document, "span", `rm-legend-swatch rm-node${state === "consolidated" ? " rm-done" : state === "in_progress" ? " rm-prog" : state === "skipped" ? " rm-skip" : ""}`);
-      setIcon(chip, statusIcon(state));
-      span.append(chip, el(document, "span", undefined, t(key)));
+      const cls = state === "consolidated" ? " rm-done" : state === "in_progress" ? " rm-prog" : state === "skipped" ? " rm-skip" : "";
+      span.append(el(document, "span", `rm-legend-dot rm-node${cls}`), el(document, "span", undefined, t(key)));
       return span;
     };
     legend.replaceChildren(
@@ -549,25 +429,14 @@ export function createRoadmapCanvas(
     render(next) {
       if (disposed || signal.aborted) return;
       state = next;
-      root.dataset.view = next.view;
       legend.hidden = !next.showLegend;
-      const textOnly = next.view === "tree" && next.textOnly === true;
-      textToggle.hidden = next.view !== "tree";
-      textToggle.setAttribute("aria-pressed", String(textOnly));
-      textToggle.classList.toggle("rm-on", textOnly);
-      textList.hidden = !textOnly;
-      viewport.hidden = textOnly;
-      controls.hidden = textOnly;
-      directionBar.hidden = next.view !== "graph";
       const direction = next.graphDirection ?? "bottom-to-top";
       for (const [value, button] of directionButtons) {
         button.setAttribute("aria-pressed", String(value === direction));
         button.classList.toggle("rm-on", value === direction);
       }
       renderLegend();
-      if (textOnly) renderTextTree(next);
-      else if (next.view === "graph") renderKnowledge(next);
-      else renderGraph(next);
+      renderGraph(next);
     },
     clear() {
       if (disposed || signal.aborted) return;

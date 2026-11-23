@@ -12,10 +12,11 @@ import type { MessageKey } from "../src/i18n.ts";
 import { IMPORT_MARKER, importLegacyData, legacyDataDirectory } from "../src/legacy-import.ts";
 import { DEFAULT_BREAK_MS, sessionMetrics } from "../src/session-metrics.ts";
 import {
+  DOT_X,
   LABEL_H,
   PAD_BOTTOM,
   defaultExpandedModule,
-  layoutRoadmap,
+  layoutGraph,
   moduleCounts,
   nodeRole,
   progressCounts,
@@ -48,18 +49,16 @@ test("node roles split an expanded module into order, additional and consolidati
   assert.equal(nodeRole(makeNode("d", "checkpoint")), "consolidation");
 });
 
-test("the tree draws no module frames: one label per module, and every node sits in its dependency column", () => {
+test("the graph draws no module frames: one small label per module, and every node sits in its dependency row", () => {
   const path = makePath();
-  const layout = layoutRoadmap(path, { expandedModuleId: "module-synthesis", showOptional: true });
+  const layout = layoutGraph(path, { expandedModuleId: "module-synthesis", showOptional: true });
 
   assert.equal(layout.modules.length, path.modules.length, "one label per module");
   const [first, second] = layout.modules;
   assert.equal(first!.module.id, "module-structure");
   assert.equal(second!.expanded, true);
-  for (const label of layout.modules) {
-    assert.equal(label.w * label.h, 0, "no frame area");
-    assert.equal(label.errorLine, null);
-  }
+  assert.equal(first!.expanded, false);
+  assert.deepEqual(layout.modules.map((label) => label.index), [0, 1], "each module has its own colour index");
   const allNodes = path.modules.flatMap((module) => module.nodes);
   assert.equal(layout.nodes.length, allNodes.length, "every node is placed");
   assert.ok(layout.height >= PAD_BOTTOM, "space under the nodes for zoom and legend");
@@ -72,19 +71,20 @@ test("the tree draws no module frames: one label per module, and every node sits
   );
   const holistic = layout.nodes.find((placed) => placed.node.id === "n-holistic")!;
   const bridge = layout.nodes.find((placed) => placed.node.id === "n-bridge")!;
-  assert.ok(bridge.x > holistic.x, "deeper nodes sit further right");
+  assert.ok(bridge.y < holistic.y, "bottom to top: deeper nodes sit higher");
 
-  // Each label sits above its module's leftmost node.
+  // Each label sits just above its module's first (shallowest) node.
   for (const label of layout.modules) {
     const own = layout.nodes.filter((placed) => placed.moduleId === label.module.id);
-    const leftmost = Math.min(...own.map((placed) => placed.x));
-    assert.equal(label.x, leftmost);
-    const top = Math.min(...own.filter((placed) => placed.x === leftmost).map((placed) => placed.y));
-    assert.ok(label.y >= 0 && label.y + LABEL_H <= top, "label is above the first column");
+    const shallowest = Math.min(...own.map((placed) => placed.depth));
+    const anchor = own.find((placed) => placed.depth === shallowest)!;
+    assert.ok(label.x > anchor.x, "right of the arrow that leaves the node's dot");
+    assert.ok(label.y >= 0 && label.y + LABEL_H <= anchor.y, "label is above the first node");
   }
+  assert.ok(layout.nodes.every((placed) => placed.moduleIndex === path.modules.findIndex((module) => module.id === placed.moduleId)));
 });
 
-test("nodes of all modules share the columns and no two nodes in a column overlap", () => {
+test("nodes of all modules share the rows and no two nodes in a row overlap", () => {
   const modules = ["a", "b", "c"].map((id) => ({
     ...makePath().modules[0]!,
     id: `m-${id}`,
@@ -92,28 +92,28 @@ test("nodes of all modules share the columns and no two nodes in a column overla
     nodes: [0, 1, 2].map((i) => makeNode(`${id}${i}`, "concept", { prerequisites: i === 0 ? [] : [`${id}${i - 1}`] })),
   }));
   const path: LearningPath = { ...makePath(), modules };
-  const layout = layoutRoadmap(path, { expandedModuleId: null, showOptional: true });
+  const layout = layoutGraph(path, { showOptional: true });
   assert.equal(layout.nodes.length, 9);
   assert.equal(layout.modules.length, 3);
-  assert.deepEqual([...new Set(layout.nodes.map((placed) => placed.depth))].sort(), [0, 1, 2], "three modules, three shared columns");
+  assert.deepEqual([...new Set(layout.nodes.map((placed) => placed.depth))].sort(), [0, 1, 2], "three modules, three shared rows");
   for (const placed of layout.nodes) {
     for (const other of layout.nodes) {
-      if (placed === other || placed.x !== other.x) continue;
-      assert.ok(placed.y + placed.h <= other.y || other.y + other.h <= placed.y, `${placed.node.id} and ${other.node.id} overlap`);
+      if (placed === other || placed.y !== other.y) continue;
+      assert.ok(placed.x + placed.w <= other.x || other.x + other.w <= placed.x, `${placed.node.id} and ${other.node.id} overlap`);
     }
   }
   assert.equal(layout.edges.length, 6);
 });
 
-test("every prerequisite gets one arrow to each dependent node, pointing forward", () => {
-  const layout = layoutRoadmap(makePath(), { expandedModuleId: null, showOptional: true });
+test("every prerequisite gets one arrow to each dependent node, pointing up from the dot below", () => {
+  const layout = layoutGraph(makePath(), { showOptional: true });
   assert.equal(layout.edges.length, 5, "a chain of six nodes has five arrows");
   for (const edge of layout.edges) {
-    assert.ok(edge.x1 < edge.x2, `arrow ${edge.from} -> ${edge.to} points right`);
+    assert.ok(edge.y1 > edge.y2, `arrow ${edge.from} -> ${edge.to} points up`);
     const from = layout.nodes.find((placed) => placed.node.id === edge.from)!;
     const to = layout.nodes.find((placed) => placed.node.id === edge.to)!;
-    assert.equal(edge.x1, from.x + from.w);
-    assert.equal(edge.x2, to.x);
+    assert.equal(edge.x1, from.x + DOT_X, "leaves the prerequisite's dot");
+    assert.equal(edge.x2, to.x + DOT_X, "enters the dependent's dot");
   }
 });
 
@@ -121,10 +121,10 @@ test("optional nodes can be hidden; shown optional nodes have dashed arrows, and
   const path = makePath();
   const nodes = path.modules[0]!.nodes.map((node) => (node.id === "n-skill" ? { ...node, optional: true } : node));
   (path.modules as PathModule[])[0] = { ...path.modules[0]!, nodes };
-  const shown = layoutRoadmap(path, { expandedModuleId: null, showOptional: true });
+  const shown = layoutGraph(path, { showOptional: true });
   assert.ok(shown.nodes.some((placed) => placed.node.id === "n-skill"));
   assert.equal(shown.edges.filter((edge) => edge.dashed).length, 2, "the two arrows into and out of the optional node");
-  const hidden = layoutRoadmap(path, { expandedModuleId: null, showOptional: false });
+  const hidden = layoutGraph(path, { showOptional: false });
   assert.ok(!hidden.nodes.some((placed) => placed.node.id === "n-skill"));
   assert.ok(hidden.edges.some((edge) => edge.from === "n-concept" && edge.to === "n-contrast" && !edge.dashed));
   assert.equal(hidden.edges.filter((edge) => edge.dashed).length, 0);
@@ -175,9 +175,9 @@ test("node marks, outcomes and resources validate, and bad links are refused", (
 test("display settings default sensibly and reject unknown values", () => {
   assert.deepEqual(parsePluginSettings({ artifactDefaults: {} }), { artifactDefaults: {} });
   const parsed = parsePluginSettings({ artifactDefaults: {}, display: { language: "ru" }, contentLanguage: "en" });
-  assert.deepEqual(parsed.display, { language: "ru", defaultView: "tree", showOptional: true, graphDirection: "bottom-to-top", patternHints: true });
+  assert.deepEqual(parsed.display, { language: "ru", showOptional: true, graphDirection: "bottom-to-top", patternHints: true });
   assert.equal(parsed.contentLanguage, "en");
-  assert.throws(() => parsePluginSettings({ artifactDefaults: {}, display: { defaultView: "kanban" } }));
+  assert.throws(() => parsePluginSettings({ artifactDefaults: {}, display: { language: "klingon" } }));
 });
 
 function temporary(t: { after(fn: () => void): void }): string {

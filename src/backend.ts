@@ -304,27 +304,6 @@ export function readGraphTopicCount(learning: { graph(): BriefGraph }): number {
   return buildGraphBrief(learning.graph()).counts.topics;
 }
 
-/** The learner's Knowledge Graph as plain nodes and arrows: stored propositions, and one arrow per premise of each chain. */
-export function readKnowledgeGraph(learning: { graph(): LearnerGraph }): {
-  nodes: { id: string; name: string; statement: string }[];
-  edges: { from: string; to: string }[];
-} {
-  const graph = learning.graph();
-  const propositions = graph.propositions ?? [];
-  const ids = new Set(propositions.map((node) => node.id));
-  const edges: { from: string; to: string }[] = [];
-  const seen = new Set<string>();
-  for (const chain of graph.chains ?? []) {
-    for (const premise of chain.premises) {
-      const key = `${premise}\u0000${chain.conclusion}`;
-      if (!ids.has(premise) || !ids.has(chain.conclusion) || seen.has(key)) continue;
-      seen.add(key);
-      edges.push({ from: premise, to: chain.conclusion });
-    }
-  }
-  return { nodes: propositions.map((node) => ({ id: node.id, name: node.name, statement: node.statement })), edges };
-}
-
 /** Per-topic mastery derived from the learner's Knowledge Graph (read-only: no writes, no model call). */
 export function readGraphMastery(learning: { graph(): LearnerGraph }): Mastery[] {
   const graph = learning.graph();
@@ -738,8 +717,6 @@ export function activate(ctx: PluginBackendContext): void {
 
   handle("graph.topicCount", () => ({ topics: readGraphTopicCount(ctx.learning) }));
 
-  // The learner's Knowledge Graph for the Graph view: propositions as nodes, chains as premise -> conclusion arrows (read-only).
-  handle("graph.knowledge", () => readKnowledgeGraph(ctx.learning));
 
   handle("graph.mastery", () => ({ mastery: readGraphMastery(ctx.learning) }));
 

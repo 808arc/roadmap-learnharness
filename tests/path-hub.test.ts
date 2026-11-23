@@ -99,13 +99,13 @@ test("the graph lays modules bottom-up, expands the working module and follows s
     const root = fixture.root;
     // The first in-progress node opens in the panel; its module is the expanded box.
     assert.equal(inspector(fixture).dataset.nodeId, "n-concept");
-    assert.equal(root.querySelectorAll(".rm-box").length, 0, "the tree draws no module frames");
+    assert.equal(root.querySelectorAll(".rm-box").length, 0, "the graph draws no module frames");
     const label = root.querySelector<HTMLElement>(".rm-module-label")!;
     assert.equal(label.dataset.moduleId, "module-structure");
     assert.equal(label.textContent, "Structure first");
     assert.match(label.title, /in progress · 1 \/ 3/);
     const synthesis = root.querySelector<HTMLElement>('.rm-module-label[data-module-id="module-synthesis"]')!;
-    assert.ok(synthesis, "every module has a label in the tree");
+    assert.ok(synthesis, "every module has a label in the graph");
     assert.ok(canvasNode(fixture, "n-concept").classList.contains("rm-sel"));
     assert.ok(canvasNode(fixture, "n-holistic").classList.contains("rm-done"));
     assert.ok(canvasNode(fixture, "n-skill").querySelector(".rm-node-warn"), "open errors are flagged on the node");
@@ -132,15 +132,9 @@ test("the graph lays modules bottom-up, expands the working module and follows s
     assert.equal(inspector(fixture).dataset.nodeId, "n-contrast");
     assert.equal(root.querySelector<HTMLElement>(".rm-module-label-focus")!.dataset.moduleId, "module-synthesis");
 
-    // The switch offers Tree and Graph only; selection survives switching views.
-    assert.deepEqual(
-      [...root.querySelectorAll(".rm-top .rm-seg button")].map((button) => button.textContent),
-      ["Tree", "Graph"],
-    );
-    toolbar(fixture, "Graph").click();
-    await fixture.flush();
-    toolbar(fixture, "Tree").click();
-    await fixture.flush();
+    // One view: no Tree/Graph switch, no text-only toggle; selection stays on the node.
+    assert.equal(root.querySelectorAll(".rm-top .rm-seg").length, 0, "no view switch");
+    assert.equal(root.querySelector(".rm-text-toggle"), null, "no text-only toggle");
     assert.ok(canvasNode(fixture, "n-contrast").classList.contains("rm-sel"));
 
     // Session rows open the native chat.
@@ -591,8 +585,6 @@ test("toggling the Graph direction saves it in the display settings", async () =
   const fixture = createViewFixture({ paths: [makePath()], conversations: [snapshot("chat-architect")] });
   try {
     await mounted(fixture);
-    toolbar(fixture, "Graph").click();
-    await fixture.flush();
     fixture.root.querySelector<HTMLButtonElement>(".rm-direction button[data-direction=left-to-right]")!.click();
     await fixture.flush();
     await fixture.flush();

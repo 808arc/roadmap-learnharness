@@ -20,15 +20,14 @@ Russian (Settings → Roadmap → Interface language; *Auto* follows the system)
 
 ## What it looks like
 
-- **Tree view** (default). Modules are frames stacked from the first module at
-  the bottom to the goal at the top. Inside each frame, nodes sit in columns by
-  dependency depth, and arrows run from each prerequisite to the node that needs
-  it. Interchangeable choices (GCC *or* Clang) are bracketed and marked `alt.`;
-  optional nodes are dashed. Drag to pan, Ctrl + wheel or the zoom control to zoom.
-  **Text only** swaps the diagram for the same modules and nodes as a nested text list.
-- **Graph view.** Your Knowledge Graph, read through `ctx.learning.graph()`:
-  propositions as nodes and reasoning chains as arrows (premise to conclusion).
-  It is not the roadmap's nodes. Pan and zoom work the same way.
+- **One graph view.** Every node is a small dot with a short title beside it, and
+  thin arrows run from each prerequisite to the node that needs it, bottom to top
+  by default (the on-canvas toggle switches to left to right, and the choice is
+  saved). Each module shows as a small coloured label at its first node, and its
+  nodes share that colour, with no frames or boxes. Optional nodes are dashed and
+  tagged `opt.`; interchangeable choices (GCC *or* Clang) are tagged `alt.`;
+  checkpoints carry a flag; the selected node has a blue ring. Drag to pan,
+  Ctrl + wheel or the zoom control to zoom.
 - **Node panel** (Node / Errors / Architect tabs): status, type, the goal,
   *After this node I can…*, the source anchor with a pre-reading pointer, typed
   resources (book, article, video, course, docs, exercises; free or not), the
@@ -189,7 +188,6 @@ Settings → Roadmap:
 | --- | --- |
 | Interface language | Auto (system language) |
 | Architect writes in | Auto (the language you write in) |
-| Default view | Tree |
 | Show optional nodes | On |
 | Artifact defaults per node type | Framework recommendation |
 | Architect model | Follow the host's strong model, or choose one |

@@ -66,7 +66,7 @@ function draw(after: Record<string, string[]>) {
     toggleModule() {},
     setGraphDirection() {},
   });
-  const state: CanvasState = { path, selectedNodeId: null, expandedModuleId: null, view: "tree", showOptional: true, showLegend: false, prerequisites };
+  const state: CanvasState = { path, selectedNodeId: null, expandedModuleId: null, showOptional: true, showLegend: false, prerequisites };
   canvas.render(state);
   return { host, dispose: () => { canvas.dispose(); controller.abort(); } };
 }

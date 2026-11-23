@@ -8,7 +8,7 @@ import type { NodePrerequisites } from "../src/node-prerequisites.ts";
 import { tables } from "../src/i18n.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
-import { PILL_H, PILL_W, layoutGraph } from "../src/view/roadmap-layout.ts";
+import { DOT_D, DOT_X, NODE_H, NODE_W, layoutGraph } from "../src/view/roadmap-layout.ts";
 import type { GraphDirection } from "../src/view/roadmap-layout.ts";
 import { makeNode, makePath } from "./fixtures.ts";
 
@@ -31,33 +31,33 @@ test("the default direction is bottom to top: depth 0 has the largest y", () => 
   assert.equal(at(layout, "b").y, at(layout, "c").y, "same depth, same row");
   assert.notEqual(at(layout, "b").x, at(layout, "c").x, "siblings spread along the row");
   for (const placed of layout.nodes) {
-    assert.equal(placed.w, PILL_W);
-    assert.equal(placed.h, PILL_H);
+    assert.equal(placed.w, NODE_W);
+    assert.equal(placed.h, NODE_H);
     assert.ok(placed.x + placed.w <= layout.width && placed.y + placed.h <= layout.height, "inside the layout");
   }
 });
 
-test("left to right keeps the old geometry: depth is the column, depth 0 is leftmost", () => {
+test("left to right: depth is the column, depth 0 is leftmost, arrows run from a title's end to the next dot", () => {
   const layout = layoutOf("left-to-right");
   assert.ok(at(layout, "a").x < at(layout, "b").x && at(layout, "b").x < at(layout, "d").x);
   assert.equal(at(layout, "b").x, at(layout, "c").x);
   assert.notEqual(at(layout, "b").y, at(layout, "c").y);
   for (const edge of layout.edges) {
-    assert.equal(edge.x1, at(layout, edge.from).x + PILL_W);
-    assert.equal(edge.x2, at(layout, edge.to).x);
+    assert.equal(edge.x1, at(layout, edge.from).x + NODE_W);
+    assert.equal(edge.x2, at(layout, edge.to).x + DOT_X - DOT_D / 2);
   }
 });
 
-test("bottom to top: arrows leave the prerequisite's top and enter the dependent's bottom", () => {
+test("bottom to top: arrows leave the top of the prerequisite's dot and enter the bottom of the dependent's dot", () => {
   const layout = layoutOf("bottom-to-top");
   assert.deepEqual(layout.edges.map((edge) => `${edge.from}->${edge.to}`).sort(), ["a->b", "a->c", "b->d", "c->d"]);
   for (const edge of layout.edges) {
     const from = at(layout, edge.from);
     const to = at(layout, edge.to);
-    assert.equal(edge.y1, from.y, "starts at the prerequisite's top edge");
-    assert.equal(edge.y2, to.y + to.h, "ends at the dependent's bottom edge");
-    assert.equal(edge.x1, from.x + from.w / 2);
-    assert.equal(edge.x2, to.x + to.w / 2);
+    assert.equal(edge.y1, from.y + (NODE_H - DOT_D) / 2, "starts at the top of the prerequisite's dot");
+    assert.equal(edge.y2, to.y + (NODE_H + DOT_D) / 2, "ends at the bottom of the dependent's dot");
+    assert.equal(edge.x1, from.x + DOT_X);
+    assert.equal(edge.x2, to.x + DOT_X);
     assert.ok(edge.y1 > edge.y2, "arrow points up");
   }
 });
@@ -73,7 +73,7 @@ function renderCanvas(direction?: GraphDirection) {
     setGraphDirection: (value) => picked.push(value),
   });
   const state: CanvasState = {
-    path, selectedNodeId: null, expandedModuleId: null, view: "graph", showOptional: true, showLegend: false, prerequisites,
+    path, selectedNodeId: null, expandedModuleId: null, showOptional: true, showLegend: false, prerequisites,
     ...(direction ? { graphDirection: direction } : {}),
   };
   canvas.render(state);

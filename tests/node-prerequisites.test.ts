@@ -1,5 +1,5 @@
 /** Node prerequisites (issue #44): validation, the module-order fallback for old data, the
- * Architect's draft, and the graph and tree with several roots. Synthetic fixtures only. */
+ * Architect's draft, and the graph with several roots. Synthetic fixtures only. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -11,7 +11,7 @@ import { nodePrerequisites } from "../src/node-prerequisites.ts";
 import type { LinkedNode } from "../src/node-prerequisites.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
-import { layoutRoadmap, buildDependencyGraph } from "../src/view/roadmap-layout.ts";
+import { layoutGraph, buildDependencyGraph } from "../src/view/roadmap-layout.ts";
 import { setLocale, t } from "../src/i18n.ts";
 import { makeNode, makePath, rawPath } from "./fixtures.ts";
 import { createHost } from "./host.ts";
@@ -92,7 +92,7 @@ test("nodePrerequisites uses a node's own prerequisites, an empty list is a root
 
 test("a path without any prerequisites lays out in module order, as before", () => {
   const nodes = [makeNode("a", "concept"), makeNode("b", "concept"), makeNode("c", "concept")];
-  const layout = layoutRoadmap(pathWith(nodes), { expandedModuleId: null, showOptional: true });
+  const layout = layoutGraph(pathWith(nodes), { showOptional: true });
   assert.deepEqual(layout.edges.map((edge) => `${edge.from}->${edge.to}`).sort(), ["a->b", "b->c"]);
 });
 
@@ -104,19 +104,18 @@ test("the graph draws arrows from each prerequisite and starts a branch at every
     makeNode("d", "skill", { prerequisites: ["a", "b"] }),
   ];
   const path = pathWith(nodes);
-  const layout = layoutRoadmap(path, { expandedModuleId: null, showOptional: true });
+  const layout = layoutGraph(path, { showOptional: true });
   assert.deepEqual(
     layout.edges.map((edge) => `${edge.from}->${edge.to}`).sort(),
     ["a->c", "a->d", "b->d"],
   );
   const graph = buildDependencyGraph(path, { showOptional: true });
-  assert.equal(graph.parent.get("a"), null);
-  assert.equal(graph.parent.get("b"), null);
-  // a and b are both at depth 0, so the tie goes to the earlier node in path order.
-  assert.equal(graph.parent.get("d"), "a", "the tree nests under the deepest prerequisite, earliest on a tie");
+  assert.equal(graph.depth.get("a"), 0);
+  assert.equal(graph.depth.get("b"), 0, "a node with empty prerequisites starts a branch at depth 0");
+  assert.equal(graph.depth.get("d"), 1);
 });
 
-test("a roadmap with two roots draws both branches and the tree shows both roots at level 0", () => {
+test("a roadmap with two roots draws both branches and both roots sit at depth 0", () => {
   const nodes = [
     makeNode("root-one", "concept", { prerequisites: [] }),
     makeNode("root-two", "concept", { prerequisites: [] }),
@@ -126,7 +125,7 @@ test("a roadmap with two roots draws both branches and the tree shows both roots
   const path = pathWith(nodes);
   const graph = buildDependencyGraph(path, { showOptional: true });
   assert.deepEqual(
-    [...graph.parent.entries()].filter(([, parent]) => parent === null).map(([id]) => id),
+    [...graph.depth.entries()].filter(([, depth]) => depth === 0).map(([id]) => id),
     ["root-one", "root-two"],
   );
 
@@ -137,19 +136,17 @@ test("a roadmap with two roots draws both branches and the tree shows both roots
     selectNode() {},
     toggleModule() {},
   });
-  const state = (view: CanvasState["view"]): CanvasState => ({
+  const state: CanvasState = {
     path,
     selectedNodeId: null,
     expandedModuleId: null,
-    view,
     showOptional: true,
     showLegend: false,
-  });
+  };
   try {
-    // The Graph view shows the learner's Knowledge Graph (issue #50); the roadmap's two branches are drawn in the Tree.
-    canvas.render(state("tree"));
-    const treeIds = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
-    for (const id of ["root-one", "root-two", "after-one", "after-two"]) assert.ok(treeIds.includes(id), `tree shows ${id}`);
+    canvas.render(state);
+    const ids = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
+    for (const id of ["root-one", "root-two", "after-one", "after-two"]) assert.ok(ids.includes(id), `graph shows ${id}`);
     assert.equal(host.querySelectorAll(".rm-edges line").length, 2, "two arrows, one per branch");
   } finally {
     canvas.dispose();
@@ -195,7 +192,6 @@ test("the legend names prerequisites once any node sets them, in both languages,
       path: { ...makePath(), modules: [{ id: "m", title: "M", nodes }] },
       selectedNodeId: null,
       expandedModuleId: null,
-      view: "graph",
       showOptional: true,
       showLegend: true,
     });
@@ -295,7 +291,7 @@ test("a draft that gives some new nodes prerequisites must give them to every ne
   const none = newDraft([{ title: "First" }, { title: "Second" }]);
   const saved = parseLearningPath(completeDraft(none, null, "chat-synthetic", null));
   assert.deepEqual(saved.modules[0]!.nodes.map((node) => node.prerequisites), [undefined, undefined]);
-  const layout = layoutRoadmap(saved, { expandedModuleId: null, showOptional: true });
+  const layout = layoutGraph(saved, { showOptional: true });
   assert.equal(layout.edges.length, 1, "falls back to module order, as old data does");
 });
 
