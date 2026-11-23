@@ -110,3 +110,22 @@ test("a finished, idle build reads as done up to the furthest step reached", () 
     "done", "pending", "pending", "pending", "pending", "pending",
   ]);
 });
+
+test("topics answered in full by the listing count as read, once even if read again", () => {
+  const listing = result(
+    "l",
+    "list_roadmap_topics",
+    JSON.stringify({
+      topics: [
+        { slug: "a", content: { title: "A" } },
+        { slug: "b", content: { title: "B" } },
+        { slug: "c", content: null },
+      ],
+    }),
+  );
+  const reread = result("r", "read_roadmap_topics", JSON.stringify({ results: [{ slug: "a", ok: true }, { slug: "c", ok: true }] }));
+  const messages = [user, assistant(call("l", "list_roadmap_topics")), listing, assistant(call("r", "read_roadmap_topics")), reread];
+  const views = architectSteps(messages, undefined, true);
+  const topics = views.find((view) => view.step === "readTopics")!;
+  assert.deepEqual(topics.count, { done: 3, total: 3 });
+});
