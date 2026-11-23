@@ -9,6 +9,8 @@ import { locale, t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import type { NodePrerequisites } from "../node-prerequisites.ts";
 import { ICONS, setIcon, statusIcon } from "./icons.ts";
+import { EMPTY_SNAPSHOT, edgeKey, growthPlan, snapshotOf } from "./graph-growth.ts";
+import type { GraphSnapshot, GrowthPlan } from "./graph-growth.ts";
 import { buildDependencyGraph, isDone, layoutGraph, layoutRoadmap, moduleCounts } from "./roadmap-layout.ts";
 import type { PlacedModule, PlacedNode, RoadmapLayout } from "./roadmap-layout.ts";
 import { el } from "./dom.ts";
@@ -35,6 +37,8 @@ export interface CanvasCallbacks {
 
 export interface RoadmapCanvas {
   render(state: CanvasState): void;
+  /** No roadmap to show: the next roadmap drawn grows in from nothing. */
+  clear(): void;
   dispose(): void;
 }
 
@@ -80,7 +84,11 @@ export function createRoadmapCanvas(
   zoomLabel.title = t("zoom.fit");
   controls.append(zoomOut, zoomLabel, zoomIn);
   const legend = el(document, "div", "rm-legend");
-  root.append(viewport, controls, legend);
+  // Announces how many nodes a save added; the graph itself is not a live region.
+  const growStatus = el(document, "p", "rm-grow-status");
+  growStatus.setAttribute("role", "status");
+  growStatus.setAttribute("aria-live", "polite");
+  root.append(viewport, controls, legend, growStatus);
   host.append(root);
 
   let state: CanvasState | null = null;
@@ -89,6 +97,8 @@ export function createRoadmapCanvas(
   let tx = 0;
   let ty = 0;
   let placedViewKey: string | null = null;
+  /** What was drawn last: a snapshot of the same roadmap and view, "empty" after clear(), or null at mount. */
+  let drawn: { readonly pathId: string; readonly view: ViewMode; readonly snapshot: GraphSnapshot } | "empty" | null = null;
   let disposed = false;
 
   const applyTransform = (): void => {
@@ -289,7 +299,7 @@ export function createRoadmapCanvas(
     return box;
   };
 
-  const renderEdges = (current: RoadmapLayout): SVGSVGElement => {
+  const renderEdges = (current: RoadmapLayout, plan: GrowthPlan): SVGSVGElement => {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     svg.setAttribute("class", "rm-edges");
@@ -301,7 +311,13 @@ export function createRoadmapCanvas(
       line.setAttribute("y1", String(edge.y1));
       line.setAttribute("x2", String(edge.x2));
       line.setAttribute("y2", String(edge.y2));
-      if (edge.dashed) line.setAttribute("class", "rm-dashed");
+      const key = edgeKey(edge.from, edge.to);
+      const delay = plan.delays.get(key);
+      const grow = delay === undefined ? "" : " rm-grow";
+      const style = delay === undefined ? null : `animation-delay: ${delay}ms`;
+      if (edge.dashed) line.setAttribute("class", `rm-dashed${grow}`);
+      else if (grow) line.setAttribute("class", "rm-grow");
+      if (style) line.setAttribute("style", style);
       svg.append(line);
       // Arrowhead at the dependent end: two wings laid back from the tip along the line.
       const length = Math.hypot(edge.x2 - edge.x1, edge.y2 - edge.y1) || 1;
@@ -316,7 +332,8 @@ export function createRoadmapCanvas(
         "d",
         `M${baseX + wingX} ${baseY + wingY} L${edge.x2} ${edge.y2} L${baseX - wingX} ${baseY - wingY}`,
       );
-      head.setAttribute("class", "rm-arrow");
+      head.setAttribute("class", `rm-arrow${grow}`);
+      if (style) head.setAttribute("style", style);
       svg.append(head);
     }
     return svg;
@@ -329,7 +346,13 @@ export function createRoadmapCanvas(
     layout = withModules ? layoutRoadmap(current.path, { ...options, expandedModuleId: current.expandedModuleId }) : layoutGraph(current.path, options);
     stage.style.width = `${layout.width}px`;
     stage.style.height = `${layout.height}px`;
-    const children: Element[] = [renderEdges(layout)];
+    // Only items new since the last drawing animate; a re-render of the same graph animates nothing.
+    const before =
+      drawn === "empty" ? EMPTY_SNAPSHOT : drawn !== null && drawn.pathId === current.path.id && drawn.view === current.view ? drawn.snapshot : null;
+    const plan = growthPlan(before, layout);
+    drawn = { pathId: current.path.id, view: current.view, snapshot: snapshotOf(layout) };
+    growStatus.textContent = plan.addedNodes > 0 ? t("graph.grew", { n: plan.addedNodes }) : "";
+    const children: Element[] = [renderEdges(layout, plan)];
     for (const placed of layout.modules) children.push(renderModule(placed));
     for (const group of layout.groups) {
       const bracket = el(document, "div", "rm-alt-group");
@@ -340,7 +363,13 @@ export function createRoadmapCanvas(
       children.push(bracket);
     }
     for (const placed of layout.nodes) {
-      children.push(nodeButton(placed, placed.node.id === current.selectedNodeId, !withModules));
+      const button = nodeButton(placed, placed.node.id === current.selectedNodeId, !withModules);
+      const delay = plan.delays.get(placed.node.id);
+      if (delay !== undefined) {
+        button.classList.add("rm-grow");
+        button.style.animationDelay = `${delay}ms`;
+      }
+      children.push(button);
     }
     stage.replaceChildren(...children);
     const viewKey = `${current.path.id}\u0000${current.view}`;
@@ -412,6 +441,10 @@ export function createRoadmapCanvas(
       legend.hidden = !next.showLegend;
       renderLegend();
       renderGraph(next);
+    },
+    clear() {
+      if (disposed || signal.aborted) return;
+      drawn = "empty";
     },
     dispose() {
       if (disposed) return;

@@ -350,6 +350,43 @@
   stroke-dasharray: 4 4;
 }
 
+/* Graph growth: nodes and arrows new since the last drawing fade and rise in, in order.
+ * The delay is set inline per item (see graph-growth.ts). */
+.rm-node.rm-grow {
+  animation: rm-grow-node 320ms ease-out both;
+}
+
+.rm-edges .rm-grow {
+  animation: rm-grow-arrow 320ms ease-out both;
+}
+
+@keyframes rm-grow-node {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes rm-grow-arrow {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.rm-grow-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rm-node.rm-grow,
+  .rm-edges .rm-grow {
+    animation: none;
+  }
+}
+
 .rm-edges .rm-arrow {
   fill: none;
   stroke: var(--rm-edge);
@@ -2582,4 +2619,56 @@ details.lp-chat-reasoning > summary {
 
 .rm-proposal-build:disabled {
   opacity: 0.5;
+}
+
+/* Graph view as dots: each node is a small circle with its title beside it, with no box around it.
+ * Later sections paint boxes on status classes, so these rules are more specific. */
+.rm-canvas .rm-node.rm-pill {
+  gap: 7px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  align-items: center;
+}
+
+.rm-canvas .rm-node.rm-pill::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--rm-faint);
+  border-radius: 50%;
+  background: var(--rm-bg);
+}
+
+.rm-canvas .rm-node.rm-pill.rm-opt::before {
+  border-style: dashed;
+  background: transparent;
+}
+
+.rm-canvas .rm-node.rm-pill.rm-prog::before {
+  border-color: var(--rm-acc);
+}
+
+.rm-canvas .rm-node.rm-pill.rm-done::before {
+  border-color: var(--rm-ok);
+  background: var(--rm-ok);
+}
+
+.rm-canvas .rm-node.rm-pill.rm-skip::before {
+  border-style: dotted;
+}
+
+.rm-canvas .rm-node.rm-pill.rm-sel::before,
+.rm-canvas .rm-node.rm-pill.rm-highlight::before {
+  border-color: var(--rm-acc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rm-acc) 28%, transparent);
+}
+
+.rm-canvas .rm-node.rm-pill:not(.rm-check) .rm-node-icon {
+  display: none;
 }
