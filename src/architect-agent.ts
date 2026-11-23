@@ -940,6 +940,21 @@ function tracedUpstream<T extends UpstreamOptions>(upstream: T, log: PluginLog |
   };
 }
 
+/** Largest full topic list (UTF-8 bytes of the JSON) that list_roadmap_topics returns with resources. Over it, the
+ * list carries slugs, titles and descriptions only, and read_roadmap_topics gives each chosen topic's resources. */
+export const MAX_LIST_BYTES = 400 * 1024;
+/** The line the model reads when the list is over MAX_LIST_BYTES. */
+export const LIST_TRUNCATED_NOTE =
+  `Resources are not listed: the full topic list is over ${MAX_LIST_BYTES} bytes. ` +
+  "Resources are available through read_roadmap_topics for the slugs you choose.";
+
+/** Where the listed content came from, for the "topic list" log step: the local copy when it answered every
+ * listed topic, GitHub when it answered none, mixed otherwise. */
+function listSource(total: number, answered: number): "local" | "github" | "mixed" {
+  if (answered === 0) return "github";
+  return answered === total ? "local" : "mixed";
+}
+
 /** `list_roadmap_topics`, `read_roadmap_topic` and `read_roadmap_topics`: the upstream operations, nothing else. */
 export function upstreamReadTools(
   ctx: PluginBackendContext,
@@ -956,32 +971,61 @@ export function upstreamReadTools(
     {
       name: "list_roadmap_topics",
       description:
-        "List the topics of one developer-roadmap roadmap (for example \"frontend\" or \"devops\"). Each listed topic " +
-        "carries its title and description, so the structure needs no further reads. For a topic's resources, read it " +
-        "with read_roadmap_topics in batches (up to 10 slugs per call), or read_roadmap_topic for one topic.",
+        "List the topics of one developer-roadmap roadmap (for example \"frontend\" or \"devops\") in one call. It " +
+        "returns every topic in full: slug, title, description and tagged resources, as its topic file writes them. " +
+        "A topic whose content is null is missing: read it with read_roadmap_topics. If the full list is too large, " +
+        "only slugs, titles and descriptions come back, and read_roadmap_topics gives the resources.",
       parameters: objectSchema({
         roadmapSlug: { type: "string", description: "Lowercase slug of the roadmap, e.g. \"backend\"." },
       }, ["roadmapSlug"]),
       execute: async (_toolCallId, rawParams, signal) => {
         assertLive(ctx, signal);
+        let step: LogStep | undefined;
         try {
           const params = readObject(rawParams);
-          const roadmap = String(params.roadmapSlug);
+          // The slug is checked before it is logged, so only a valid roadmap name reaches the log.
+          const roadmap = assertSlug(params.roadmapSlug, "roadmapSlug");
+          step = log?.begin("topic list", { roadmap });
           const topics = await listRoadmapTopics(roadmap, upstream.commit, upstream);
           const slugs = topics.map((topic) => topic.slug);
           const traced = tracedUpstream(upstream, log, slugs.length);
-          // Every listed topic is read from the local copy in parallel, so the list carries each title and description.
+          // Every listed topic is read from the local copy in parallel. A topic the copy cannot answer keeps its slot
+          // with null content, and is fetched in the background so a later read_roadmap_topics hits the cache.
           const local = new Map((await readLocalTopics(roadmap, slugs, upstream.commit, traced)).map((topic) => [topic.slug, topic]));
-          // Topics the copy did not answer are fetched in the background, so later batch reads hit the cache.
           void prefetchRoadmapTopics(roadmap, slugs.filter((slug) => !local.has(slug)), upstream.commit, traced);
-          const result = {
+          const full = {
+            roadmap,
+            count: slugs.length,
             topics: slugs.map((slug) => {
               const topic = local.get(slug);
-              return { slug, title: topic?.title ?? null, description: topic?.description ?? null };
+              const content = topic ? { title: topic.title, description: topic.description, resources: topic.resources } : null;
+              return { slug, content };
             }),
           };
-          return textResult(result, JSON.stringify(result));
+          const fullText = JSON.stringify(full);
+          const fits = Buffer.byteLength(fullText, "utf8") <= MAX_LIST_BYTES;
+          const result = fits
+            ? full
+            : {
+                roadmap,
+                count: slugs.length,
+                truncated: true,
+                note: LIST_TRUNCATED_NOTE,
+                topics: slugs.map((slug) => {
+                  const topic = local.get(slug);
+                  return { slug, title: topic?.title ?? null, description: topic?.description ?? null };
+                }),
+              };
+          const text = fits ? fullText : JSON.stringify(result);
+          if (fits) {
+            for (const topic of local.values()) {
+              for (const resource of topic.resources) addCitable(readUrls, resource.url, citableTitles(resource.label));
+            }
+          }
+          step?.end({ count: slugs.length, bytes: Buffer.byteLength(text, "utf8"), source: listSource(slugs.length, local.size) });
+          return textResult(result, text);
         } catch (error) {
+          step?.fail(error);
           return upstreamFailure(error);
         }
       },
