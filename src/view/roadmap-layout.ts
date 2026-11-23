@@ -2,9 +2,9 @@
  *
  * Nodes sit in columns by dependency depth: a node is one column right of its
  * deepest prerequisite, and an arrow runs from each prerequisite to each node
- * that depends on it. Modules are bands stacked bottom-up (the first module at
- * the bottom, the path's end at the top); each band draws a frame around its
- * nodes. Any number of nodes can share a column: they stack in rows.
+ * that depends on it. The nodes of all modules share the columns (one network);
+ * a module shows as a text label above its first column. Any number of nodes
+ * can share a column: they stack in rows.
  *
  * Alternatives (same alternativeGroup) share a column and are bracketed. They
  * depend on the same prerequisites and never on each other.
@@ -19,15 +19,12 @@ export const ROW = 34;
 /** Horizontal room between two columns, where the arrows run. */
 export const COL_GAP = 64;
 export const COL_W = SUB_W + COL_GAP;
-export const MODULE_GAP = 58;
 export const PAD = 40;
 /** Room under the first module for the zoom control and the legend overlay. */
 export const PAD_BOTTOM = 150;
 export const FRAME_PAD = 12;
-/** Module frame header (title, progress and source). */
-export const FRAME_HEAD = 41;
-/** Height of the open-error line at the foot of a module frame. */
-export const ERROR_LINE = 26;
+/** Height of a module's text label above its first column. */
+export const LABEL_H = 18;
 /** Distance from a node's left edge to its alternatives bracket. */
 export const GROUP_BRACKET = 8;
 /** Graph view: each node is a small pill, stacked with generous room between rows. */
@@ -82,12 +79,12 @@ export interface PlacedModule {
   /** The module the learner focused; drawn highlighted, and centred by focus. */
   readonly expanded: boolean;
   readonly final: boolean;
-  /** Module frame rectangle. */
+  /** Tree: top-left of the module's text label (above its first column). w and h are 0: no frame is drawn. */
   readonly x: number;
   readonly y: number;
   readonly w: number;
   readonly h: number;
-  /** First unresolved error shown at the foot of the frame. */
+  /** Always null: the tree draws no frame to hold an error line. */
   readonly errorLine: { readonly x: number; readonly y: number } | null;
 }
 
@@ -386,71 +383,45 @@ export function layoutRoadmap(
     if (!firstOfUnit.has(key)) firstOfUnit.set(key, flatIndex.get(node.id)!);
   }
   const columns = graph.nodeIds.length === 0 ? 0 : Math.max(...graph.depth.values()) + 1;
-  const colX = (depth: number): number => PAD + FRAME_PAD + depth * COL_W;
   const moduleOf = new Map(path.modules.flatMap((module) => module.nodes.map((node) => [node.id, module.id] as const)));
 
-  interface Band {
-    readonly module: PathModule;
-    readonly index: number;
-    readonly cells: Map<number, PathNode[]>;
-    /** Vertical offset of each node inside the band, from its first row. */
-    readonly offsets: Map<string, number>;
-    readonly hasError: boolean;
-    readonly height: number;
+  // One network: the nodes of all modules share the columns and one spread.
+  const cells = new Map<number, PathNode[]>();
+  for (const node of all) {
+    const depth = graph.depth.get(node.id);
+    if (depth === undefined) continue;
+    cells.set(depth, [...(cells.get(depth) ?? []), node]);
   }
-  const bands: Band[] = path.modules.map((module, index) => {
-    const cells = new Map<number, PathNode[]>();
-    for (const node of module.nodes) {
-      const depth = graph.depth.get(node.id);
-      if (depth === undefined) continue;
-      cells.set(depth, [...(cells.get(depth) ?? []), node]);
-    }
-    // Alternatives of one unit stay adjacent within a column, in path order.
-    for (const list of cells.values()) {
-      list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
-    }
-    // Arrows inside the module place its nodes; arrows to other modules do not.
-    const offsets = spreadColumns(cells, graph.edges, ROW);
-    const hasError = module.nodes.some((node) => node.errors.some((entry) => !entry.resolved));
-    const stack = spreadHeight(offsets, TREE_SIZE);
-    const height = FRAME_HEAD + (stack > 0 ? stack + FRAME_PAD : FRAME_PAD) + (hasError ? ERROR_LINE : 0);
-    return { module, index, cells, offsets, hasError, height };
+  for (const list of cells.values()) {
+    list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
+  }
+  const offsets = spreadColumns(cells, graph.edges, ROW);
+  const right = PAD + FRAME_PAD + (Math.max(columns, 1) - 1) * COL_W + SUB_W;
+  const width = right + FRAME_PAD + PAD;
+  const height = PAD + LABEL_H + spreadHeight(offsets, TREE_SIZE) + PAD + PAD_BOTTOM;
+  const placed = placeCells(cells, PAD + LABEL_H, moduleOf, offsets);
+  const nodes = placed.nodes;
+
+  // A module's label sits above its first column: the leftmost column it has nodes in, at its topmost node there.
+  const modules: PlacedModule[] = path.modules.map((module, index) => {
+    const own = nodes.filter((entry) => entry.moduleId === module.id);
+    const left = own.length > 0 ? Math.min(...own.map((entry) => entry.x)) : PAD + FRAME_PAD;
+    const top = own.filter((entry) => entry.x === left).reduce((best, entry) => Math.min(best, entry.y), Infinity);
+    return {
+      module,
+      index,
+      expanded: module.id === options.expandedModuleId,
+      final: index === path.modules.length - 1 && path.modules.length > 1,
+      x: left,
+      y: (Number.isFinite(top) ? top : PAD + LABEL_H) - LABEL_H,
+      w: 0,
+      h: 0,
+      errorLine: null,
+    };
   });
 
-  const right = columns > 0 ? colX(columns - 1) + SUB_W : PAD + FRAME_PAD + SUB_W;
-  const width = right + FRAME_PAD + PAD;
-  const height = PAD + PAD_BOTTOM + bands.reduce((sum, band) => sum + band.height, 0) + MODULE_GAP * Math.max(0, bands.length - 1);
-
-  const modules: PlacedModule[] = [];
-  const nodes: PlacedNode[] = [];
-  const groups: AlternativeGroup[] = [];
-  let bottom = height - PAD_BOTTOM;
-
-  for (const band of bands) {
-    const top = bottom - band.height;
-    const depths = [...band.cells.keys()];
-    const frameX = depths.length > 0 ? colX(Math.min(...depths)) - FRAME_PAD : PAD;
-    const frameRight = depths.length > 0 ? colX(Math.max(...depths)) + SUB_W + FRAME_PAD : PAD + SUB_W + 2 * FRAME_PAD;
-    const errorLine = band.hasError ? { x: frameX + FRAME_PAD, y: top + band.height - FRAME_PAD - 20 } : null;
-    modules.push({
-      module: band.module,
-      index: band.index,
-      expanded: band.module.id === options.expandedModuleId,
-      final: band.index === bands.length - 1 && bands.length > 1,
-      x: frameX,
-      y: top,
-      w: frameRight - frameX,
-      h: band.height,
-      errorLine,
-    });
-    const placed = placeCells(band.cells, top + FRAME_HEAD, moduleOf, band.offsets);
-    nodes.push(...placed.nodes);
-    groups.push(...placed.groups);
-    bottom = top - MODULE_GAP;
-  }
-
   const edges = placeEdges(graph, nodes);
-  return { width, height, modules, nodes, edges, groups };
+  return { width, height, modules, nodes, edges, groups: placed.groups };
 }
 
 /** Arrows from each prerequisite's right edge to its dependent's left edge (both ends must be placed). */

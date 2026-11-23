@@ -94,7 +94,7 @@ test("optional nodes get dashed arrows, and hiding one reconnects its neighbours
   assert.deepEqual(hidden.edges.map((edge) => [edge.from, edge.to, edge.dashed]), [["a", "c", false]]);
 });
 
-test("a column with many nodes keeps every node, stacked in rows inside the module frame", () => {
+test("a column with many nodes keeps every node, stacked in rows without overlap", () => {
   const nodes = Array.from({ length: 30 }, (_, index) => makeNode(`n${index}`, "skill"));
   const path = pathWith(nodes);
   const layout = layoutRoadmap(path, {
@@ -104,11 +104,9 @@ test("a column with many nodes keeps every node, stacked in rows inside the modu
   });
   assert.equal(layout.nodes.length, 30, "no node is dropped");
   assert.equal(new Set(layout.nodes.map((placed) => placed.y)).size, 30, "one row per node");
-  const frame = layout.modules[0]!;
-  for (const placed of layout.nodes) {
-    assert.ok(placed.y >= frame.y && placed.y + SUB_H <= frame.y + frame.h, `${placed.node.id} is inside the frame`);
-  }
-  assert.ok(frame.h >= 29 * ROW + SUB_H, "the frame grows with the column");
+  const sorted = [...layout.nodes].sort((a, b) => a.y - b.y);
+  for (let i = 1; i < sorted.length; i += 1) assert.ok(sorted[i]!.y >= sorted[i - 1]!.y + ROW, "rows keep their pitch");
+  assert.ok(layout.height >= 29 * ROW + SUB_H, "the canvas grows with the column");
 });
 
 test("the graph and the tree both render all five children of a node", () => {
@@ -141,7 +139,8 @@ test("the graph and the tree both render all five children of a node", () => {
     canvas.render(state("tree"));
     const treeIds = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
     for (const id of ["root", "one", "two", "three", "four", "five"]) assert.ok(treeIds.includes(id), `tree shows ${id}`);
-    assert.ok(host.querySelector(".rm-box"), "tree draws the module frame");
+    assert.equal(host.querySelectorAll(".rm-box").length, 0, "tree draws no module frame");
+    assert.equal(host.querySelectorAll(".rm-module-label").length, 1, "tree labels the module");
   } finally {
     canvas.dispose();
     controller.abort();
@@ -196,11 +195,12 @@ test("the two views render: the module tree by default and the bare graph", () =
     assert.deepEqual([...VIEW_MODES], ["tree", "graph"]);
 
     canvas.render(state("tree"));
-    assert.ok(host.querySelector(".rm-box[data-module-id=\"module-graph\"]"), "tree draws the module frame");
+    assert.equal(host.querySelectorAll(".rm-box").length, 0, "tree draws no module frame");
+    assert.ok(host.querySelector(".rm-module-label[data-module-id=\"module-graph\"]"), "tree labels the module");
     assert.ok(visible(".rm-viewport"), "tree shows the canvas");
 
     canvas.render(state("graph"));
-    assert.equal(host.querySelectorAll(".rm-box").length, 0, "graph draws no module boxes");
+    assert.equal(host.querySelectorAll(".rm-module-label").length, 0, "graph draws no module labels");
     assert.equal(host.querySelectorAll(".rm-stage .rm-node").length, 3, "graph shows every node");
     assert.equal(host.querySelectorAll(".rm-edges line").length, 2, "graph draws the arrows");
     assert.ok(visible(".rm-viewport"), "graph shows the canvas");

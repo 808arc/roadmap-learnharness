@@ -12,8 +12,8 @@ import type { MessageKey } from "../src/i18n.ts";
 import { IMPORT_MARKER, importLegacyData, legacyDataDirectory } from "../src/legacy-import.ts";
 import { DEFAULT_BREAK_MS, sessionMetrics } from "../src/session-metrics.ts";
 import {
+  LABEL_H,
   PAD_BOTTOM,
-  SUB_H,
   defaultExpandedModule,
   layoutRoadmap,
   moduleCounts,
@@ -48,15 +48,21 @@ test("node roles split an expanded module into order, additional and consolidati
   assert.equal(nodeRole(makeNode("d", "checkpoint")), "consolidation");
 });
 
-test("the layout stacks module frames bottom-up and places each node in its dependency column", () => {
+test("the tree draws no module frames: one label per module, and every node sits in its dependency column", () => {
   const path = makePath();
   const layout = layoutRoadmap(path, { expandedModuleId: "module-synthesis", showOptional: true });
 
+  assert.equal(layout.modules.length, path.modules.length, "one label per module");
   const [first, second] = layout.modules;
   assert.equal(first!.module.id, "module-structure");
   assert.equal(second!.expanded, true);
-  assert.ok(second!.y + second!.h < first!.y, "the later module is drawn above the earlier one");
-  assert.ok(layout.height - (first!.y + first!.h) >= PAD_BOTTOM, "space under the first module for zoom and legend");
+  for (const label of layout.modules) {
+    assert.equal(label.w * label.h, 0, "no frame area");
+    assert.equal(label.errorLine, null);
+  }
+  const allNodes = path.modules.flatMap((module) => module.nodes);
+  assert.equal(layout.nodes.length, allNodes.length, "every node is placed");
+  assert.ok(layout.height >= PAD_BOTTOM, "space under the nodes for zoom and legend");
 
   // Module order is the fallback prerequisite chain: holistic, concept, skill, contrast, checkpoint, bridge.
   const depth = (id: string): number => layout.nodes.find((placed) => placed.node.id === id)!.depth;
@@ -68,12 +74,35 @@ test("the layout stacks module frames bottom-up and places each node in its depe
   const bridge = layout.nodes.find((placed) => placed.node.id === "n-bridge")!;
   assert.ok(bridge.x > holistic.x, "deeper nodes sit further right");
 
-  // Every node sits inside its module's frame.
-  for (const placed of layout.nodes) {
-    const frame = layout.modules.find((entry) => entry.module.id === placed.moduleId)!;
-    assert.ok(placed.y >= frame.y && placed.y + SUB_H <= frame.y + frame.h, `${placed.node.id} is inside its frame`);
-    assert.ok(placed.x >= frame.x && placed.x + placed.w <= frame.x + frame.w, `${placed.node.id} is inside its frame sideways`);
+  // Each label sits above its module's leftmost node.
+  for (const label of layout.modules) {
+    const own = layout.nodes.filter((placed) => placed.moduleId === label.module.id);
+    const leftmost = Math.min(...own.map((placed) => placed.x));
+    assert.equal(label.x, leftmost);
+    const top = Math.min(...own.filter((placed) => placed.x === leftmost).map((placed) => placed.y));
+    assert.ok(label.y >= 0 && label.y + LABEL_H <= top, "label is above the first column");
   }
+});
+
+test("nodes of all modules share the columns and no two nodes in a column overlap", () => {
+  const modules = ["a", "b", "c"].map((id) => ({
+    ...makePath().modules[0]!,
+    id: `m-${id}`,
+    title: `Module ${id}`,
+    nodes: [0, 1, 2].map((i) => makeNode(`${id}${i}`, "concept", { prerequisites: i === 0 ? [] : [`${id}${i - 1}`] })),
+  }));
+  const path: LearningPath = { ...makePath(), modules };
+  const layout = layoutRoadmap(path, { expandedModuleId: null, showOptional: true });
+  assert.equal(layout.nodes.length, 9);
+  assert.equal(layout.modules.length, 3);
+  assert.deepEqual([...new Set(layout.nodes.map((placed) => placed.depth))].sort(), [0, 1, 2], "three modules, three shared columns");
+  for (const placed of layout.nodes) {
+    for (const other of layout.nodes) {
+      if (placed === other || placed.x !== other.x) continue;
+      assert.ok(placed.y + placed.h <= other.y || other.y + other.h <= placed.y, `${placed.node.id} and ${other.node.id} overlap`);
+    }
+  }
+  assert.equal(layout.edges.length, 6);
 });
 
 test("every prerequisite gets one arrow to each dependent node, pointing forward", () => {

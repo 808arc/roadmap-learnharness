@@ -587,63 +587,27 @@
   font-variant-numeric: tabular-nums;
 }
 
-.rm-box {
+/* Module title above the module's first column: plain text, no frame. */
+.rm-module-label {
   position: absolute;
-  border: 1px solid color-mix(in srgb, var(--rm-text) 48%, var(--rm-bg));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--rm-panel) 92%, var(--rm-text) 2%);
-}
-
-.rm-box-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  height: 41px;
-  padding: 0 12px;
+  max-width: 200px;
+  height: 18px;
+  padding: 0;
+  overflow: hidden;
   border: 0;
-  border-bottom: 1px solid var(--rm-line);
-  border-radius: 6px 6px 0 0;
   background: transparent;
+  color: var(--rm-muted);
+  font-size: var(--rm-font-sm);
+  font-weight: 600;
+  line-height: 18px;
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: default;
 }
 
-.rm-box-title {
-  flex: 1 1 auto;
-  font-weight: 600;
-}
-
-.rm-box-meta {
-  color: var(--rm-muted);
-  font-size: var(--rm-font-sm);
-}
-
-.rm-box-label {
-  position: absolute;
-  color: var(--rm-muted);
-  font-size: var(--rm-font-sm);
-}
-
-.rm-box-error {
-  position: absolute;
-  right: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  color: var(--rm-warn);
-  font-size: var(--rm-font-sm);
-  white-space: nowrap;
-}
-
-.rm-box-error span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rm-box-focus {
-  border-color: var(--rm-acc);
+.rm-module-label-focus {
+  color: var(--rm-acc);
 }
 
 /* Bracket around interchangeable alternatives that share a column. */

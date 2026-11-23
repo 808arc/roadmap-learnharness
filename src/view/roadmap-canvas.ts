@@ -1,4 +1,4 @@
-/** Roadmap canvas: the module tree (module frames, pan + zoom), the flat graph (nodes and
+/** Roadmap canvas: the module tree (nodes with module labels, pan + zoom), the flat graph (nodes and
  * arrows, pan + zoom).
  *
  * Controlled component: `render` receives the authoritative path and UI state;
@@ -15,7 +15,7 @@ import { buildDependencyGraph, isDone, layoutGraph, layoutRoadmap, moduleCounts 
 import type { PlacedModule, PlacedNode, RoadmapLayout } from "./roadmap-layout.ts";
 import { el } from "./dom.ts";
 
-/** "tree": module frames around their nodes; "graph": nodes and arrows only. */
+/** "tree": nodes with a label per module; "graph": nodes and arrows only. */
 export type ViewMode = "tree" | "graph";
 
 export interface CanvasState {
@@ -124,7 +124,7 @@ export function createRoadmapCanvas(
     const bottomAligned = vh - layout.height * scale;
     const target = layout.modules.find((placed) => placed.module.id === moduleId);
     if (!target || target.y * scale + bottomAligned >= 12) ty = bottomAligned;
-    else ty = vh / 2 - (target.y + target.h / 2) * scale;
+    else ty = vh / 2 - target.y * scale;
     tx = (viewport.clientWidth - layout.width * scale) / 2;
     clampPan();
     applyTransform();
@@ -264,39 +264,19 @@ export function createRoadmapCanvas(
     return parts.join(" · ");
   };
 
-  /** A module frame: the band around its nodes. Its header toggles the focus highlight. */
+  /** A module's plain text label above its first column. It toggles the focus highlight. */
   const renderModule = (placed: PlacedModule): HTMLElement => {
     const { module } = placed;
-    const box = el(document, "div", placed.expanded ? "rm-box rm-box-focus" : "rm-box");
-    box.dataset.moduleId = module.id;
-    box.style.left = `${placed.x}px`;
-    box.style.top = `${placed.y}px`;
-    box.style.width = `${placed.w}px`;
-    box.style.height = `${placed.h}px`;
-    const head = el(document, "button", "rm-box-head");
-    head.type = "button";
-    head.append(el(document, "span", "rm-box-title", module.title), el(document, "span", "rm-box-meta", moduleHeaderText(module)));
-    head.title = module.goal ?? module.title;
-    head.addEventListener("click", () => {
+    const label = el(document, "button", placed.expanded ? "rm-module-label rm-module-label-focus" : "rm-module-label", module.title);
+    label.type = "button";
+    label.dataset.moduleId = module.id;
+    label.style.left = `${placed.x}px`;
+    label.style.top = `${placed.y}px`;
+    label.title = [module.goal ?? module.title, moduleHeaderText(module)].join("\n");
+    label.addEventListener("click", () => {
       if (!disposed && !signal.aborted) callbacks.toggleModule(module.id);
     }, { signal });
-    box.append(head);
-    if (placed.errorLine) {
-      const first = module.nodes.flatMap((node) => node.errors.filter((entry) => !entry.resolved));
-      const line = el(document, "div", "rm-box-error");
-      line.style.left = `${placed.errorLine.x - placed.x}px`;
-      line.style.top = `${placed.errorLine.y - placed.y}px`;
-      const icon = el(document, "span", "rm-warn-icon");
-      setIcon(icon, ICONS.warn);
-      const text =
-        first.length === 1
-          ? t("box.openError1", { text: first[0]!.summary })
-          : t("box.openErrors", { n: first.length, text: first[0]?.summary ?? "" });
-      line.append(icon, el(document, "span", undefined, text));
-      line.title = first.map((entry) => entry.summary).join("\n");
-      box.append(line);
-    }
-    return box;
+    return label;
   };
 
   const renderEdges = (current: RoadmapLayout, plan: GrowthPlan): SVGSVGElement => {
@@ -339,7 +319,7 @@ export function createRoadmapCanvas(
     return svg;
   };
 
-  /** The pannable canvas: module frames in the tree view, bare nodes and arrows in the graph view. */
+  /** The pannable canvas: module labels in the tree view, bare nodes and arrows in the graph view. */
   const renderGraph = (current: CanvasState): void => {
     const withModules = current.view === "tree";
     const options = { showOptional: current.showOptional, prerequisites: current.prerequisites };

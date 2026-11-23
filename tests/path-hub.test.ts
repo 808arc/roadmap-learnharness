@@ -99,16 +99,13 @@ test("the graph lays modules bottom-up, expands the working module and follows s
     const root = fixture.root;
     // The first in-progress node opens in the panel; its module is the expanded box.
     assert.equal(inspector(fixture).dataset.nodeId, "n-concept");
-    const box = root.querySelector<HTMLElement>(".rm-box")!;
-    assert.equal(box.dataset.moduleId, "module-structure");
-    assert.match(box.textContent ?? "", /Structure first.*in progress · 1 \/ 3/s);
-    assert.match(box.textContent ?? "", /1 open error: Drops a sign while expanding\./);
-    const synthesis = root.querySelector<HTMLElement>('.rm-box[data-module-id="module-synthesis"]')!;
-    assert.ok(synthesis, "every module is a frame in the graph");
-    assert.ok(
-      parseFloat(synthesis.style.top) < parseFloat(box.style.top),
-      "the later module sits above the earlier one (bottom-up)",
-    );
+    assert.equal(root.querySelectorAll(".rm-box").length, 0, "the tree draws no module frames");
+    const label = root.querySelector<HTMLElement>(".rm-module-label")!;
+    assert.equal(label.dataset.moduleId, "module-structure");
+    assert.equal(label.textContent, "Structure first");
+    assert.match(label.title, /in progress · 1 \/ 3/);
+    const synthesis = root.querySelector<HTMLElement>('.rm-module-label[data-module-id="module-synthesis"]')!;
+    assert.ok(synthesis, "every module has a label in the tree");
     assert.ok(canvasNode(fixture, "n-concept").classList.contains("rm-sel"));
     assert.ok(canvasNode(fixture, "n-holistic").classList.contains("rm-done"));
     assert.ok(canvasNode(fixture, "n-skill").querySelector(".rm-node-warn"), "open errors are flagged on the node");
@@ -128,12 +125,12 @@ test("the graph lays modules bottom-up, expands the working module and follows s
     assert.equal(inspector(fixture).dataset.nodeId, "n-holistic");
 
     // Clicking a collapsed module expands it; selecting its node keeps it expanded.
-    root.querySelector<HTMLButtonElement>('.rm-box[data-module-id="module-synthesis"] .rm-box-head')!.click();
+    root.querySelector<HTMLButtonElement>('.rm-module-label[data-module-id="module-synthesis"]')!.click();
     await fixture.flush();
-    assert.equal(root.querySelector<HTMLElement>(".rm-box-focus")!.dataset.moduleId, "module-synthesis");
+    assert.equal(root.querySelector<HTMLElement>(".rm-module-label-focus")!.dataset.moduleId, "module-synthesis");
     await selectNode(fixture, "n-contrast");
     assert.equal(inspector(fixture).dataset.nodeId, "n-contrast");
-    assert.equal(root.querySelector<HTMLElement>(".rm-box-focus")!.dataset.moduleId, "module-synthesis");
+    assert.equal(root.querySelector<HTMLElement>(".rm-module-label-focus")!.dataset.moduleId, "module-synthesis");
 
     // The switch offers Tree and Graph only; selection survives switching views.
     assert.deepEqual(
