@@ -253,7 +253,7 @@ test("topic reads log source, outcome and duration; a read from memory after the
   }
   for (const record of logRecords(file)) {
     for (const key of Object.keys(record)) {
-      assert.ok(["ts", "event", "step", "roadmap", "count", "source", "outcome", "ok", "durationMs", "commit", "reason"].includes(key), `field ${key} is metadata`);
+      assert.ok(["ts", "event", "step", "roadmap", "count", "bytes", "source", "outcome", "ok", "durationMs", "commit", "reason"].includes(key), `field ${key} is metadata`);
     }
   }
 });
@@ -297,24 +297,24 @@ test("a topic read from the disk cache logs source cache", async (t) => {
   assert.equal(github.calls.length, 0);
 });
 
-// ---- list_roadmap_topics returns titles and descriptions in one result ------------------------------------------
+// ---- list_roadmap_topics returns the full content in one result -------------------------------------------------
 
-test("list_roadmap_topics returns each topic's title and description in one result, with no per-topic turn", async (t) => {
+test("list_roadmap_topics returns each topic's full content in one result, with no per-topic turn", async (t) => {
   const copy = await readyCopy(path.join(tempFolder(t), "clone"), fakeGit().run);
   const github = fakeGithub();
   const tool = toolsFor(t, { fetch: github.fetch, local: copy });
 
   const listed = await tool("list_roadmap_topics").execute("c1", { roadmapSlug: "synthetic-roadmap" }, undefined);
   assert.equal(listed.isError, undefined);
-  const parsed = JSON.parse(listed.content[0]?.text ?? "{}") as { topics: { slug: string; title: string | null; description: string | null }[] };
+  const parsed = JSON.parse(listed.content[0]?.text ?? "{}") as { topics: { slug: string; content: { title: string; description: string } | null }[] };
   assert.deepEqual(parsed.topics, [
-    { slug: "local-topic", title: "Local Topic", description: "Synthetic local description." },
-    { slug: "second-topic", title: "Second Topic", description: "Second local description." },
+    { slug: "local-topic", content: { title: "Local Topic", description: "Synthetic local description.", resources: [{ label: "@book@Local Book", tag: "book", url: "https://books.example.test/local" }] } },
+    { slug: "second-topic", content: { title: "Second Topic", description: "Second local description.", resources: [] } },
   ]);
   assert.equal(github.calls.length, 0, "the structure came from the local copy");
 });
 
-test("the list still works without a local copy: slugs come back with null titles, and GitHub answers the topics", async (t) => {
+test("the list still works without a local copy: slugs come back with null content, and GitHub answers the topics", async (t) => {
   const folder = tempFolder(t);
   const file = path.join(folder, "architect.jsonl");
   const log = createPluginLog(file);
@@ -325,8 +325,8 @@ test("the list still works without a local copy: slugs come back with null title
 
   const listed = await tool("list_roadmap_topics").execute("c1", { roadmapSlug: "synthetic-roadmap" }, undefined);
   assert.equal(listed.isError, undefined);
-  const parsed = JSON.parse(listed.content[0]?.text ?? "{}") as { topics: { slug: string; title: string | null }[] };
-  assert.deepEqual(parsed.topics.map((topic) => [topic.slug, topic.title]), [
+  const parsed = JSON.parse(listed.content[0]?.text ?? "{}") as { topics: { slug: string; content: unknown }[] };
+  assert.deepEqual(parsed.topics.map((topic) => [topic.slug, topic.content]), [
     ["local-topic", null],
     ["second-topic", null],
     ["github-only", null],
@@ -369,9 +369,9 @@ test("local reads for a listing run concurrently, reach the cap of 32 and never 
   const tool = toolsFor(t, { fetch: github.fetch, local });
 
   const listed = await tool("list_roadmap_topics").execute("c1", { roadmapSlug: "synthetic-roadmap" }, undefined);
-  const parsed = JSON.parse(listed.content[0]?.text ?? "{}") as { topics: { slug: string; title: string | null }[] };
+  const parsed = JSON.parse(listed.content[0]?.text ?? "{}") as { topics: { slug: string; content: { title: string } | null }[] };
   assert.equal(parsed.topics.length, 40);
-  assert.ok(parsed.topics.every((topic) => topic.title !== null), "every listed topic carries its title");
+  assert.ok(parsed.topics.every((topic) => topic.content !== null), "every listed topic carries its content");
   assert.equal(reads, 40);
   assert.equal(maxInFlight, LOCAL_TOPIC_READ_CONCURRENCY, "the reads reach the cap");
   assert.equal(github.calls.length, 0);

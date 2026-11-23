@@ -231,13 +231,13 @@ test("a node with no unresolved errors still tells the session to probe", () => 
   assert.deepEqual(holistic.watchpoints, []);
 });
 
-/** Topic coverage: read the listed topics, never fewer than half, in as many batch waves as needed. */
-test("the upstream prompt sets a coverage target and does not cap waves at two", () => {
+/** The list returns every topic in full, so the prompt asks for no batch loop: read_roadmap_topics only for missing topics. */
+test("the upstream prompt says the list returns topics in full and asks for no batch loop", () => {
   const prompt = buildArchitectSystemPrompt({ upstream: true });
-  assert.match(prompt, /Coverage: read the topics the roadmap uses/);
-  assert.match(prompt, /Target all N listed topics; never read fewer than half of N/);
+  assert.match(prompt, /list_roadmap_topics with a roadmap slug: it returns the roadmap's topics in full, in one call/);
+  assert.match(prompt, /read_roadmap_topics only for topics marked missing \(content null\)/);
   assert.match(prompt, /count them as N/);
-  assert.match(prompt, /as many batch calls as coverage needs/);
+  assert.doesNotMatch(prompt, /Coverage|Target all N|never read fewer than half|as many batch calls|until the target is met/);
   assert.doesNotMatch(prompt, /two waves|wave 1|wave 2/);
   assert.match(prompt, new RegExp(`at most ${MAX_TOPICS_PER_BATCH} topics per read_roadmap_topics call`));
   assert.equal(MAX_TOPICS_PER_BATCH, 10);
@@ -246,12 +246,13 @@ test("the upstream prompt sets a coverage target and does not cap waves at two",
   assert.match(prompt, /read_roadmap_topic reads a single topic/);
 });
 
-test("list_roadmap_topics points the model to the batch read as well as the single read", () => {
+test("list_roadmap_topics describes the full content and the missing topics, with no batch loop", () => {
   const tools = upstreamReadTools({} as never, {} as never, new Map());
   const list = tools.find((tool) => tool.name === "list_roadmap_topics");
   assert.ok(list, "list_roadmap_topics is registered");
-  assert.match(list.description, /read_roadmap_topics in batches/);
-  assert.match(list.description, /read_roadmap_topic for one topic/);
+  assert.match(list.description, /in one call/);
+  assert.match(list.description, /content is null/);
+  assert.doesNotMatch(list.description, /in batches/);
 });
 
 /** Issue #41: the one upstream source is named by its constant, and no repo path is written from memory. */
