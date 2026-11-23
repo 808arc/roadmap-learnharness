@@ -857,6 +857,26 @@ test("rank_roadmaps on an empty graph asks the learner in chat and makes no GitH
   assert.equal(calls.length, 0, "no GitHub request");
 });
 
+test("rank_roadmaps with only near matches returns no chosen roadmap and a note naming the closest candidates", async () => {
+  const { fetch, calls } = fakeFetch({});
+  const local: LocalRoadmapSource = {
+    ready: Promise.resolve(true),
+    listRoadmaps: async () => ["synthetic-roadmap"],
+    listFiles: async () => ["synthetic-topic@aB3_x.md"],
+    readFile: async () => null,
+  };
+  const { log, steps } = fakeLog();
+  const result = await runRank({ fetch, commit: COMMIT, local, readGraph: () => graphBrief(["Synthetic Extra Topic"]) }, log);
+  assert.equal(calls.length, 0, "no GitHub request");
+  assert.equal(result.isError, undefined);
+  const body = JSON.parse(result.content[0]?.text ?? "{}") as { chosen: unknown[]; candidates: { roadmap: string }[]; note: string };
+  assert.deepEqual(body.chosen, []);
+  assert.deepEqual(body.candidates.map((match) => match.roadmap), ["synthetic-roadmap"]);
+  assert.match(body.note, /No roadmap matches any topic exactly/);
+  assert.match(body.note, /synthetic-roadmap/);
+  assert.equal(steps[0]?.ends[0]?.reason, "no_exact_match");
+});
+
 test("rank_roadmaps waits for the git copy to be ready, then reads roadmaps and topics from it with no GitHub request", async () => {
   const { fetch, calls } = fakeFetch({});
   let finish!: (ok: boolean) => void;

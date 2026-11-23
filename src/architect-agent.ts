@@ -975,9 +975,10 @@ export function upstreamReadTools(
       description:
         "Rank the developer-roadmap roadmaps by how closely each covers the learner's Knowledge Graph topics: exact " +
         "topic matches count fully, topics sharing a word count less. Reads every roadmap from the git data first. " +
-        "Returns chosen (at most two: the best match, and a second scoring at least half as much) and candidates " +
-        "(every roadmap with a score). Call it before " +
-        "list_roadmap_topics.",
+        "A roadmap is chosen only when at least one topic matches exactly. Returns chosen (at most two: the best " +
+        "exact match, and a second scoring at least half as much) and candidates (every roadmap with a score). If " +
+        "chosen is empty, the result carries a note: ask the learner which closest roadmap fits, and build nothing " +
+        "until they answer. Call it before list_roadmap_topics.",
       parameters: objectSchema({}),
       execute: async (_toolCallId, _rawParams, signal) => {
         assertLive(ctx, signal);
@@ -1003,6 +1004,26 @@ export function upstreamReadTools(
           });
           const keys = graphBriefTopicKeys(brief);
           const ranking = rankRoadmaps(keys, roadmaps);
+          if (ranking.chosen.length === 0) {
+            const closest = ranking.candidates.slice(0, 3).map((match) => match.roadmap);
+            const named = closest.length > 0
+              ? closest.join(", ")
+              : "say that no roadmap covers it and ask what they want to learn";
+            const note =
+              "No roadmap matches any topic exactly. Ask the learner one question in chat: which of these closest " +
+              `roadmaps fits their goal — ${named} — and build nothing until they answer.`;
+            step?.end({
+              graphTopics: brief.topics.length,
+              graphKeys: keys.size,
+              roadmaps: names.length,
+              withTopics: [...roadmaps.values()].filter((slugs) => slugs.length > 0).length,
+              failed,
+              candidates: ranking.candidates.length,
+              chosen: 0,
+              reason: "no_exact_match",
+            });
+            return textResult({ ...ranking, note }, JSON.stringify({ ...ranking, note }));
+          }
           step?.end({
             graphTopics: brief.topics.length,
             graphKeys: keys.size,
