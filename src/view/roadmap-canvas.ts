@@ -304,11 +304,18 @@ export function createRoadmapCanvas(
     svg.setAttribute("width", String(current.width));
     svg.setAttribute("height", String(current.height));
     for (const edge of current.edges) {
-      const line = document.createElementNS(ns, "line");
-      line.setAttribute("x1", String(edge.x1));
-      line.setAttribute("y1", String(edge.y1));
-      line.setAttribute("x2", String(edge.x2));
-      line.setAttribute("y2", String(edge.y2));
+      const bends = edge.points ?? [];
+      const line = document.createElementNS(ns, bends.length > 0 ? "polyline" : "line");
+      if (bends.length > 0) {
+        const all = [{ x: edge.x1, y: edge.y1 }, ...bends, { x: edge.x2, y: edge.y2 }];
+        line.setAttribute("points", all.map((pt) => `${pt.x},${pt.y}`).join(" "));
+        line.setAttribute("fill", "none");
+      } else {
+        line.setAttribute("x1", String(edge.x1));
+        line.setAttribute("y1", String(edge.y1));
+        line.setAttribute("x2", String(edge.x2));
+        line.setAttribute("y2", String(edge.y2));
+      }
       const key = edgeKey(edge.from, edge.to);
       const delay = plan.delays.get(key);
       const grow = delay === undefined ? "" : " rm-grow";
@@ -318,9 +325,10 @@ export function createRoadmapCanvas(
       if (style) line.setAttribute("style", style);
       svg.append(line);
       // Arrowhead at the dependent end: two wings laid back from the tip along the line.
-      const length = Math.hypot(edge.x2 - edge.x1, edge.y2 - edge.y1) || 1;
-      const ux = (edge.x2 - edge.x1) / length;
-      const uy = (edge.y2 - edge.y1) / length;
+      const prev = bends.length > 0 ? bends[bends.length - 1]! : { x: edge.x1, y: edge.y1 };
+      const length = Math.hypot(edge.x2 - prev.x, edge.y2 - prev.y) || 1;
+      const ux = (edge.x2 - prev.x) / length;
+      const uy = (edge.y2 - prev.y) / length;
       const baseX = edge.x2 - ux * 7;
       const baseY = edge.y2 - uy * 7;
       const wingX = -uy * 4;

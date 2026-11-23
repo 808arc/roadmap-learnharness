@@ -341,12 +341,14 @@
   pointer-events: none;
 }
 
-.rm-edges line {
+.rm-edges line,
+.rm-edges polyline {
   stroke: var(--rm-edge);
   stroke-width: 1;
 }
 
-.rm-edges line.rm-dashed {
+.rm-edges line.rm-dashed,
+.rm-edges polyline.rm-dashed {
   stroke-dasharray: 4 4;
 }
 
