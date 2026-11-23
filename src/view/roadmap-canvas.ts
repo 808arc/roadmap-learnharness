@@ -360,7 +360,6 @@ export function createRoadmapCanvas(
 
   /** The pannable roadmap canvas of the tree view: module labels, nodes and arrows. */
   const renderGraph = (current: CanvasState): void => {
-    const withModules = true;
     const roadmap = layoutRoadmap(current.path, { showOptional: current.showOptional, prerequisites: current.prerequisites, expandedModuleId: current.expandedModuleId });
     layout = roadmap;
     stage.style.width = `${roadmap.width}px`;
@@ -382,7 +381,7 @@ export function createRoadmapCanvas(
       children.push(bracket);
     }
     for (const placed of roadmap.nodes) {
-      const button = nodeButton(placed, placed.node.id === current.selectedNodeId, !withModules);
+      const button = nodeButton(placed, placed.node.id === current.selectedNodeId, false);
       const delay = plan.delays.get(placed.node.id);
       if (delay !== undefined) {
         button.classList.add("rm-grow");
@@ -399,7 +398,7 @@ export function createRoadmapCanvas(
       // Wait one frame so the viewport has its real size on first mount.
       const schedule = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => setTimeout(run, 0);
       schedule(() => {
-        if (!disposed) focus(withModules ? current.expandedModuleId : null);
+        if (!disposed) focus(current.expandedModuleId);
       });
     } else {
       clampPan();

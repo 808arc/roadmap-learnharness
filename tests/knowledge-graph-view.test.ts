@@ -33,6 +33,10 @@ test("the Graph tab draws propositions and chains from the learner's graph; Tree
     assert.equal(root.querySelectorAll(".rm-stage [data-proposition-id]").length, 2, "Graph draws the propositions");
     assert.equal(root.querySelector(".rm-stage [data-node-id]"), null, "Graph does not draw roadmap nodes");
     assert.equal(root.querySelectorAll(".rm-edges line").length, 1, "one chain arrow");
+    assert.equal(root.querySelectorAll(".rm-stage .rm-pill").length, 2, "every proposition is a pill");
+    assert.equal(root.querySelectorAll(".rm-box").length, 0, "Graph draws no module frames");
+    assert.equal(root.querySelectorAll(".rm-alt-group").length, 0, "Graph draws no alternative brackets");
+    assert.equal(root.querySelectorAll(".rm-module-label").length, 0, "Graph draws no module labels");
 
     tabs[0]!.click();
     await fixture.flush();
