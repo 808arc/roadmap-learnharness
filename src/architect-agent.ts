@@ -915,29 +915,80 @@ async function readTopicBatch(
   }
   const slugs = topicSlugs.map((slug, index) => assertSlug(slug, `topicSlugs[${index}]`));
   const traced = tracedUpstream(upstream, log, slugs.length);
-  // At most topicReadConcurrency(upstream) requests in flight; results keep the order the slugs were given in.
-  const results = await mapWithConcurrency(slugs, topicReadConcurrency(upstream), async (slug): Promise<TopicBatchResult> => {
-    try {
-      return { slug, ok: true, topic: await readTopic(roadmap, slug, upstream.commit, traced) };
-    } catch (error) {
-      if (error instanceof UpstreamError) return { slug, ok: false, kind: error.kind, error: error.message };
-      throw error;
-    }
-  });
-  return { roadmap, results };
+  try {
+    // At most topicReadConcurrency(upstream) requests in flight; results keep the order the slugs were given in.
+    const results = await mapWithConcurrency(slugs, topicReadConcurrency(upstream), async (slug): Promise<TopicBatchResult> => {
+      try {
+        return { slug, ok: true, topic: await readTopic(roadmap, slug, upstream.commit, traced.upstream) };
+      } catch (error) {
+        if (error instanceof UpstreamError) return { slug, ok: false, kind: error.kind, error: error.message };
+        throw error;
+      }
+    });
+    return { roadmap, results };
+  } finally {
+    traced.flush();
+  }
 }
 
-/** The upstream options for one tool call: each topic read it makes is traced as a "topic read" step with the
- * call's count. Without a log the options are unchanged. */
-function tracedUpstream<T extends UpstreamOptions>(upstream: T, log: PluginLog | undefined, count: number): T {
-  if (!log) return upstream;
+/** Reads counted for one roadmap during one tool call. */
+interface TopicReadTally {
+  reads: number;
+  startedAt: number;
+  sources: Map<string, number>;
+  outcomes: Map<string, number>;
+}
+
+/** "key=n,key=n" in key order: the log fields take scalars only. */
+function formatCounts(counts: Map<string, number>): string {
+  return [...counts.keys()].sort().map((key) => `${key}=${counts.get(key)}`).join(",");
+}
+
+/** The upstream options for one tool call. Each topic read it makes is counted per roadmap; `flush` writes one
+ * "topic reads" event per roadmap that had reads, with the call's count. Without a log the options are unchanged.
+ * Only the roadmap slug, counts and durations are logged: never a topic slug, text or URL. */
+function tracedUpstream<T extends UpstreamOptions>(
+  upstream: T,
+  log: PluginLog | undefined,
+  count: number,
+): { upstream: T; flush: () => void } {
+  if (!log) return { upstream, flush: () => {} };
+  const tallies = new Map<string, TopicReadTally>();
+  const bump = (counts: Map<string, number>, key: string): void => {
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  };
   return {
-    ...upstream,
-    trace: (roadmap: string): TopicReadStep => {
-      const step = log.begin("topic read", { roadmap, count });
-      return {
-        end: ({ source, outcome }) => step.end({ source, outcome, ok: outcome === "accepted" }),
-      };
+    upstream: {
+      ...upstream,
+      trace: (roadmap: string): TopicReadStep => {
+        let tally = tallies.get(roadmap);
+        if (!tally) {
+          tally = { reads: 0, startedAt: Date.now(), sources: new Map(), outcomes: new Map() };
+          tallies.set(roadmap, tally);
+        }
+        const current = tally;
+        return {
+          end: ({ source, outcome }) => {
+            current.reads += 1;
+            bump(current.sources, source);
+            bump(current.outcomes, outcome);
+          },
+        };
+      },
+    },
+    flush: () => {
+      for (const [roadmap, tally] of tallies) {
+        log.event("topic reads", {
+          roadmap,
+          count,
+          reads: tally.reads,
+          sources: formatCounts(tally.sources),
+          outcomes: formatCounts(tally.outcomes),
+          ok: [...tally.outcomes.keys()].every((outcome) => outcome === "accepted"),
+          durationMs: Date.now() - tally.startedAt,
+        });
+      }
+      tallies.clear();
     },
   };
 }
@@ -1012,6 +1063,7 @@ export function upstreamReadTools(
             candidates: ranking.candidates.length,
             chosen: ranking.chosen.length,
             matched: ranking.chosen.map((match) => match.matched).join(","),
+            near: ranking.chosen.map((match) => match.near).join(","),
           });
           return textResult(ranking, JSON.stringify(ranking));
         } catch (error) {
@@ -1033,6 +1085,7 @@ export function upstreamReadTools(
       execute: async (_toolCallId, rawParams, signal) => {
         assertLive(ctx, signal);
         let step: LogStep | undefined;
+        let flushTrace: (() => void) | undefined;
         try {
           const params = readObject(rawParams);
           // The slug is checked before it is logged, so only a valid roadmap name reaches the log.
@@ -1041,10 +1094,15 @@ export function upstreamReadTools(
           const topics = await listRoadmapTopics(roadmap, upstream.commit, upstream);
           const slugs = topics.map((topic) => topic.slug);
           const traced = tracedUpstream(upstream, log, slugs.length);
+          flushTrace = traced.flush;
           // Every listed topic is read from the local copy in parallel. A topic the copy cannot answer keeps its slot
           // with null content, and is fetched in the background so a later read_roadmap_topics hits the cache.
-          const local = new Map((await readLocalTopics(roadmap, slugs, upstream.commit, traced)).map((topic) => [topic.slug, topic]));
-          void prefetchRoadmapTopics(roadmap, slugs.filter((slug) => !local.has(slug)), upstream.commit, traced);
+          const local = new Map((await readLocalTopics(roadmap, slugs, upstream.commit, traced.upstream)).map((topic) => [topic.slug, topic]));
+          // The background fetch's reads are counted in the same summary, which is written when the fetch finishes.
+          const prefetch = prefetchRoadmapTopics(roadmap, slugs.filter((slug) => !local.has(slug)), upstream.commit, traced.upstream);
+          const flushAfterPrefetch = traced.flush;
+          flushTrace = undefined;
+          void prefetch.finally(flushAfterPrefetch);
           const full = {
             roadmap,
             count: slugs.length,
@@ -1079,6 +1137,8 @@ export function upstreamReadTools(
         } catch (error) {
           step?.fail(error);
           return upstreamFailure(error);
+        } finally {
+          flushTrace?.();
         }
       },
     },
@@ -1093,13 +1153,16 @@ export function upstreamReadTools(
       }, ["roadmapSlug", "topicSlug"]),
       execute: async (_toolCallId, rawParams, signal) => {
         assertLive(ctx, signal);
+        const traced = tracedUpstream(upstream, log, 1);
         try {
           const params = readObject(rawParams);
-          const topic = await readTopic(String(params.roadmapSlug), String(params.topicSlug), upstream.commit, tracedUpstream(upstream, log, 1));
+          const topic = await readTopic(String(params.roadmapSlug), String(params.topicSlug), upstream.commit, traced.upstream);
           for (const resource of topic.resources) addCitable(readUrls, resource.url, citableTitles(resource.label));
           return textResult(topic, JSON.stringify(topic));
         } catch (error) {
           return upstreamFailure(error);
+        } finally {
+          traced.flush();
         }
       },
     },

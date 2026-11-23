@@ -153,7 +153,8 @@ async function waitUntil(done: () => boolean): Promise<void> {
   }
 }
 
-const topicEnds = (file: string) => logRecords(file).filter((record) => record.step === "topic read" && record.event === "step.end");
+/** The "topic reads" summaries: one per roadmap per tool call, with counts only. */
+const topicReads = (file: string) => logRecords(file).filter((record) => record.event === "topic reads");
 
 // ---- The clone is logged with its outcome and a reason code -----------------------------------------------------
 
@@ -222,7 +223,7 @@ test("a stale clone folder at another commit is replaced, and logged as created 
 
 // ---- Each topic read is logged with its source and duration, never its text --------------------------------------
 
-test("topic reads log source, outcome and duration; a read from memory after the list logs nothing new", async (t) => {
+test("topic reads log one summary per roadmap per call with source and outcome counts; a read from memory logs nothing new", async (t) => {
   const dir = tempFolder(t);
   const file = path.join(dir, "architect.jsonl");
   const log = createPluginLog(file);
@@ -231,20 +232,21 @@ test("topic reads log source, outcome and duration; a read from memory after the
   const tool = toolsFor(t, { fetch: github.fetch, local: copy }, log);
 
   await tool("list_roadmap_topics").execute("c1", { roadmapSlug: "synthetic-roadmap" }, undefined);
-  const afterList = topicEnds(file);
-  assert.equal(afterList.length, 2, "the two listed topics are each one traced read");
-  for (const end of afterList) {
-    assert.equal(end.roadmap, "synthetic-roadmap");
-    assert.equal(end.source, "local");
-    assert.equal(end.outcome, "accepted");
-    assert.equal(end.ok, true);
-    assert.equal(end.count, 2, "count is the number of topics in the call");
-    assert.equal(typeof end.durationMs, "number");
-  }
+  // The summary is written when the background fetch settles, which is just after the call returns.
+  await waitUntil(() => topicReads(file).length === 1);
+  const afterList = topicReads(file);
+  assert.equal(afterList.length, 1, "the two listed topics are one summary for the call");
+  assert.equal(afterList[0]?.roadmap, "synthetic-roadmap");
+  assert.equal(afterList[0]?.count, 2, "count is the number of topics in the call");
+  assert.equal(afterList[0]?.reads, 2);
+  assert.equal(afterList[0]?.sources, "local=2");
+  assert.equal(afterList[0]?.outcomes, "accepted=2");
+  assert.equal(afterList[0]?.ok, true);
+  assert.equal(typeof afterList[0]?.durationMs, "number");
 
   await tool("read_roadmap_topic").execute("c2", { roadmapSlug: "synthetic-roadmap", topicSlug: "local-topic" }, undefined);
   await tool("read_roadmap_topics").execute("c3", { roadmapSlug: "synthetic-roadmap", topicSlugs: ["local-topic", "second-topic"] }, undefined);
-  assert.equal(topicEnds(file).length, 2, "the in-memory result is served without a new traced read");
+  assert.equal(topicReads(file).length, 1, "the in-memory result is served without a new traced read");
   assert.equal(github.calls.length, 0, "no GitHub request was made");
 
   const text = fs.readFileSync(file, "utf8");
@@ -253,9 +255,27 @@ test("topic reads log source, outcome and duration; a read from memory after the
   }
   for (const record of logRecords(file)) {
     for (const key of Object.keys(record)) {
-      assert.ok(["ts", "event", "step", "roadmap", "count", "bytes", "source", "outcome", "ok", "durationMs", "commit", "reason"].includes(key), `field ${key} is metadata`);
+      assert.ok(["ts", "event", "step", "roadmap", "count", "bytes", "source", "outcome", "ok", "durationMs", "commit", "reason", "reads", "sources", "outcomes"].includes(key), `field ${key} is metadata`);
     }
   }
+});
+
+test("reading N topics of one roadmap in one call writes exactly one topic reads line, with no per-topic lines", async (t) => {
+  const dir = tempFolder(t);
+  const file = path.join(dir, "architect.jsonl");
+  const log = createPluginLog(file);
+  const copy = await readyCopy(tempFolder(t), fakeGit().run, log);
+  const tool = toolsFor(t, { fetch: fakeGithub().fetch, local: copy }, log);
+
+  await tool("read_roadmap_topics").execute("c1", { roadmapSlug: "synthetic-roadmap", topicSlugs: ["local-topic", "second-topic"] }, undefined);
+  const reads = topicReads(file);
+  assert.equal(reads.length, 1, "one summary line for the roadmap in the call");
+  assert.equal(reads[0]?.reads, 2);
+  assert.equal(reads[0]?.count, 2);
+  assert.equal(reads[0]?.sources, "local=2");
+  assert.equal(reads[0]?.outcomes, "accepted=2");
+  assert.equal(reads[0]?.ok, true);
+  assert.equal(logRecords(file).filter((record) => record.step === "topic read").length, 0, "no per-topic step lines");
 });
 
 test("a topic read logs github when the copy lacks the file, and not_found for a topic absent everywhere", async (t) => {
@@ -270,14 +290,15 @@ test("a topic read logs github when the copy lacks the file, and not_found for a
 
   await tool("read_roadmap_topic").execute("c1", { roadmapSlug: "synthetic-roadmap", topicSlug: "second-topic" }, undefined);
   await tool("read_roadmap_topic").execute("c2", { roadmapSlug: "synthetic-roadmap", topicSlug: "absent-topic" }, undefined);
-  const ends = topicEnds(file);
+  const reads = topicReads(file);
   assert.deepEqual(
-    ends.map((end) => [end.source, end.outcome, end.count]),
+    reads.map((read) => [read.sources, read.outcomes, read.count]),
     [
-      ["github", "accepted", 1],
-      ["github", "not_found", 1],
+      ["github=1", "accepted=1", 1],
+      ["github=1", "not_found=1", 1],
     ],
   );
+  assert.deepEqual(reads.map((read) => read.ok), [true, false]);
 });
 
 test("a topic read from the disk cache logs source cache", async (t) => {
@@ -293,7 +314,7 @@ test("a topic read from the disk cache logs source cache", async (t) => {
   const github = fakeGithub();
   await toolsFor(t, { fetch: github.fetch, topicCache: cache }, log)("read_roadmap_topic")
     .execute("c2", { roadmapSlug: "synthetic-roadmap", topicSlug: "local-topic" }, undefined);
-  assert.deepEqual(topicEnds(file).map((end) => end.source), ["local", "cache"]);
+  assert.deepEqual(topicReads(file).map((read) => read.sources), ["local=1", "cache=1"]);
   assert.equal(github.calls.length, 0);
 });
 
@@ -332,18 +353,17 @@ test("the list still works without a local copy: slugs come back with null conte
     ["github-only", null],
   ]);
   // The background fetch of the three listed topics from GitHub finishes after the call returns.
-  await waitUntil(() => topicEnds(file).length === 3);
-  assert.deepEqual(topicEnds(file).map((end) => [end.source, end.outcome]), [
-    ["github", "accepted"],
-    ["github", "accepted"],
-    ["github", "accepted"],
-  ]);
+  await waitUntil(() => topicReads(file).length === 1);
+  assert.deepEqual(
+    topicReads(file).map((read) => [read.reads, read.sources, read.outcomes, read.ok]),
+    [[3, "github=3", "accepted=3", true]],
+  );
 
   const batch = await tool("read_roadmap_topics").execute("c2", { roadmapSlug: "synthetic-roadmap", topicSlugs: ["github-only"] }, undefined);
   const result = JSON.parse(batch.content[0]?.text ?? "{}") as { results: { ok: boolean; topic?: { description: string } }[] };
   assert.equal(result.results[0]?.ok, true);
   assert.equal(result.results[0]?.topic?.description, "Synthetic GitHub description.");
-  assert.equal(topicEnds(file).length, 3, "the batch read was served from memory");
+  assert.equal(topicReads(file).length, 1, "the batch read was served from memory");
 });
 
 // ---- Parallel local reads: up to the cap, never above it --------------------------------------------------------
