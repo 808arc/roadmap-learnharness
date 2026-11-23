@@ -178,11 +178,17 @@ export function createArchitectPane(
   const logLine = el(document, "p", "lp-architect-log");
   root.append(card, modelHint, logLine, dropHint);
   container.append(root);
-  // The Architect's timing log lives in the plugin data folder; show where to find it.
-  ctx.call("architect.logPath", {}).then((result) => {
-    const path = (result as { path?: unknown } | null)?.path;
-    if (!signal.aborted && typeof path === "string") logLine.textContent = t("a.logPath", { path });
-  }).catch(() => undefined);
+  // What the Architect is running right now: the open steps of its timing log, refreshed every second.
+  const showActivity = (steps: readonly unknown[]): void => {
+    const names = [...new Set(steps.filter((step): step is string => typeof step === "string"))];
+    logLine.textContent = names.length > 0 ? t("a.running", { steps: names.join(", ") }) : t("a.idle");
+  };
+  const activityTimer = setInterval(() => {
+    ctx.call<{ steps?: unknown[] }>("architect.activity", {}).then((result) => {
+      if (!signal.aborted) showActivity(result?.steps ?? []);
+    }).catch(() => undefined);
+  }, 1000);
+  signal.addEventListener("abort", () => clearInterval(activityTimer), { once: true });
 
   let conversation: PluginAgentSnapshot | null = null;
   let draft = "";

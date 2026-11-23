@@ -1351,6 +1351,7 @@ export function activate(ctx: PluginBackendContext): void {
   });
 
   handle("architect.logPath", () => ({ path: architectLog.path }));
+  handle("architect.activity", () => ({ steps: architectLog.active() }));
 
   handle("architect.abort", (input) => {
     if (ctx.signal.aborted) throw new Error("The Roadmap plugin is shutting down.");
