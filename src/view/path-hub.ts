@@ -376,6 +376,7 @@ export function mountPathHub(
     if (!path) {
       renderEmpty();
       canvasHost.dataset.empty = "true";
+      canvas.clear();
       return;
     }
     delete canvasHost.dataset.empty;

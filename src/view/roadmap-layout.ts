@@ -11,6 +11,7 @@
  */
 import type { LearningPath, PathModule, PathNode } from "../domain.ts";
 import { nodePrerequisites, type NodePrerequisites } from "../node-prerequisites.ts";
+import { inferenceDepth } from "./graph-depth.ts";
 
 export const SUB_W = 200;
 export const SUB_H = 28;
@@ -431,11 +432,24 @@ function placeCells(
 /** The flat graph (no module frames, no brackets): every shown node is a pill in the column of its
  * dependency depth, stacked in rows, with arrows from each prerequisite to its dependent. `modules`
  * and `groups` are empty; each node keeps its module id for selection. */
+/** The graph view's depth rule (LearnHarness's inference depth, graph-depth.ts) over alternative units.
+ * Arrows that a cycle closes get no column step, so they are not drawn: cycle members share a column. */
+function cycleSafeGraph(graph: DependencyGraph, all: readonly PathNode[]): DependencyGraph {
+  const unitById = new Map(all.map((node) => [node.id, unitKey(node)] as const));
+  const unitDepth = inferenceDepth(
+    [...new Set(graph.nodeIds.map((id) => unitById.get(id)!))],
+    [...graph.edges, ...graph.ignored].map((edge) => ({ from: unitById.get(edge.from)!, to: unitById.get(edge.to)! })),
+  );
+  const depth = new Map(graph.nodeIds.map((id) => [id, unitDepth.get(unitById.get(id)!) ?? 0] as const));
+  const edges = graph.edges.filter((edge) => depth.get(edge.from)! < depth.get(edge.to)!);
+  return { ...graph, depth, edges };
+}
+
 export function layoutGraph(
   path: LearningPath,
   options: { readonly showOptional: boolean; readonly prerequisites?: readonly NodePrerequisites[] },
 ): RoadmapLayout {
-  const graph = buildDependencyGraph(path, options);
+  const graph = cycleSafeGraph(buildDependencyGraph(path, options), path.modules.flatMap((module) => module.nodes));
   const all = path.modules.flatMap((module) => module.nodes);
   const flatIndex = new Map(all.map((node, index) => [node.id, index]));
   const moduleOf = new Map(path.modules.flatMap((module) => module.nodes.map((node) => [node.id, module.id] as const)));
