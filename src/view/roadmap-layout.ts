@@ -25,6 +25,11 @@ export const PAD_BOTTOM = 150;
 export const FRAME_PAD = 12;
 /** Height of a module's text label above its first column. */
 export const LABEL_H = 18;
+/** Clear space between a module label and the bottom of any node above it in the same column. */
+export const LABEL_ROOM = 26;
+/** Label rectangle used for the clearance rules: about 8px per character, 16px tall. */
+export const LABEL_CHAR_W = 8;
+export const LABEL_BOX_H = 16;
 /** Distance from a node's left edge to its alternatives bracket. */
 export const GROUP_BRACKET = 8;
 /** Graph view: each node is a small pill, stacked with generous room between rows. */
@@ -84,6 +89,8 @@ export interface PlacedModule {
   readonly y: number;
   readonly w: number;
   readonly h: number;
+  /** Tree: where the label is drawn (top-left); same as x and y. */
+  readonly labelAt?: { readonly x: number; readonly y: number };
   /** Always null: the tree draws no frame to hold an error line. */
   readonly errorLine: { readonly x: number; readonly y: number } | null;
 }
@@ -400,30 +407,68 @@ export function layoutRoadmap(
   const offsets = spreadColumns(cells, graph.edges, ROW);
   const right = PAD + FRAME_PAD + (Math.max(columns, 1) - 1) * COL_W + SUB_W;
   const width = right + FRAME_PAD + PAD;
-  const height = PAD + LABEL_H + spreadHeight(offsets, TREE_SIZE) + PAD + PAD_BOTTOM;
   const placed = placeCells(cells, PAD + LABEL_H, moduleOf, offsets);
-  const nodes = placed.nodes;
 
-  // A module's label sits above its first column: the leftmost column it has nodes in, at its topmost node there.
+  // Each module's label sits above its first column: the leftmost column it has nodes in, at its topmost node there.
+  // Where a node sits above that node, push the label's node and the ones below it down so the label has room.
+  const labelNodeOf = new Map<string, PlacedNode>();
+  for (const module of path.modules) {
+    const own = placed.nodes.filter((entry) => entry.moduleId === module.id);
+    if (own.length === 0) continue;
+    const left = Math.min(...own.map((entry) => entry.x));
+    labelNodeOf.set(module.id, own.filter((entry) => entry.x === left).reduce((best, entry) => (entry.y < best.y ? entry : best)));
+  }
+  const labelNodes = new Set(labelNodeOf.values());
+  const shiftOf = new Map<PlacedNode, number>();
+  const byColumn = new Map<number, PlacedNode[]>();
+  for (const node of placed.nodes) byColumn.set(node.x, [...(byColumn.get(node.x) ?? []), node]);
+  let extra = 0;
+  const columnShifts = new Map<number, { y: number; shift: number }[]>();
+  for (const [x, column] of byColumn) {
+    column.sort((a, b) => a.y - b.y);
+    let shift = 0;
+    const steps: { y: number; shift: number }[] = [];
+    column.forEach((node, row) => {
+      if (row > 0 && labelNodes.has(node)) {
+        const above = column[row - 1]!;
+        const gap = node.y + shift - (above.y + (shiftOf.get(above) ?? 0)) - above.h;
+        shift += Math.max(0, LABEL_ROOM + LABEL_H - gap);
+      }
+      shiftOf.set(node, shift);
+      steps.push({ y: node.y, shift });
+    });
+    columnShifts.set(x, steps);
+    extra = Math.max(extra, shift);
+  }
+  const nodes: PlacedNode[] = placed.nodes.map((node) => ({ ...node, y: node.y + (shiftOf.get(node) ?? 0) }));
+  const shiftAt = (x: number, y: number): number => columnShifts.get(x + GROUP_BRACKET)?.find((step) => step.y === y)?.shift ?? 0;
+  const groups = placed.groups.map((group) => ({
+    ...group,
+    y1: group.y1 + shiftAt(group.x, group.y1),
+    y2: group.y2 + shiftAt(group.x, group.y2 - SUB_H),
+  }));
+  const height = PAD + LABEL_H + spreadHeight(offsets, TREE_SIZE) + extra + PAD + PAD_BOTTOM;
+
   const modules: PlacedModule[] = path.modules.map((module, index) => {
-    const own = nodes.filter((entry) => entry.moduleId === module.id);
-    const left = own.length > 0 ? Math.min(...own.map((entry) => entry.x)) : PAD + FRAME_PAD;
-    const top = own.filter((entry) => entry.x === left).reduce((best, entry) => Math.min(best, entry.y), Infinity);
+    const anchor = nodes[placed.nodes.indexOf(labelNodeOf.get(module.id)!)];
+    const x = anchor ? anchor.x : PAD + FRAME_PAD;
+    const y = (anchor ? anchor.y : PAD + LABEL_H) - LABEL_H;
     return {
       module,
       index,
       expanded: module.id === options.expandedModuleId,
       final: index === path.modules.length - 1 && path.modules.length > 1,
-      x: left,
-      y: (Number.isFinite(top) ? top : PAD + LABEL_H) - LABEL_H,
+      x,
+      y,
       w: 0,
       h: 0,
+      labelAt: { x, y },
       errorLine: null,
     };
   });
 
   const edges = placeEdges(graph, nodes);
-  return { width, height, modules, nodes, edges, groups: placed.groups };
+  return { width, height, modules, nodes, edges, groups };
 }
 
 /** Which way the graph view runs: depth as rows from the bottom up, or as columns from the left. */
