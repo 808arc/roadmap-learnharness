@@ -129,3 +129,19 @@ test("topics answered in full by the listing count as read, once even if read ag
   const topics = views.find((view) => view.step === "readTopics")!;
   assert.deepEqual(topics.count, { done: 3, total: 3 });
 });
+
+test("topics from two roadmaps count against both listings, and a shared slug is two topics", () => {
+  const listA = result("la", "list_roadmap_topics", JSON.stringify({ roadmap: "a", topics: [{ slug: "x", content: {} }, { slug: "y", content: {} }, { slug: "z", content: {} }] }));
+  const listB = result("lb", "list_roadmap_topics", JSON.stringify({ roadmap: "b", topics: [{ slug: "x", content: {} }, { slug: "w", content: null }] }));
+  const readB = result("rb", "read_roadmap_topic", JSON.stringify({ roadmap: "b", slug: "w" }));
+  const messages = [
+    user,
+    assistant(call("la", "list_roadmap_topics")), listA,
+    assistant(call("lb", "list_roadmap_topics")), listB,
+    assistant(call("rb", "read_roadmap_topic")), readB,
+  ];
+  const views = architectSteps(messages, undefined, true);
+  const topics = views.find((view) => view.step === "readTopics")!;
+  // 3 of A and 2 of B are answered: 5 of 5, and the shared slug "x" counts once per roadmap.
+  assert.deepEqual(topics.count, { done: 5, total: 5 });
+});

@@ -92,26 +92,33 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** Slugs of topics whose content came back in one result, so a topic counted twice is still one topic.
- * `list_roadmap_topics` carries full content for each topic it answers; `read_roadmap_topic(s)` answer one or many. */
-function readTopicSlugs(result: ToolResultRef): string[] {
+/** The roadmap a result belongs to ("" when the result names none). */
+function roadmapOf(parsed: unknown): string {
+  return isRecord(parsed) && typeof parsed.roadmap === "string" ? parsed.roadmap : "";
+}
+
+/** Keys (`roadmap/slug`) of topics whose content came back in one result. A topic is counted once per roadmap, so
+ * two roadmaps that share a slug are two topics. `list_roadmap_topics` carries full content for each topic it
+ * answers; `read_roadmap_topic(s)` answer one or many. */
+function readTopicKeys(result: ToolResultRef): string[] {
   const parsed = parseJson(result.text);
+  const keyOf = (slug: unknown, fallback: string): string => `${roadmapOf(parsed)}/${typeof slug === "string" ? slug : fallback}`;
   if (result.toolName === "list_roadmap_topics") {
     if (!isRecord(parsed) || !Array.isArray(parsed.topics)) return [];
     return parsed.topics
       .filter((entry) => isRecord(entry) && entry.content !== null && entry.content !== undefined)
-      .map((entry) => (isRecord(entry) && typeof entry.slug === "string" ? entry.slug : ""))
-      .filter((slug) => slug !== "");
+      .map((entry) => keyOf(isRecord(entry) ? entry.slug : undefined, ""))
+      .filter((key) => !key.endsWith("/"));
   }
   if (result.toolName === "read_roadmap_topics") {
     if (!isRecord(parsed) || !Array.isArray(parsed.results)) return [];
     return parsed.results.flatMap((entry, index) => {
       if (!isRecord(entry) || entry.ok !== true) return [];
-      return [typeof entry.slug === "string" ? entry.slug : `${result.toolCallId}#${index}`];
+      return [keyOf(entry.slug, `${result.toolCallId}#${index}`)];
     });
   }
   // A single read without a slug in its result is keyed by its call, so it still counts once.
-  return [isRecord(parsed) && typeof parsed.slug === "string" ? parsed.slug : `${result.toolCallId}#0`];
+  return [keyOf(isRecord(parsed) ? parsed.slug : undefined, `${result.toolCallId}#0`)];
 }
 
 function resultOf(message: unknown): ToolResultRef | null {
@@ -131,15 +138,16 @@ function resultOf(message: unknown): ToolResultRef | null {
   };
 }
 
-/** Topic count from the last successful `list_roadmap_topics` result of this build. */
+/** Topic total of this build: the latest successful listing of each roadmap it used, added together. */
 function topicTotal(results: readonly ToolResultRef[]): number | undefined {
-  for (let index = results.length - 1; index >= 0; index -= 1) {
-    const result = results[index]!;
+  const latest = new Map<string, number>();
+  for (const result of results) {
     if (result.toolName !== "list_roadmap_topics" || result.isError) continue;
     const parsed = parseJson(result.text);
-    if (isRecord(parsed) && Array.isArray(parsed.topics)) return parsed.topics.length;
+    if (isRecord(parsed) && Array.isArray(parsed.topics)) latest.set(roadmapOf(parsed), parsed.topics.length);
   }
-  return undefined;
+  if (latest.size === 0) return undefined;
+  return [...latest.values()].reduce((sum, count) => sum + count, 0);
 }
 
 /**
@@ -191,13 +199,13 @@ export function architectSteps(
   const frontier = Math.max(reached, runningIndex ?? -1);
 
   const total = topicTotal(results);
-  const doneSlugs = new Set<string>();
+  const doneKeys = new Set<string>();
   for (const result of results) {
     if (result.isError) continue;
     if (result.toolName !== "list_roadmap_topics" && result.toolName !== "read_roadmap_topic" && result.toolName !== "read_roadmap_topics") continue;
-    for (const slug of readTopicSlugs(result)) doneSlugs.add(slug);
+    for (const key of readTopicKeys(result)) doneKeys.add(key);
   }
-  const topicsDone = doneSlugs.size;
+  const topicsDone = doneKeys.size;
 
   return ARCHITECT_STEPS.map((step, index) => {
     const state: ArchitectStepState =
