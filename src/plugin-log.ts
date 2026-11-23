@@ -34,6 +34,8 @@ export interface PluginLog {
   begin(step: string, fields?: LogFields): LogStep;
   /** Write a single event line. */
   event(name: string, fields?: LogFields): void;
+  /** Names of the steps begun and not yet ended, oldest first. Writes nothing. */
+  active(): readonly string[];
 }
 
 export interface PluginLogOptions {
@@ -76,18 +78,27 @@ export function createPluginLog(filePath: string, options: PluginLogOptions = {}
   const errorName = (error: unknown): string =>
     error instanceof Error ? error.name : "NonError";
 
+  const open = new Map<number, string>();
+  let nextId = 0;
+
   return {
     path: filePath,
     event(name, fields = {}) {
       write({ ...fields, event: name });
     },
+    active() {
+      return [...new Set(open.values())];
+    },
     begin(step, fields = {}) {
       const started = clock();
+      const id = nextId++;
+      open.set(id, step);
       write({ ...fields, event: "step.start", step });
       let done = false;
       const finish = (record: Record<string, unknown>): void => {
         if (done) return;
         done = true;
+        open.delete(id);
         const durationMs = Math.max(0, Math.round(clock() - started));
         write({ ...fields, ...record, event: "step.end", step, durationMs });
       };

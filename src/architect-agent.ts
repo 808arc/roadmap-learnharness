@@ -992,12 +992,22 @@ export function upstreamReadTools(
           }
           const names = await listRoadmapNames(upstream.commit, upstream);
           const roadmaps = new Map<string, string[]>();
+          let failed = 0;
           await mapWithConcurrency(names, topicReadConcurrency(upstream), async (name) => {
-            const refs = await listRoadmapTopics(name, upstream.commit, upstream).catch(() => []);
+            const refs = await listRoadmapTopics(name, upstream.commit, upstream).catch(() => {
+              failed += 1;
+              return [];
+            });
             roadmaps.set(name, refs.map((topic) => topic.slug));
           });
-          const ranking = rankRoadmaps(graphBriefTopicKeys(brief), roadmaps);
+          const keys = graphBriefTopicKeys(brief);
+          const ranking = rankRoadmaps(keys, roadmaps);
           step?.end({
+            graphTopics: brief.topics.length,
+            graphKeys: keys.size,
+            roadmaps: names.length,
+            withTopics: [...roadmaps.values()].filter((slugs) => slugs.length > 0).length,
+            failed,
             candidates: ranking.candidates.length,
             chosen: ranking.chosen.length,
             matched: ranking.chosen.map((match) => match.matched).join(","),
