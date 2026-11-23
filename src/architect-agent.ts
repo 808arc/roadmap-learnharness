@@ -973,9 +973,10 @@ export function upstreamReadTools(
     {
       name: "rank_roadmaps",
       description:
-        "Rank the developer-roadmap roadmaps by how many of the learner's Knowledge Graph topics each covers. Reads " +
-        "every roadmap from the git data first. Returns chosen (at most two: the best match, and a second that covers " +
-        "at least half as many graph topics) and candidates (every roadmap covering a graph topic). Call it before " +
+        "Rank the developer-roadmap roadmaps by how closely each covers the learner's Knowledge Graph topics: exact " +
+        "topic matches count fully, topics sharing a word count less. Reads every roadmap from the git data first. " +
+        "Returns chosen (at most two: the best match, and a second scoring at least half as much) and candidates " +
+        "(every roadmap with a score). Call it before " +
         "list_roadmap_topics.",
       parameters: objectSchema({}),
       execute: async (_toolCallId, _rawParams, signal) => {
