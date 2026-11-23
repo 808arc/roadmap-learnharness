@@ -638,6 +638,7 @@ test("deep_research refuses a developer-roadmap repo other than the pinned one, 
   for (const question of [
     "Map the Git roadmap from github.com/example-owner/developer-roadmap",
     "Read data/roadmaps/git-github in the roadmap repo",
+    "Structure at kamranahmedse/developer-roadmap, src/data/roadmaps/git-github",
   ]) {
     const refused = await tool.execute("c1", { question }, undefined);
     assert.equal(refused.isError, true, question);
