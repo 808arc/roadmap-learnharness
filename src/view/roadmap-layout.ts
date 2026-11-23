@@ -294,8 +294,84 @@ export function buildDependencyGraph(
   return { nodeIds: shown.map((node) => node.id), depth, edges, parent, ignored };
 }
 
-const stackHeight = (count: number, size: NodeSize = TREE_SIZE): number =>
-  count === 0 ? 0 : (count - 1) * size.row + size.h;
+/** Least-squares nondecreasing fit of `values` (pool adjacent violators). */
+function isotonic(values: readonly number[]): number[] {
+  const blocks: { sum: number; count: number }[] = [];
+  for (const value of values) {
+    blocks.push({ sum: value, count: 1 });
+    while (blocks.length > 1) {
+      const last = blocks[blocks.length - 1]!;
+      const previous = blocks[blocks.length - 2]!;
+      if (previous.sum / previous.count <= last.sum / last.count) break;
+      previous.sum += last.sum;
+      previous.count += last.count;
+      blocks.pop();
+    }
+  }
+  return blocks.flatMap((block) => Array.from({ length: block.count }, () => block.sum / block.count));
+}
+
+/** Sweeps over the columns: each sweep left to right (towards prerequisites), then right to left (towards dependents). */
+const SPREAD_SWEEPS = 4;
+
+/** Network placement of one set of depth columns (layered-graph method).
+ *
+ * Each column is reordered and every node gets a vertical offset near its neighbours on the arrows that touch it,
+ * so a node sits centred on its prerequisites or dependents, branches fan out and merges converge. Nodes in a
+ * column keep their order and stay at least `pitch` apart: each column is packed with the least-squares fit that
+ * keeps both (pool adjacent violators). Alternatives of one unit move as one key, so they stay adjacent.
+ * Arrows whose ends are not both in `cells` are ignored. Reorders the lists in `cells`; returns offsets from 0.
+ * Deterministic: the same columns and arrows always give the same placement. */
+export function spreadColumns(
+  cells: ReadonlyMap<number, PathNode[]>,
+  edges: readonly DependencyEdge[],
+  pitch: number,
+): Map<string, number> {
+  const depths = [...cells.keys()].sort((a, b) => a - b);
+  const y = new Map<string, number>();
+  for (const depth of depths) cells.get(depth)!.forEach((node, row) => y.set(node.id, row * pitch));
+  const prerequisites = new Map<string, string[]>();
+  const dependents = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (!y.has(edge.from) || !y.has(edge.to)) continue;
+    prerequisites.set(edge.to, [...(prerequisites.get(edge.to) ?? []), edge.from]);
+    dependents.set(edge.from, [...(dependents.get(edge.from) ?? []), edge.to]);
+  }
+
+  const place = (list: PathNode[], neighbours: ReadonlyMap<string, readonly string[]>): void => {
+    const desired = new Map<string, number>();
+    for (const node of list) {
+      const near = neighbours.get(node.id) ?? [];
+      desired.set(node.id, near.length > 0 ? near.reduce((sum, id) => sum + y.get(id)!, 0) / near.length : y.get(node.id)!);
+    }
+    const index = new Map(list.map((node, row) => [node.id, row] as const));
+    const unitSum = new Map<string, { sum: number; count: number; first: number }>();
+    for (const node of list) {
+      const key = unitKey(node);
+      const entry = unitSum.get(key) ?? { sum: 0, count: 0, first: index.get(node.id)! };
+      unitSum.set(key, { sum: entry.sum + desired.get(node.id)!, count: entry.count + 1, first: entry.first });
+    }
+    const unitOf = (node: PathNode) => unitSum.get(unitKey(node))!;
+    list.sort((a, b) => {
+      const ua = unitOf(a);
+      const ub = unitOf(b);
+      return ua.sum / ua.count - ub.sum / ub.count || ua.first - ub.first || index.get(a.id)! - index.get(b.id)!;
+    });
+    const fitted = isotonic(list.map((node, row) => desired.get(node.id)! - row * pitch));
+    list.forEach((node, row) => y.set(node.id, fitted[row]! + row * pitch));
+  };
+
+  for (let sweep = 0; sweep < SPREAD_SWEEPS; sweep += 1) {
+    for (const depth of depths) place(cells.get(depth)!, prerequisites);
+    for (const depth of [...depths].reverse()) place(cells.get(depth)!, dependents);
+  }
+  const top = y.size > 0 ? Math.min(...y.values()) : 0;
+  return new Map([...y].map(([id, offset]) => [id, offset - top] as const));
+}
+
+/** Height of a spread: from offset 0 to the bottom of the lowest node. */
+const spreadHeight = (offsets: ReadonlyMap<string, number>, size: NodeSize): number =>
+  offsets.size === 0 ? 0 : Math.max(...offsets.values()) + size.h;
 
 export function layoutRoadmap(
   path: LearningPath,
@@ -317,6 +393,8 @@ export function layoutRoadmap(
     readonly module: PathModule;
     readonly index: number;
     readonly cells: Map<number, PathNode[]>;
+    /** Vertical offset of each node inside the band, from its first row. */
+    readonly offsets: Map<string, number>;
     readonly hasError: boolean;
     readonly height: number;
   }
@@ -331,10 +409,12 @@ export function layoutRoadmap(
     for (const list of cells.values()) {
       list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
     }
-    const rows = Math.max(0, ...[...cells.values()].map((list) => list.length));
+    // Arrows inside the module place its nodes; arrows to other modules do not.
+    const offsets = spreadColumns(cells, graph.edges, ROW);
     const hasError = module.nodes.some((node) => node.errors.some((entry) => !entry.resolved));
-    const height = FRAME_HEAD + (rows > 0 ? stackHeight(rows) + FRAME_PAD : FRAME_PAD) + (hasError ? ERROR_LINE : 0);
-    return { module, index, cells, hasError, height };
+    const stack = spreadHeight(offsets, TREE_SIZE);
+    const height = FRAME_HEAD + (stack > 0 ? stack + FRAME_PAD : FRAME_PAD) + (hasError ? ERROR_LINE : 0);
+    return { module, index, cells, offsets, hasError, height };
   });
 
   const right = columns > 0 ? colX(columns - 1) + SUB_W : PAD + FRAME_PAD + SUB_W;
@@ -363,7 +443,7 @@ export function layoutRoadmap(
       h: band.height,
       errorLine,
     });
-    const placed = placeCells(band.cells, top + FRAME_HEAD, moduleOf);
+    const placed = placeCells(band.cells, top + FRAME_HEAD, moduleOf, band.offsets);
     nodes.push(...placed.nodes);
     groups.push(...placed.groups);
     bottom = top - MODULE_GAP;
@@ -394,20 +474,22 @@ function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[]): Edge[
   return edges;
 }
 
-/** Stack each column's nodes from `top`, one row per node. Alternatives of one unit stay adjacent
- * (already sorted by the caller); each run of two or more members of one alternative group gets a bracket. */
+/** Place each column's nodes at `top` plus their spread offset (spreadColumns). Alternatives of one unit stay
+ * adjacent (ordered by the spread); each run of two or more members of one alternative group gets a bracket. */
 function placeCells(
   cells: ReadonlyMap<number, readonly PathNode[]>,
   top: number,
   moduleOf: ReadonlyMap<string, string>,
+  offsets: ReadonlyMap<string, number>,
   size: NodeSize = TREE_SIZE,
 ): { nodes: PlacedNode[]; groups: AlternativeGroup[] } {
   const nodes: PlacedNode[] = [];
   const groups: AlternativeGroup[] = [];
   for (const [depth, list] of cells) {
     const x = PAD + FRAME_PAD + depth * COL_W;
+    const yOf = (row: number): number => top + (offsets.get(list[row]!.id) ?? row * size.row);
     list.forEach((node, row) => {
-      nodes.push({ node, moduleId: moduleOf.get(node.id)!, depth, x, y: top + row * size.row, w: size.w, h: size.h });
+      nodes.push({ node, moduleId: moduleOf.get(node.id)!, depth, x, y: yOf(row), w: size.w, h: size.h });
     });
     // Bracket each run of two or more adjacent members of one alternative group.
     let runStart = 0;
@@ -419,8 +501,8 @@ function placeCells(
           alternativeGroup: first.alternativeGroup,
           moduleId: moduleOf.get(first.id)!,
           x: x - GROUP_BRACKET,
-          y1: top + runStart * size.row,
-          y2: top + (row - 1) * size.row + size.h,
+          y1: yOf(runStart),
+          y2: yOf(row - 1) + size.h,
         });
       }
       runStart = row;
@@ -429,9 +511,6 @@ function placeCells(
   return { nodes, groups };
 }
 
-/** The flat graph (no module frames, no brackets): every shown node is a pill in the column of its
- * dependency depth, stacked in rows, with arrows from each prerequisite to its dependent. `modules`
- * and `groups` are empty; each node keeps its module id for selection. */
 /** The graph view's depth rule (LearnHarness's inference depth, graph-depth.ts) over alternative units.
  * Arrows that a cycle closes get no column step, so they are not drawn: cycle members share a column. */
 function cycleSafeGraph(graph: DependencyGraph, all: readonly PathNode[]): DependencyGraph {
@@ -445,6 +524,9 @@ function cycleSafeGraph(graph: DependencyGraph, all: readonly PathNode[]): Depen
   return { ...graph, depth, edges };
 }
 
+/** The flat graph (no module frames, no brackets): every shown node is a pill in the column of its
+ * dependency depth, placed as a network (spreadColumns) with arrows from each prerequisite to its dependent.
+ * `modules` and `groups` are empty; each node keeps its module id for selection. */
 export function layoutGraph(
   path: LearningPath,
   options: { readonly showOptional: boolean; readonly prerequisites?: readonly NodePrerequisites[] },
@@ -468,11 +550,11 @@ export function layoutGraph(
   for (const list of cells.values()) {
     list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
   }
-  const rows = Math.max(0, ...[...cells.values()].map((list) => list.length));
+  const offsets = spreadColumns(cells, graph.edges, PILL_ROW);
   const right = columns > 0 ? PAD + FRAME_PAD + (columns - 1) * COL_W + PILL_W : PAD + FRAME_PAD + PILL_W;
   const width = right + FRAME_PAD + PAD;
-  const height = PAD + stackHeight(rows, PILL_SIZE) + PAD + PAD_BOTTOM;
-  const placed = placeCells(cells, PAD, moduleOf, PILL_SIZE);
+  const height = PAD + spreadHeight(offsets, PILL_SIZE) + PAD + PAD_BOTTOM;
+  const placed = placeCells(cells, PAD, moduleOf, offsets, PILL_SIZE);
   const edges = placeEdges(graph, placed.nodes);
   // Pills carry the alternative tag themselves; no brackets are drawn in the graph view.
   return { width, height, modules: [], nodes: placed.nodes, edges, groups: [] };
