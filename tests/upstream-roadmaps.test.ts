@@ -10,6 +10,10 @@ import path from "node:path";
 import { test } from "node:test";
 import type { PluginAgentTool, PluginBackendContext } from "learnharness-plugin-api";
 import { buildArchitectDefinition, recalledRoadmapPath } from "../src/architect-agent.ts";
+import { upstreamReadTools } from "../src/architect-agent.ts";
+import type { UpstreamArchitectOptions } from "../src/architect-agent.ts";
+import type { GraphBrief } from "../src/graph-brief.ts";
+import type { LogFields, PluginLog } from "../src/plugin-log.ts";
 import { buildArchitectSystemPrompt } from "../src/framework.ts";
 import type { ArchitectModelConfig } from "../src/store.ts";
 import { openLearningPathStore } from "../src/store.ts";
@@ -19,12 +23,13 @@ import {
   UPSTREAM_REPOSITORY,
   UpstreamError,
   assertSlug,
+  listRoadmapNames,
   listRoadmapTopics,
   parseTopicMarkdown,
   readTopic,
   withUpstreamTimeout,
 } from "../src/upstream-roadmaps.ts";
-import type { UpstreamFetch } from "../src/upstream-roadmaps.ts";
+import type { LocalRoadmapSource, UpstreamFetch } from "../src/upstream-roadmaps.ts";
 import { rawPath } from "./fixtures.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -773,4 +778,158 @@ test("a slug with more than one file is listed once, at its first position", asy
     { slug: "c", file: "c@n4IsklfYJXFIyF1rGWuEa.md" },
     { slug: "a", file: "a@Yrk2PLUa-_FAPlhCkMl3e.md" },
   ]);
+});
+
+// rank_roadmaps (upstreamReadTools) and listRoadmapNames: the paths the ranking tests above do not reach.
+
+const ROADMAPS_FOLDER = `${ROOT}?ref=${COMMIT}`;
+const rankContext = { signal: new AbortController().signal } as unknown as PluginBackendContext;
+
+function graphBrief(names: string[]): GraphBrief {
+  return {
+    topics: names.map((name) => ({ name, statement: "", aliases: [], sourceChatIds: [] })),
+    chains: [],
+    counts: { topics: names.length, chains: 0, droppedTopics: 0, droppedChains: 0 },
+  };
+}
+
+/** The roadmaps folder with two directories: one that answers, and one whose listing fails (null route). */
+function twoRoadmapRoutes(): Record<string, { status: number; body: string } | null> {
+  return {
+    ...standardRoutes(),
+    [ROADMAPS_FOLDER]: {
+      status: 200,
+      body: JSON.stringify([
+        { name: "synthetic-roadmap", type: "dir" },
+        { name: "broken-roadmap", type: "dir" },
+      ]),
+    },
+    [`${ROOT}/broken-roadmap/content?ref=${COMMIT}`]: null,
+  };
+}
+
+/** Runs rank_roadmaps once, as the Architect would, and returns its tool result. */
+async function runRank(upstream: UpstreamArchitectOptions, log?: PluginLog): Promise<ToolResult> {
+  const tool = upstreamReadTools(rankContext, upstream, new Map(), log).find((candidate) => candidate.name === "rank_roadmaps");
+  assert.ok(tool?.execute, "rank_roadmaps exists");
+  return (await tool.execute("rank", {}, undefined)) as unknown as ToolResult;
+}
+
+interface LoggedStep {
+  readonly step: string;
+  readonly begun: LogFields | undefined;
+  readonly ends: LogFields[];
+}
+
+/** A PluginLog that keeps every step in memory, so a test can read what would have been written. */
+function fakeLog(): { log: PluginLog; steps: LoggedStep[] } {
+  const steps: LoggedStep[] = [];
+  const log: PluginLog = {
+    path: "/synthetic/logs/architect-runs.jsonl",
+    begin(step, begun) {
+      const entry = { step, begun, ends: [] as LogFields[] };
+      steps.push(entry);
+      return {
+        end: (fields = {}) => {
+          entry.ends.push(fields);
+        },
+        fail: () => {
+          entry.ends.push({ ok: false });
+        },
+      };
+    },
+    event: () => {},
+    active: () => [],
+  };
+  return { log, steps };
+}
+
+test("rank_roadmaps on an empty graph asks the learner in chat and makes no GitHub request", async () => {
+  const { fetch, calls } = fakeFetch(standardRoutes());
+  for (const readGraph of [() => null, () => graphBrief([])]) {
+    const result = await runRank({ fetch, commit: COMMIT, readGraph });
+    assert.equal(result.isError, undefined);
+    const body = JSON.parse(result.content[0]?.text ?? "{}") as { chosen: unknown[]; candidates: unknown[]; note: string };
+    assert.deepEqual(body.chosen, []);
+    assert.deepEqual(body.candidates, []);
+    assert.match(body.note, /Ask the learner in chat/);
+  }
+  assert.equal(calls.length, 0, "no GitHub request");
+});
+
+test("rank_roadmaps waits for the git copy to be ready, then reads roadmaps and topics from it with no GitHub request", async () => {
+  const { fetch, calls } = fakeFetch({});
+  let finish!: (ok: boolean) => void;
+  const ready = new Promise<boolean>((resolve) => (finish = resolve));
+  const listed: string[] = [];
+  const local: LocalRoadmapSource = {
+    ready,
+    listRoadmaps: async () => {
+      listed.push("listRoadmaps");
+      return ["synthetic-roadmap"];
+    },
+    listFiles: async () => ["synthetic-topic@aB3_x.md", "other-topic@Qz9-k.md"],
+    readFile: async () => null,
+  };
+  const pending = runRank({ fetch, commit: COMMIT, local, readGraph: () => graphBrief(["Synthetic Topic"]) });
+  await settle();
+  assert.deepEqual(listed, [], "the roadmap names wait for the fetch of the copy");
+  finish(true);
+  const body = JSON.parse((await pending).content[0]?.text ?? "{}") as { chosen: { roadmap: string }[] };
+  assert.deepEqual(listed, ["listRoadmaps"]);
+  assert.deepEqual(body.chosen.map((match) => match.roadmap), ["synthetic-roadmap"]);
+  assert.equal(calls.length, 0, "no GitHub request");
+});
+
+test("listRoadmapNames falls back to GitHub's roadmaps folder and keeps only valid directory names, sorted", async () => {
+  const folder = JSON.stringify([
+    { name: "backend", type: "dir" },
+    { name: "frontend", type: "dir" },
+    { name: "ai-data-scientist", type: "dir" },
+    { name: "Upper-Case", type: "dir" },
+    { name: "-leading", type: "dir" },
+    { name: "has space", type: "dir" },
+    { name: "a---b", type: "dir" },
+    { name: "rust", type: "file" },
+    { name: "README.md", type: "file" },
+  ]);
+  const { fetch, calls } = fakeFetch({ [ROADMAPS_FOLDER]: { status: 200, body: folder } });
+  const local: LocalRoadmapSource = {
+    ready: Promise.resolve(false),
+    listRoadmaps: async () => null,
+    listFiles: async () => null,
+    readFile: async () => null,
+  };
+  assert.deepEqual(await listRoadmapNames(COMMIT, { fetch, local }), ["ai-data-scientist", "backend", "frontend"]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.url, ROADMAPS_FOLDER);
+});
+
+test("a roadmap whose listing fails counts as having no topics and does not stop the rank", async () => {
+  const { fetch } = fakeFetch(twoRoadmapRoutes());
+  const { log, steps } = fakeLog();
+  const result = await runRank({ fetch, commit: COMMIT, readGraph: () => graphBrief(["Synthetic Topic", "Other Topic"]) }, log);
+  assert.equal(result.isError, undefined);
+  const body = JSON.parse(result.content[0]?.text ?? "{}") as { chosen: { roadmap: string }[]; candidates: { roadmap: string }[] };
+  assert.deepEqual(body.chosen.map((match) => match.roadmap), ["synthetic-roadmap"]);
+  assert.deepEqual(body.candidates.map((match) => match.roadmap), ["synthetic-roadmap"]);
+  const end = steps[0]?.ends[0] ?? {};
+  assert.equal(end.roadmaps, 2);
+  assert.equal(end.withTopics, 1);
+  assert.equal(end.failed, 1);
+});
+
+test("the rank step is logged with metadata only, and no learner text reaches the log", async () => {
+  const { fetch } = fakeFetch(twoRoadmapRoutes());
+  const { log, steps } = fakeLog();
+  await runRank({ fetch, commit: COMMIT, readGraph: () => graphBrief(["Synthetic Topic", `Topic ${SECRET}`]) }, log);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0]?.step, "roadmap rank");
+  const end = steps[0]?.ends[0] ?? {};
+  assert.deepEqual(Object.keys(end).sort(), ["candidates", "chosen", "failed", "graphKeys", "graphTopics", "matched", "roadmaps", "withTopics"]);
+  assert.equal(end.graphTopics, 2);
+  assert.equal(end.graphKeys, 2);
+  assert.equal(end.matched, "1");
+  for (const value of Object.values(end)) assert.ok(typeof value === "number" || typeof value === "string", "a count or a roadmap name");
+  assert.equal(JSON.stringify(steps).includes(SECRET), false, "no learner text in the log");
 });
