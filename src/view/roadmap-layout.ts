@@ -97,6 +97,8 @@ export interface Edge {
   readonly y2: number;
   /** Dashed when either end is optional. */
   readonly dashed: boolean;
+  /** Bends between the start and the end (both excluded) when the straight line would cross another node. */
+  readonly points?: readonly { readonly x: number; readonly y: number }[];
 }
 
 /** A bracket around interchangeable alternatives that sit together in one module. */
@@ -444,14 +446,82 @@ function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[], direct
       direction === "bottom-to-top"
         ? { x1: from.x + from.w / 2, y1: from.y, x2: to.x + to.w / 2, y2: to.y + to.h }
         : { x1: from.x + from.w, y1: from.y + from.h / 2, x2: to.x, y2: to.y + to.h / 2 };
-    edges.push({
+    const routed: Edge = {
       from: edge.from,
       to: edge.to,
       ...ends,
       dashed: Boolean(from.node.optional || to.node.optional),
-    });
+    };
+    const points = routeAround(routed, nodes, direction);
+    edges.push(points ? { ...routed, points } : routed);
   }
   return edges;
+}
+
+const ROUTE_MARGIN = 6;
+interface Box { readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number }
+type Pt = { readonly x: number; readonly y: number };
+
+/** Does the segment a-b touch the box (slab clipping)? */
+function segmentHits(a: Pt, b: Pt, box: Box): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const d = { x: b.x - a.x, y: b.y - a.y };
+  for (const [p, q, lo, hi] of [[d.x, a.x, box.x1, box.x2], [d.y, a.y, box.y1, box.y2]] as const) {
+    if (p === 0) {
+      if (q < lo || q > hi) return false;
+    } else {
+      const ta = (lo - q) / p;
+      const tb = (hi - q) / p;
+      t0 = Math.max(t0, Math.min(ta, tb));
+      t1 = Math.min(t1, Math.max(ta, tb));
+      if (t0 > t1) return false;
+    }
+  }
+  return true;
+}
+
+/** The bends that take an arrow around the nodes it does not connect, or undefined when the straight line is clear
+ * (or no clean route exists, in which case the straight line stays). The route leaves the prerequisite into the gutter
+ * between layers, runs to a free lane between pills, and enters the dependent from the gutter on its side. */
+function routeAround(edge: Edge, nodes: readonly PlacedNode[], direction: GraphDirection): Pt[] | undefined {
+  const boxes = nodes
+    .filter((n) => n.node.id !== edge.from && n.node.id !== edge.to)
+    .map((n): Box => ({ x1: n.x - ROUTE_MARGIN, y1: n.y - ROUTE_MARGIN, x2: n.x + n.w + ROUTE_MARGIN, y2: n.y + n.h + ROUTE_MARGIN }));
+  const start = { x: edge.x1, y: edge.y1 };
+  const end = { x: edge.x2, y: edge.y2 };
+  const clear = (path: readonly Pt[]): boolean => path.every((pt, i) => i === 0 || !boxes.some((box) => segmentHits(path[i - 1]!, pt, box)));
+  if (clear([start, end])) return undefined;
+  // p runs along depth, q across it; bottom to top: p = y, q = x. Left to right: p = x, q = y.
+  const vertical = direction === "bottom-to-top";
+  const P = (pt: Pt): number => (vertical ? pt.y : pt.x);
+  const Q = (pt: Pt): number => (vertical ? pt.x : pt.y);
+  const at = (p: number, q: number): Pt => (vertical ? { x: q, y: p } : { x: p, y: q });
+  const gutter = vertical ? ROW_GAP / 2 : (COL_W - PILL_W) / 2;
+  const sign = Math.sign(P(end) - P(start)) || 1;
+  const pA = P(start) + sign * gutter;
+  const pB = P(end) - sign * gutter;
+  const lo = Math.min(pA, pB);
+  const hi = Math.max(pA, pB);
+  const spans = boxes
+    .filter((box) => (vertical ? box.y2 > lo && box.y1 < hi : box.x2 > lo && box.x1 < hi))
+    .map((box): [number, number] => (vertical ? [box.x1, box.x2] : [box.y1, box.y2]))
+    .sort((a, b) => a[0] - b[0]);
+  const lanes: number[] = [];
+  let edgeOfBlocked = -Infinity;
+  for (const [a, b] of spans) {
+    if (edgeOfBlocked === -Infinity) lanes.push(a - 1);
+    else if (a > edgeOfBlocked) lanes.push((edgeOfBlocked + a) / 2);
+    edgeOfBlocked = Math.max(edgeOfBlocked, b);
+  }
+  if (edgeOfBlocked !== -Infinity) lanes.push(edgeOfBlocked + 1);
+  const mid = (Q(start) + Q(end)) / 2;
+  lanes.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid) || a - b);
+  for (const lane of lanes) {
+    const path = [start, at(pA, Q(start)), at(pA, lane), at(pB, lane), at(pB, Q(end)), end];
+    if (clear(path)) return path.slice(1, -1);
+  }
+  return undefined;
 }
 
 /** Place each column's nodes at `top` plus their spread offset (spreadColumns). Alternatives of one unit stay
