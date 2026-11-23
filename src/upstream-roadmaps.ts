@@ -61,6 +61,8 @@ export function topicReadConcurrency(options: { readonly local?: LocalRoadmapSou
 export interface LocalRoadmapSource {
   /** Names in roadmaps/<roadmap>/content, or null when that folder is not available locally. */
   listFiles(roadmap: string): Promise<readonly string[] | null>;
+  /** Slugs of the roadmaps in the local copy, or null when the copy is not available. */
+  listRoadmaps?(): Promise<readonly string[] | null>;
   /** Text of one file in that folder, or null when it is not available locally. */
   readFile(roadmap: string, file: string): Promise<string | null>;
 }

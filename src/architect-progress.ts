@@ -41,6 +41,7 @@ export function stepForTool(name: string): ArchitectStep | null {
   switch (name) {
     case "read_learner_graph":
       return "readGraph";
+    case "rank_roadmaps":
     case "list_roadmap_topics":
       return "findTopics";
     case "read_roadmap_topic":

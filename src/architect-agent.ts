@@ -43,7 +43,9 @@ import {
   readLocalTopics,
   readTopic,
   topicReadConcurrency,
+  topicRefsOf,
 } from "./upstream-roadmaps.ts";
+import { rankRoadmaps } from "./roadmap-rank.ts";
 import type { TopicReadStep, UpstreamErrorKind, UpstreamOptions, UpstreamTopic } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
@@ -968,6 +970,50 @@ export function upstreamReadTools(
     throw error;
   };
   return [
+    {
+      name: "rank_roadmaps",
+      description:
+        "Rank the developer-roadmap roadmaps by how many of the learner's Knowledge Graph topics each covers. Returns " +
+        "chosen (at most two: the best match, and a second that covers at least half as many graph topics) and " +
+        "candidates (every roadmap covering a graph topic). Call it before list_roadmap_topics.",
+      parameters: objectSchema({}),
+      execute: async (_toolCallId, _rawParams, signal) => {
+        assertLive(ctx, signal);
+        const step: LogStep | undefined = log?.begin("roadmap rank");
+        try {
+          const brief = upstream.readGraph?.() ?? null;
+          const local = upstream.local;
+          if (!brief) {
+            step?.end({ candidates: 0, chosen: 0 });
+            return textResult(
+              { chosen: [], candidates: [], note: "The learner has no graph yet: choose the roadmap that fits their goal." },
+              JSON.stringify({ chosen: [], candidates: [], note: "The learner has no graph yet: choose the roadmap that fits their goal." }),
+            );
+          }
+          const names = local?.listRoadmaps ? await local.listRoadmaps() : null;
+          if (!local || !names) {
+            step?.end({ candidates: 0, chosen: 0, source: "unavailable" });
+            return errorResult("The roadmap copy is not ready: choose the roadmap that fits the goal and call list_roadmap_topics for it.");
+          }
+          const roadmaps = new Map<string, string[]>();
+          for (const name of names) {
+            const files = await local.listFiles(name);
+            if (files) roadmaps.set(name, topicRefsOf(files).map((topic) => topic.slug));
+          }
+          const ranking = rankRoadmaps(graphBriefTopicKeys(brief), roadmaps);
+          step?.end({
+            candidates: ranking.candidates.length,
+            chosen: ranking.chosen.length,
+            matched: ranking.chosen.map((match) => match.matched).join(","),
+          });
+          const text = JSON.stringify(ranking);
+          return textResult(ranking, text);
+        } catch (error) {
+          step?.fail(error);
+          return upstreamFailure(error);
+        }
+      },
+    },
     {
       name: "list_roadmap_topics",
       description:

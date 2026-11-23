@@ -234,7 +234,7 @@ test("a node with no unresolved errors still tells the session to probe", () => 
 /** The list returns every topic in full, so the prompt asks for no batch loop: read_roadmap_topics only for missing topics. */
 test("the upstream prompt says the list returns topics in full and asks for no batch loop", () => {
   const prompt = buildArchitectSystemPrompt({ upstream: true });
-  assert.match(prompt, /list_roadmap_topics with a roadmap slug: it returns the roadmap's topics in full, in one call/);
+  assert.match(prompt, /list_roadmap_topics for each chosen roadmap: it returns the roadmap's topics in full, in one call/);
   assert.match(prompt, /read_roadmap_topics only for topics marked missing \(content null\)/);
   assert.match(prompt, /count them as N/);
   assert.doesNotMatch(prompt, /Coverage|Target all N|never read fewer than half|as many batch calls|until the target is met/);
