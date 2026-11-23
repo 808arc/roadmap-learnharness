@@ -146,9 +146,10 @@ test("a roadmap with two roots draws both branches and the tree shows both roots
     showLegend: false,
   });
   try {
-    canvas.render(state("graph"));
-    const graphIds = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
-    for (const id of ["root-one", "root-two", "after-one", "after-two"]) assert.ok(graphIds.includes(id), `graph shows ${id}`);
+    // The Graph view shows the learner's Knowledge Graph (issue #50); the roadmap's two branches are drawn in the Tree.
+    canvas.render(state("tree"));
+    const treeIds = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
+    for (const id of ["root-one", "root-two", "after-one", "after-two"]) assert.ok(treeIds.includes(id), `tree shows ${id}`);
     assert.equal(host.querySelectorAll(".rm-edges line").length, 2, "two arrows, one per branch");
   } finally {
     canvas.dispose();
