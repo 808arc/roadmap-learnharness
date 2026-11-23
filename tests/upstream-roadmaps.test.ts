@@ -608,7 +608,7 @@ test("the instructions put the graph and the topic files before the book and web
   assert.ok(topics > graph, "the topic files come after the graph");
   assert.ok(research > topics, "the research section comes after the topic files");
   assert.match(prompt.slice(research), /enrich/);
-  assert.match(prompt, /Books and web never create topics, nodes or roadmap structure/);
+  assert.match(prompt, /Books\/web never create topics, nodes or roadmap structure/);
   assert.equal(prompt.includes("Do not search the web"), false, "the old ban is gone");
 });
 
