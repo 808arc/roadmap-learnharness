@@ -27,6 +27,12 @@ export interface LogStep {
   fail(error: unknown, fields?: LogFields): void;
 }
 
+export interface ActiveLogStep {
+  readonly step: string;
+  readonly elapsedMs: number;
+  readonly fields: LogFields;
+}
+
 export interface PluginLog {
   /** Absolute path of the log file (it is created on the first write). */
   readonly path: string;
@@ -34,8 +40,8 @@ export interface PluginLog {
   begin(step: string, fields?: LogFields): LogStep;
   /** Write a single event line. */
   event(name: string, fields?: LogFields): void;
-  /** Names of the steps begun and not yet ended, oldest first. Writes nothing. */
-  active(): readonly string[];
+  /** Steps begun and not yet ended, oldest first: name, elapsed time and the metadata they began with. Writes nothing. */
+  active(): readonly ActiveLogStep[];
 }
 
 export interface PluginLogOptions {
@@ -78,7 +84,7 @@ export function createPluginLog(filePath: string, options: PluginLogOptions = {}
   const errorName = (error: unknown): string =>
     error instanceof Error ? error.name : "NonError";
 
-  const open = new Map<number, string>();
+  const open = new Map<number, { step: string; started: number; fields: LogFields }>();
   let nextId = 0;
 
   return {
@@ -87,12 +93,17 @@ export function createPluginLog(filePath: string, options: PluginLogOptions = {}
       write({ ...fields, event: name });
     },
     active() {
-      return [...new Set(open.values())];
+      const now = clock();
+      return [...open.values()].map((entry) => ({
+        step: entry.step,
+        elapsedMs: Math.max(0, Math.round(now - entry.started)),
+        fields: entry.fields,
+      }));
     },
     begin(step, fields = {}) {
       const started = clock();
       const id = nextId++;
-      open.set(id, step);
+      open.set(id, { step, started, fields });
       write({ ...fields, event: "step.start", step });
       let done = false;
       const finish = (record: Record<string, unknown>): void => {

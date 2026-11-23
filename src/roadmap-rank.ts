@@ -1,43 +1,68 @@
-/** Ranks upstream roadmaps by how many of the learner's graph topics each one covers.
+/** Ranks upstream roadmaps by how closely they cover the learner's graph topics.
  *
- * Pure: the caller passes the graph's topic keys and each roadmap's topic slugs. The first roadmap is the best
- * match; a second is chosen only when it covers at least half as many graph topics. Roadmaps covering none are
- * never chosen.
+ * Pure: the caller passes the graph's topic keys (topicKey form, hyphenated) and each roadmap's topic slugs.
+ * A graph topic that equals a roadmap topic is an exact match. A graph topic that shares a meaningful word with
+ * one of a roadmap's topics is a near match, counted at a lower weight. The best roadmap is always chosen when any
+ * roadmap scores; a second is chosen when it scores at least half as much as the first.
  */
 
 export interface RoadmapMatch {
   readonly roadmap: string;
-  /** Graph topics this roadmap covers. */
+  /** Graph topics that equal a topic of this roadmap. */
   readonly matched: number;
+  /** Graph topics that share a meaningful word with a topic of this roadmap (not already exact). */
+  readonly near: number;
   /** Topics the roadmap lists. */
   readonly total: number;
 }
 
 export interface RoadmapRanking {
-  /** Best first, at most two: the chosen roadmaps. */
+  /** Best first, at most two: the chosen roadmaps. Empty only when no roadmap scores at all. */
   readonly chosen: readonly RoadmapMatch[];
-  /** Every roadmap that covers at least one graph topic, best first. */
+  /** Every roadmap with a score, best first. */
   readonly candidates: readonly RoadmapMatch[];
 }
 
-/** Share of the best match's count a second roadmap needs to be chosen too. */
+/** Share of the best score a second roadmap needs to be chosen too. */
 export const SECOND_ROADMAP_RATIO = 0.5;
+/** Weight of a near match against an exact one. */
+const NEAR_WEIGHT = 0.5;
+
+const STOPWORDS: ReadonlySet<string> = new Set([
+  "a", "an", "and", "as", "at", "be", "by", "for", "from", "in", "is", "of", "on", "or", "the", "to", "vs", "with",
+]);
+
+/** Meaningful words of a hyphenated key: at least three letters or digits, not a stopword. */
+function wordsOf(key: string): string[] {
+  return key.split("-").filter((word) => word.length >= 3 && !STOPWORDS.has(word));
+}
 
 export function rankRoadmaps(
   graphKeys: ReadonlySet<string>,
   roadmaps: ReadonlyMap<string, readonly string[]>,
 ): RoadmapRanking {
-  const candidates: RoadmapMatch[] = [];
+  const candidates: { match: RoadmapMatch; score: number }[] = [];
   for (const [roadmap, slugs] of roadmaps) {
+    const slugSet = new Set(slugs);
+    const words = new Set(slugs.flatMap(wordsOf));
     let matched = 0;
-    for (const slug of slugs) if (graphKeys.has(slug)) matched += 1;
-    if (matched > 0) candidates.push({ roadmap, matched, total: slugs.length });
+    let near = 0;
+    for (const key of graphKeys) {
+      if (slugSet.has(key)) matched += 1;
+      else if (wordsOf(key).some((word) => words.has(word))) near += 1;
+    }
+    const score = matched + NEAR_WEIGHT * near;
+    if (score > 0) candidates.push({ match: { roadmap, matched, near, total: slugs.length }, score });
   }
-  // Ties keep the roadmap with fewer topics first (more focused), then the name, so the order is stable.
-  candidates.sort((a, b) => b.matched - a.matched || a.total - b.total || a.roadmap.localeCompare(b.roadmap));
-  const [best, second] = candidates;
+  // Best score first; ties keep the more focused roadmap (fewer topics), then the name, so the order is stable.
+  candidates.sort(
+    (a, b) => b.score - a.score || a.match.total - b.match.total || a.match.roadmap.localeCompare(b.match.roadmap),
+  );
+  const ordered = candidates.map((entry) => entry.match);
+  const best = candidates[0];
+  const second = candidates[1];
   const chosen: RoadmapMatch[] = [];
-  if (best) chosen.push(best);
-  if (best && second && second.matched >= best.matched * SECOND_ROADMAP_RATIO) chosen.push(second);
-  return { chosen, candidates };
+  if (best) chosen.push(best.match);
+  if (best && second && second.score >= best.score * SECOND_ROADMAP_RATIO) chosen.push(second.match);
+  return { chosen, candidates: ordered };
 }
