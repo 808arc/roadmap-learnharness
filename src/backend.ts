@@ -527,7 +527,8 @@ export function activate(ctx: PluginBackendContext): void {
         commit: UPSTREAM_PINNED_COMMIT,
         topicCache: createTopicDiskCache(nodePath.join(ctx.dataDirectory, "topic-cache")),
         local: localRoadmapCopy(ctx.dataDirectory, architectLog),
-        readGraph: () => learnerGraphBrief(ctx),
+        // Opt-in per message: the Architect reads the graph only for a chat whose latest send had learnerGraph true.
+        readGraph: () => (activeChatId === null ? null : (graphBriefs.get(activeChatId) ?? null)),
       },
       log: architectLog,
       onPathSaved: (path, created) =>
@@ -1332,6 +1333,7 @@ export function activate(ctx: PluginBackendContext): void {
     // and the model reads it through read_learner_graph (the same capped brief, as quoted data).
     const brief = value.learnerGraph === true ? learnerGraphBrief(ctx) : null;
     if (brief) graphBriefs.set(id, brief);
+    else graphBriefs.delete(id);
     architectLog.event("graph brief", {
       chatId: id,
       learnerGraph: value.learnerGraph === true,

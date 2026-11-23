@@ -147,6 +147,25 @@ test("without learnerGraph the message is sent unchanged", async (t) => {
   assert.equal(current.messages.at(0)?.content, "Build my roadmap");
 });
 
+test("rank_roadmaps and read_learner_graph read the graph only when the message opted in", async (t) => {
+  const h = host(t, { propositions: [{ ...topic("placeholder"), name: "Topic kept" }], chains: [] });
+  const readBrief = async (learnerGraph: boolean | undefined, requestId: string) => {
+    const { conversation } = await h.call<{ conversation: { id: string } }>("architect.create");
+    await h.call("architect.send", {
+      id: conversation.id,
+      text: "Build my roadmap",
+      requestId,
+      ...(learnerGraph === undefined ? {} : { learnerGraph }),
+    });
+    const result = await h.runTool<{ content: { text: string }[] }>("read_learner_graph", {});
+    return JSON.parse(result.content[0]?.text ?? "{}").topics as { name: string }[];
+  };
+
+  assert.deepEqual(await readBrief(false, "req-off"), [], "toggle off: the Architect gets no graph topics");
+  assert.deepEqual(await readBrief(undefined, "req-absent"), [], "toggle absent: the Architect gets no graph topics");
+  assert.deepEqual((await readBrief(true, "req-on")).map((topic) => topic.name), ["Topic kept"], "toggle on: the Architect reads the graph");
+});
+
 test("the quoted brief is capped", () => {
   const long = "x".repeat(280);
   const brief: GraphBrief = {
