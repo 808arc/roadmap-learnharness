@@ -98,10 +98,10 @@ test("the display setting turns the hint line off", () => {
 
 test("the display setting defaults on, and old settings data without it still validates", () => {
   assert.equal(DEFAULT_DISPLAY.patternHints, true);
-  const old = validatePluginSettings({ artifactDefaults: {}, display: { language: "en", defaultView: "graph", showOptional: false } });
+  const old = validatePluginSettings({ artifactDefaults: {}, display: { language: "en", showOptional: false } });
   assert.equal(old.ok, true);
   if (!old.ok) return;
-  assert.deepEqual(old.value.display, { language: "en", defaultView: "graph", showOptional: false, graphDirection: "bottom-to-top", patternHints: true });
+  assert.deepEqual(old.value.display, { language: "en", showOptional: false, graphDirection: "bottom-to-top", patternHints: true });
 
   const off = validatePluginSettings({ artifactDefaults: {}, display: { ...DEFAULT_DISPLAY, patternHints: false } });
   assert.equal(off.ok, true);

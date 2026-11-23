@@ -41,10 +41,10 @@ import { locale, resolveLocale, setLocale, t } from "./i18n.ts";
 import type { MessageKey } from "./i18n.ts";
 import { artifactName } from "./view/node-inspector.ts";
 import { mountResearchSettings } from "./research-settings.ts";
-import { DEFAULT_ARCHITECT_PREFERENCES, DEFAULT_DISPLAY, LANGUAGE_PREFERENCES, VIEW_MODES } from "./domain.ts";
-import type { DisplaySettings, LanguagePreference, ViewMode } from "./domain.ts";
+import { DEFAULT_ARCHITECT_PREFERENCES, DEFAULT_DISPLAY, LANGUAGE_PREFERENCES } from "./domain.ts";
+import type { DisplaySettings, LanguagePreference } from "./domain.ts";
 
-const VIEW_LABELS: Record<ViewMode, MessageKey> = { tree: "view.tree", graph: "view.graph" };
+
 
 interface PathSummary {
   readonly id: string;
@@ -283,16 +283,6 @@ export function mountSettingsPage(
         value: settings.contentLanguage ?? "auto",
         options: languageOptions(),
         onChange: (value: string) => void saveSettings({ ...settings, contentLanguage: value as LanguagePreference }),
-      },
-      {
-        key: "display-view",
-        type: "dropdown" as const,
-        label: t("s.defaultView"),
-        description: t("s.defaultViewHelp"),
-        value: display.defaultView,
-        options: VIEW_MODES.map((value) => ({ value, label: t(VIEW_LABELS[value]) })),
-        onChange: (value: string) =>
-          void saveSettings({ ...settings, display: { ...currentDisplay(), defaultView: value as ViewMode } }),
       },
       {
         key: "propose-roadmaps",

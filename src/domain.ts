@@ -143,8 +143,6 @@ export interface NodeResource {
   readonly checked?: boolean;
 }
 
-export const VIEW_MODES = ["tree", "graph"] as const;
-export type ViewMode = (typeof VIEW_MODES)[number];
 export const LANGUAGE_PREFERENCES = ["auto", "ru", "en"] as const;
 export type LanguagePreference = (typeof LANGUAGE_PREFERENCES)[number];
 
@@ -154,7 +152,6 @@ export type GraphDirectionSetting = (typeof GRAPH_DIRECTIONS)[number];
 export interface DisplaySettings {
   /** Interface language; `auto` follows the system language. */
   readonly language: LanguagePreference;
-  readonly defaultView: ViewMode;
   readonly showOptional: boolean;
   /** Which way the Graph view grows; an unknown stored value reads as the default. */
   readonly graphDirection: GraphDirectionSetting;
@@ -162,7 +159,7 @@ export interface DisplaySettings {
   readonly patternHints: boolean;
 }
 
-export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "tree", showOptional: true, graphDirection: "bottom-to-top", patternHints: true };
+export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", showOptional: true, graphDirection: "bottom-to-top", patternHints: true };
 
 /** How the Architect reaches beyond its own memory. Every channel can be switched off;
  * with all of them off the Architect works offline from what the model knows. */
@@ -455,13 +452,6 @@ function readEnum<T extends string>(value: unknown, allowed: readonly T[], path:
     fail(path, `must be one of: ${allowed.join(", ")}`);
   }
   return value as T;
-}
-
-/** A saved default view. The removed "list" view falls back to the tree view. */
-function readDefaultView(value: unknown, path: string): ViewMode {
-  if (value === undefined) return DEFAULT_DISPLAY.defaultView;
-  if (value === "list") return "tree";
-  return readEnum(value, VIEW_MODES, path);
 }
 
 function readArray(value: unknown, path: string): readonly unknown[] {
@@ -956,7 +946,6 @@ function readDisplaySettings(value: unknown, path: string): DisplaySettings {
   const record = readObject(value, path);
   return {
     language: record.language === undefined ? DEFAULT_DISPLAY.language : readEnum(record.language, LANGUAGE_PREFERENCES, `${path}.language`),
-    defaultView: readDefaultView(record.defaultView, `${path}.defaultView`),
     showOptional: record.showOptional === undefined ? DEFAULT_DISPLAY.showOptional : readBoolean(record.showOptional, `${path}.showOptional`),
     graphDirection: (GRAPH_DIRECTIONS as readonly unknown[]).includes(record.graphDirection)
       ? (record.graphDirection as GraphDirectionSetting)

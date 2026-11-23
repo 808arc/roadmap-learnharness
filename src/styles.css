@@ -140,29 +140,6 @@
   white-space: nowrap;
 }
 
-.rm-seg {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--rm-line-2);
-  border-radius: 6px;
-}
-
-.rm-seg button {
-  padding: 4px 11px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--rm-muted) !important;
-  cursor: pointer;
-}
-
-.rm-seg button.rm-on {
-  background: var(--rm-acc-bg);
-  color: var(--rm-text) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rm-acc) 55%, transparent);
-}
-
 .rm-top-actions {
   display: flex;
   gap: 8px;
@@ -345,6 +322,7 @@
 .rm-edges polyline {
   stroke: var(--rm-edge);
   stroke-width: 1;
+  fill: none;
 }
 
 .rm-edges line.rm-dashed,
@@ -392,95 +370,126 @@
 .rm-edges .rm-arrow {
   fill: none;
   stroke: var(--rm-edge);
-  stroke-width: 1.2;
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-/* Nodes ----------------------------------------------------------------- */
+/* Nodes: the knowledge-graph look. A node is a small circle with a short title beside it; no boxes, thin lines.
+ * Progress: empty ring (not started), accent ring (in progress), filled green (done), dotted (skipped).
+ * Optional: dashed ring and an "opt." tag. Checkpoint: a flag instead of the circle. Selected: a blue halo.
+ * Module: six hues cycle over the modules (--rm-mod-N); a module's label and its nodes' titles carry its hue. */
+
+.rm-canvas {
+  --rm-mod-0: #6f8fe8;
+  --rm-mod-1: #d8924f;
+  --rm-mod-2: #5fb08f;
+  --rm-mod-3: #b98ad6;
+  --rm-mod-4: #d9708f;
+  --rm-mod-5: #a3ad45;
+}
+
+.rm-canvas .rm-mod-0 { --rm-mod: var(--rm-mod-0); }
+.rm-canvas .rm-mod-1 { --rm-mod: var(--rm-mod-1); }
+.rm-canvas .rm-mod-2 { --rm-mod: var(--rm-mod-2); }
+.rm-canvas .rm-mod-3 { --rm-mod: var(--rm-mod-3); }
+.rm-canvas .rm-mod-4 { --rm-mod: var(--rm-mod-4); }
+.rm-canvas .rm-mod-5 { --rm-mod: var(--rm-mod-5); }
 
 .rm-node {
   position: absolute;
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--rm-line);
-  border-radius: 4px;
-  background: var(--rm-panel);
+  gap: 7px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--rm-mod, var(--rm-text)) 38%, var(--rm-text));
+  font-size: var(--rm-font-sm);
   text-align: left;
   cursor: pointer;
 }
 
-.rm-node:hover {
-  border-color: var(--rm-line-2);
+.rm-dot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--rm-muted);
+  border-radius: 50%;
+  background: var(--rm-bg);
 }
 
-.rm-node.rm-opt {
+.rm-node.rm-prog .rm-dot {
+  border-color: var(--rm-acc);
+}
+
+.rm-node.rm-done .rm-dot {
+  border-color: var(--rm-ok);
+  background: var(--rm-ok);
+}
+
+.rm-node.rm-skip .rm-dot {
+  border-style: dotted;
+}
+
+.rm-node.rm-opt .rm-dot {
   border-style: dashed;
   background: transparent;
 }
 
-.rm-node.rm-alt,
-.rm-node.rm-done {
-  color: color-mix(in srgb, var(--rm-text) 82%, var(--rm-bg)) !important;
-}
-
 .rm-node.rm-skip {
-  color: var(--rm-faint) !important;
+  color: var(--rm-faint);
 }
 
 .rm-node.rm-skip .rm-node-title {
   text-decoration: line-through;
 }
 
-.rm-node.rm-sel {
-  border-color: var(--rm-acc);
-  box-shadow: 0 0 0 1px var(--rm-acc);
-  background: color-mix(in srgb, var(--rm-acc) 9%, var(--rm-panel));
-}
-
-/* Graph view: each node is a small rounded pill with its title; no frames around them. */
-.rm-node.rm-pill {
-  gap: 6px;
-  padding: 0 10px;
-  border-radius: 12px;
-  border-color: var(--rm-line-2);
-  background: var(--rm-bg);
-  font-size: var(--rm-font-sm);
-}
-
-.rm-node.rm-pill .rm-node-title {
-  font-size: var(--rm-font-sm);
-}
-
-/* Optional nodes: dashed outline, no fill, with the "opt." tag. */
-.rm-node.rm-pill.rm-opt {
-  border-style: dashed;
+/* Checkpoint: the flag replaces the circle. */
+.rm-dot.rm-flag {
+  width: 12px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
+  color: var(--rm-warn);
 }
 
-/* Checkpoints: the flag icon marks the pill. */
-.rm-node.rm-pill.rm-check .rm-flag {
+.rm-node.rm-done .rm-dot.rm-flag {
+  color: var(--rm-ok);
+}
+
+.rm-node.rm-check {
+  font-weight: 600;
+}
+
+/* Selected: a blue ring around the circle. */
+.rm-node.rm-sel .rm-dot {
+  border-color: var(--rm-acc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rm-acc) 30%, transparent);
+}
+
+.rm-node.rm-sel .rm-dot.rm-flag {
+  box-shadow: none;
+  color: var(--rm-acc);
+}
+
+.rm-node.rm-sel .rm-node-title {
+  color: var(--rm-text);
+  font-weight: 600;
+}
+
+.rm-node:hover .rm-node-title {
   color: var(--rm-text);
 }
 
-/* The current node: blue outline. */
-.rm-node.rm-pill.rm-highlight {
-  border-color: var(--rm-acc);
-  box-shadow: 0 0 0 1px var(--rm-acc);
-  background: var(--rm-acc-bg);
-}
-
-.rm-node-icon {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-}
-
 .rm-node-title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -496,25 +505,15 @@
 /* A node the learner's graph already covers: a small review tag after the title. */
 .rm-node-review {
   flex: none;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--rm-panel-2);
   color: var(--rm-muted);
   font-size: var(--rm-font-xs);
+  font-style: italic;
 }
 
 .rm-node-warn {
   display: inline-flex;
   flex: none;
   color: var(--rm-warn);
-}
-
-.rm-flag {
-  color: var(--rm-muted);
-}
-
-.rm-flag-done {
-  color: var(--rm-ok);
 }
 
 /* Status marks: check, filled dot, ring, dash */
@@ -589,37 +588,31 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Module title above the module's first column: plain text, no frame. */
+/* A module's small label above its first node: plain text in the module's hue, no frame. */
 .rm-module-label {
   position: absolute;
-  max-width: 200px;
-  height: 18px;
+  max-width: 180px;
+  height: 14px;
   padding: 0;
   overflow: hidden;
   border: 0;
   background: transparent;
-  color: var(--rm-muted);
-  font-size: var(--rm-font-sm);
+  color: color-mix(in srgb, var(--rm-mod, var(--rm-muted)) 80%, var(--rm-muted));
+  font-size: var(--rm-font-xs);
   font-weight: 600;
-  line-height: 18px;
+  letter-spacing: 0.02em;
+  line-height: 14px;
   text-align: left;
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
-  cursor: default;
+  cursor: pointer;
 }
 
 .rm-module-label-focus {
-  color: var(--rm-acc);
-}
-
-/* Bracket around interchangeable alternatives that share a column. */
-.rm-alt-group {
-  position: absolute;
-  width: 4px;
-  border: 1px solid var(--rm-faint);
-  border-right: 0;
-  border-radius: 3px 0 0 3px;
-  pointer-events: none;
+  color: var(--rm-mod, var(--rm-acc));
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Zoom + legend ------------------------------------------------------- */
@@ -697,6 +690,22 @@
   gap: 8px;
   white-space: nowrap;
 }
+
+.rm-legend-dot {
+  position: static;
+  display: inline-block;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 1.5px solid var(--rm-muted);
+  border-radius: 50%;
+  background: var(--rm-bg);
+}
+
+.rm-legend-dot.rm-prog { border-color: var(--rm-acc); }
+.rm-legend-dot.rm-done { border-color: var(--rm-ok); background: var(--rm-ok); }
+.rm-legend-dot.rm-skip { border-style: dotted; }
 
 .rm-legend-icon {
   display: inline-flex;
@@ -2395,99 +2404,6 @@ details.lp-chat-reasoning > summary {
   cursor: pointer;
 }
 
-/* Node states: distinguishable at a glance, not only by the small icon. ---- */
-
-.rm-node {
-  transition: border-color 0.12s ease, background-color 0.12s ease;
-}
-
-/* Not started: neutral card. */
-.rm-node:not(.rm-done):not(.rm-prog):not(.rm-skip) .rm-node-title {
-  color: var(--rm-text);
-}
-
-/* In progress: accent rail on the left and a light accent wash. */
-.rm-node.rm-prog {
-  border-color: color-mix(in srgb, var(--rm-acc) 60%, var(--rm-line));
-  background: color-mix(in srgb, var(--rm-acc) 12%, var(--rm-panel));
-  box-shadow: inset 3px 0 0 var(--rm-acc);
-}
-
-/* Consolidated: filled green card with a check. */
-.rm-node.rm-done {
-  border-color: color-mix(in srgb, var(--rm-ok) 55%, var(--rm-line));
-  background: color-mix(in srgb, var(--rm-ok) 18%, var(--rm-panel));
-  color: var(--rm-text) !important;
-}
-
-.rm-node.rm-done .rm-st-done {
-  color: var(--rm-ok);
-}
-
-/* Skipped: faded and crossed out. */
-.rm-node.rm-skip {
-  border-style: dotted;
-  background: transparent;
-  opacity: 0.6;
-}
-
-/* Alternatives: dotted double edge, readable tag. */
-.rm-node.rm-alt {
-  color: var(--rm-text) !important;
-  outline: 1px dotted var(--rm-line-2);
-  outline-offset: 2px;
-}
-
-.rm-node.rm-alt .rm-node-tag {
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--rm-panel-2);
-  color: var(--rm-text);
-}
-
-/* Checkpoints: rounded pill with a warm edge, so they read as milestones. */
-.rm-node.rm-check {
-  border-radius: 999px;
-  border-color: color-mix(in srgb, var(--rm-warn) 55%, var(--rm-line));
-  font-weight: 600;
-}
-
-.rm-node.rm-check .rm-flag {
-  color: var(--rm-warn);
-}
-
-.rm-node.rm-check.rm-done {
-  border-color: color-mix(in srgb, var(--rm-ok) 60%, var(--rm-line));
-}
-
-.rm-node.rm-check.rm-done .rm-flag {
-  color: var(--rm-ok);
-}
-
-.rm-node.rm-sel {
-  border-color: var(--rm-acc);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rm-acc) 55%, transparent);
-}
-
-.rm-node.rm-prog.rm-sel {
-  box-shadow: inset 3px 0 0 var(--rm-acc), 0 0 0 2px color-mix(in srgb, var(--rm-acc) 55%, transparent);
-}
-
-.rm-legend-swatch.rm-node {
-  position: static;
-  display: inline-flex;
-  width: 26px;
-  height: 18px;
-  padding: 0;
-  justify-content: center;
-  cursor: default;
-  opacity: 1;
-}
-
-.rm-legend-swatch.rm-node.rm-skip {
-  opacity: 0.6;
-}
-
 .rm-research-tools {
   margin: 0;
   color: var(--muted-foreground, #8d8d8d);
@@ -2599,65 +2515,3 @@ details.lp-chat-reasoning > summary {
 .rm-proposal-build:disabled {
   opacity: 0.5;
 }
-
-/* Graph view as dots: each node is a small circle with its title beside it, with no box around it.
- * Later sections paint boxes on status classes, so these rules are more specific. */
-.rm-canvas .rm-node.rm-pill {
-  gap: 7px;
-  height: 24px;
-  padding: 0 4px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  align-items: center;
-}
-
-.rm-canvas .rm-node.rm-pill::before {
-  content: "";
-  flex: none;
-  box-sizing: border-box;
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid var(--rm-faint);
-  border-radius: 50%;
-  background: var(--rm-bg);
-}
-
-.rm-canvas .rm-node.rm-pill.rm-opt::before {
-  border-style: dashed;
-  background: transparent;
-}
-
-.rm-canvas .rm-node.rm-pill.rm-prog::before {
-  border-color: var(--rm-acc);
-}
-
-.rm-canvas .rm-node.rm-pill.rm-done::before {
-  border-color: var(--rm-ok);
-  background: var(--rm-ok);
-}
-
-.rm-canvas .rm-node.rm-pill.rm-skip::before {
-  border-style: dotted;
-}
-
-.rm-canvas .rm-node.rm-pill.rm-sel::before,
-.rm-canvas .rm-node.rm-pill.rm-highlight::before {
-  border-color: var(--rm-acc);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rm-acc) 28%, transparent);
-}
-
-.rm-canvas .rm-node.rm-pill:not(.rm-check) .rm-node-icon {
-  display: none;
-}
-
-/* Tree text-only rendering and the Knowledge Graph view (issue #50). */
-.rm-text-toggle { position: absolute; right: 12px; top: 12px; padding: 4px 10px; cursor: pointer; }
-.rm-text-tree { overflow: auto; height: 100%; padding: 16px 20px; }
-.rm-text-modules, .rm-text-nodes { list-style: none; margin: 0; padding: 0; }
-.rm-text-nodes { padding-left: 20px; }
-.rm-text-open { background: none; border: 0; color: inherit; cursor: pointer; padding: 3px 0; text-align: left; }
-.rm-text-open.rm-sel { font-weight: 600; }
-.rm-kg-node { cursor: default; }
-.rm-kg-empty { position: absolute; left: 28px; top: 28px; margin: 0; opacity: 0.7; }

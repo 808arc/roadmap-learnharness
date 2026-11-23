@@ -1,50 +1,31 @@
 /** Roadmap graph layout (pure, DOM-free).
  *
- * Nodes sit in columns by dependency depth: a node is one column right of its
- * deepest prerequisite, and an arrow runs from each prerequisite to each node
- * that depends on it. The nodes of all modules share the columns (one network);
- * a module shows as a text label above its first column. Any number of nodes
- * can share a column: they stack in rows.
- *
- * Alternatives (same alternativeGroup) share a column and are bracketed. They
- * depend on the same prerequisites and never on each other.
+ * One view: every shown node is a dot with its title beside it, placed by dependency depth (LearnHarness's
+ * inference depth) as a network, with an arrow from each prerequisite to its dependent. Depth runs bottom to
+ * top by default, or left to right. The nodes of all modules share the network; each module shows as a small
+ * label next to its first node and a colour on its nodes' titles (`moduleIndex`), never as a frame.
+ * Alternatives (same alternativeGroup) share a depth and never depend on each other.
  */
 import type { LearningPath, PathModule, PathNode } from "../domain.ts";
 import { nodePrerequisites, type NodePrerequisites } from "../node-prerequisites.ts";
 import { inferenceDepth } from "./graph-depth.ts";
 
-export const SUB_W = 200;
-export const SUB_H = 28;
-export const ROW = 34;
-/** Horizontal room between two columns, where the arrows run. */
-export const COL_GAP = 64;
-export const COL_W = SUB_W + COL_GAP;
-export const PAD = 40;
-/** Room under the first module for the zoom control and the legend overlay. */
+/** Room under the network for the zoom control, the direction toggle and the legend overlay. */
 export const PAD_BOTTOM = 150;
-export const FRAME_PAD = 12;
-/** Height of a module's text label above its first column. */
-export const LABEL_H = 18;
-/** Clear space between a module label and the bottom of any node above it in the same column. */
-export const LABEL_ROOM = 26;
-/** Label rectangle used for the clearance rules: about 8px per character, 16px tall. */
-export const LABEL_CHAR_W = 8;
-export const LABEL_BOX_H = 16;
-/** Distance from a node's left edge to its alternatives bracket. */
-export const GROUP_BRACKET = 8;
-/** Graph view: each node is a small pill, stacked with generous room between rows. */
-export const PILL_W = 168;
-export const PILL_H = 24;
-export const PILL_ROW = 40;
-
-/** Size of one node cell: row pitch, width and height. */
-interface NodeSize {
-  readonly row: number;
-  readonly w: number;
-  readonly h: number;
-}
-const TREE_SIZE: NodeSize = { row: ROW, w: SUB_W, h: SUB_H };
-const PILL_SIZE: NodeSize = { row: PILL_ROW, w: PILL_W, h: PILL_H };
+export const PAD = 40;
+/** One node's cell: the dot at its left edge, the title after it. */
+export const NODE_W = 168;
+export const NODE_H = 24;
+/** Left to right: row pitch. */
+export const NODE_ROW = 40;
+/** Horizontal room between two columns when running left to right, where the arrows run. */
+export const COL_GAP = 64;
+export const COL_W = NODE_W + COL_GAP;
+/** The dot: its diameter, and the offset of its centre from the cell's left edge (the cell has 4px padding). */
+export const DOT_D = 12;
+export const DOT_X = 10;
+/** Height of a module's label, which sits just above its first node. */
+export const LABEL_H = 14;
 
 export type NodeRole = "order" | "extra" | "consolidation";
 
@@ -62,8 +43,6 @@ export interface DependencyGraph {
   readonly depth: ReadonlyMap<string, number>;
   /** Arrows between shown nodes. Hidden optional nodes are passed through. */
   readonly edges: readonly DependencyEdge[];
-  /** Tree parent of each shown node: its deepest prerequisite (earliest in path order on a tie), or null for a root. */
-  readonly parent: ReadonlyMap<string, string | null>;
   /** Prerequisite edges dropped to break cycles. */
   readonly ignored: readonly DependencyEdge[];
 }
@@ -71,6 +50,8 @@ export interface DependencyGraph {
 export interface PlacedNode {
   readonly node: PathNode;
   readonly moduleId: string;
+  /** Index of the node's module in the roadmap: picks its colour. */
+  readonly moduleIndex: number;
   readonly depth: number;
   readonly x: number;
   readonly y: number;
@@ -78,21 +59,15 @@ export interface PlacedNode {
   readonly h: number;
 }
 
+/** A module's small label, placed just above the module's first node. `index` picks the module's colour. */
 export interface PlacedModule {
   readonly module: PathModule;
   readonly index: number;
-  /** The module the learner focused; drawn highlighted, and centred by focus. */
+  /** The module the learner focused; its label is drawn highlighted and the view centres on it. */
   readonly expanded: boolean;
-  readonly final: boolean;
-  /** Tree: top-left of the module's text label (above its first column). w and h are 0: no frame is drawn. */
+  /** Top-left of the label. */
   readonly x: number;
   readonly y: number;
-  readonly w: number;
-  readonly h: number;
-  /** Tree: where the label is drawn (top-left); same as x and y. */
-  readonly labelAt?: { readonly x: number; readonly y: number };
-  /** Always null: the tree draws no frame to hold an error line. */
-  readonly errorLine: { readonly x: number; readonly y: number } | null;
 }
 
 export interface Edge {
@@ -108,22 +83,12 @@ export interface Edge {
   readonly points?: readonly { readonly x: number; readonly y: number }[];
 }
 
-/** A bracket around interchangeable alternatives that sit together in one module. */
-export interface AlternativeGroup {
-  readonly alternativeGroup: string;
-  readonly moduleId: string;
-  readonly x: number;
-  readonly y1: number;
-  readonly y2: number;
-}
-
 export interface RoadmapLayout {
   readonly width: number;
   readonly height: number;
   readonly modules: readonly PlacedModule[];
   readonly nodes: readonly PlacedNode[];
   readonly edges: readonly Edge[];
-  readonly groups: readonly AlternativeGroup[];
 }
 
 export function nodeRole(node: PathNode): NodeRole {
@@ -179,7 +144,7 @@ export function unitKey(node: PathNode): string {
 
 const pairKey = (from: string, to: string): string => `${from}\u0000${to}`;
 
-/** Dependency depth for every shown node, the arrows between them and the tree parents.
+/** Dependency depth for every shown node and the arrows between them.
  *
  * Prerequisites come from `prerequisites` (default: nodePrerequisites, which uses each node's own
  * prerequisites, then module order).
@@ -280,24 +245,7 @@ export function buildDependencyGraph(
   }
 
   const depth = new Map(shown.map((node) => [node.id, depthOfUnit.get(unitOf.get(node.id)!) ?? 0]));
-  // The deepest kept prerequisite sits exactly one level up, so the tree indents one level per depth.
-  const incomingByUnit = new Map<string, DependencyEdge[]>();
-  for (const edge of edges) {
-    const unit = unitOf.get(edge.to)!;
-    incomingByUnit.set(unit, [...(incomingByUnit.get(unit) ?? []), edge]);
-  }
-  const parent = new Map<string, string | null>();
-  for (const node of shown) {
-    let best: string | null = null;
-    for (const edge of incomingByUnit.get(unitOf.get(node.id)!) ?? []) {
-      if (best === null) best = edge.from;
-      else if (depth.get(edge.from)! > depth.get(best)!) best = edge.from;
-      else if (depth.get(edge.from) === depth.get(best) && flatIndex.get(edge.from)! < flatIndex.get(best)!) best = edge.from;
-    }
-    parent.set(node.id, best);
-  }
-
-  return { nodeIds: shown.map((node) => node.id), depth, edges, parent, ignored };
+  return { nodeIds: shown.map((node) => node.id), depth, edges, ignored };
 }
 
 /** Least-squares nondecreasing fit of `values` (pool adjacent violators). */
@@ -376,109 +324,21 @@ export function spreadColumns(
 }
 
 /** Height of a spread: from offset 0 to the bottom of the lowest node. */
-const spreadHeight = (offsets: ReadonlyMap<string, number>, size: NodeSize): number =>
-  offsets.size === 0 ? 0 : Math.max(...offsets.values()) + size.h;
-
-export function layoutRoadmap(
-  path: LearningPath,
-  options: { readonly expandedModuleId: string | null; readonly showOptional: boolean; readonly prerequisites?: readonly NodePrerequisites[] },
-): RoadmapLayout {
-  const graph = buildDependencyGraph(path, options);
-  const all = path.modules.flatMap((module) => module.nodes);
-  const flatIndex = new Map(all.map((node, index) => [node.id, index]));
-  const firstOfUnit = new Map<string, number>();
-  for (const node of all) {
-    const key = unitKey(node);
-    if (!firstOfUnit.has(key)) firstOfUnit.set(key, flatIndex.get(node.id)!);
-  }
-  const columns = graph.nodeIds.length === 0 ? 0 : Math.max(...graph.depth.values()) + 1;
-  const moduleOf = new Map(path.modules.flatMap((module) => module.nodes.map((node) => [node.id, module.id] as const)));
-
-  // One network: the nodes of all modules share the columns and one spread.
-  const cells = new Map<number, PathNode[]>();
-  for (const node of all) {
-    const depth = graph.depth.get(node.id);
-    if (depth === undefined) continue;
-    cells.set(depth, [...(cells.get(depth) ?? []), node]);
-  }
-  for (const list of cells.values()) {
-    list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
-  }
-  const offsets = spreadColumns(cells, graph.edges, ROW);
-  const right = PAD + FRAME_PAD + (Math.max(columns, 1) - 1) * COL_W + SUB_W;
-  const width = right + FRAME_PAD + PAD;
-  const placed = placeCells(cells, PAD + LABEL_H, moduleOf, offsets);
-
-  // Each module's label sits above its first column: the leftmost column it has nodes in, at its topmost node there.
-  // Where a node sits above that node, push the label's node and the ones below it down so the label has room.
-  const labelNodeOf = new Map<string, PlacedNode>();
-  for (const module of path.modules) {
-    const own = placed.nodes.filter((entry) => entry.moduleId === module.id);
-    if (own.length === 0) continue;
-    const left = Math.min(...own.map((entry) => entry.x));
-    labelNodeOf.set(module.id, own.filter((entry) => entry.x === left).reduce((best, entry) => (entry.y < best.y ? entry : best)));
-  }
-  const labelNodes = new Set(labelNodeOf.values());
-  const shiftOf = new Map<PlacedNode, number>();
-  const byColumn = new Map<number, PlacedNode[]>();
-  for (const node of placed.nodes) byColumn.set(node.x, [...(byColumn.get(node.x) ?? []), node]);
-  let extra = 0;
-  const columnShifts = new Map<number, { y: number; shift: number }[]>();
-  for (const [x, column] of byColumn) {
-    column.sort((a, b) => a.y - b.y);
-    let shift = 0;
-    const steps: { y: number; shift: number }[] = [];
-    column.forEach((node, row) => {
-      if (row > 0 && labelNodes.has(node)) {
-        const above = column[row - 1]!;
-        const gap = node.y + shift - (above.y + (shiftOf.get(above) ?? 0)) - above.h;
-        shift += Math.max(0, LABEL_ROOM + LABEL_H - gap);
-      }
-      shiftOf.set(node, shift);
-      steps.push({ y: node.y, shift });
-    });
-    columnShifts.set(x, steps);
-    extra = Math.max(extra, shift);
-  }
-  const nodes: PlacedNode[] = placed.nodes.map((node) => ({ ...node, y: node.y + (shiftOf.get(node) ?? 0) }));
-  const shiftAt = (x: number, y: number): number => columnShifts.get(x + GROUP_BRACKET)?.find((step) => step.y === y)?.shift ?? 0;
-  const groups = placed.groups.map((group) => ({
-    ...group,
-    y1: group.y1 + shiftAt(group.x, group.y1),
-    y2: group.y2 + shiftAt(group.x, group.y2 - SUB_H),
-  }));
-  const height = PAD + LABEL_H + spreadHeight(offsets, TREE_SIZE) + extra + PAD + PAD_BOTTOM;
-
-  const modules: PlacedModule[] = path.modules.map((module, index) => {
-    const anchor = nodes[placed.nodes.indexOf(labelNodeOf.get(module.id)!)];
-    const x = anchor ? anchor.x : PAD + FRAME_PAD;
-    const y = (anchor ? anchor.y : PAD + LABEL_H) - LABEL_H;
-    return {
-      module,
-      index,
-      expanded: module.id === options.expandedModuleId,
-      final: index === path.modules.length - 1 && path.modules.length > 1,
-      x,
-      y,
-      w: 0,
-      h: 0,
-      labelAt: { x, y },
-      errorLine: null,
-    };
-  });
-
-  const edges = placeEdges(graph, nodes);
-  return { width, height, modules, nodes, edges, groups };
-}
+const spreadHeight = (offsets: ReadonlyMap<string, number>): number =>
+  offsets.size === 0 ? 0 : Math.max(...offsets.values()) + NODE_H;
 
 /** Which way the graph view runs: depth as rows from the bottom up, or as columns from the left. */
 export type GraphDirection = "bottom-to-top" | "left-to-right";
 
-/** Vertical gap between two rows of pills, and horizontal gap between pills of one row, in bottom-to-top graphs. */
+/** Vertical gap between two rows of nodes, and horizontal gap between nodes of one row, in bottom-to-top graphs. */
 const ROW_GAP = 56;
-const PILL_GAP = 24;
+const NODE_GAP = 24;
+/** Bottom to top: the fewest nodes a row holds before its depth wraps into another row (more for larger roadmaps). */
+const MIN_ROW_CAP = 5;
 
-/** Arrows from each prerequisite's right edge to its dependent's left edge (both ends must be placed). */
+/** Arrows from each prerequisite to its dependent (both ends must be placed). Bottom to top: from the top of the
+ * prerequisite's dot to the bottom of the dependent's dot. Left to right: from the end of the prerequisite's title
+ * to the left of the dependent's dot. */
 function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[], direction: GraphDirection = "left-to-right"): Edge[] {
   const placedNodes = new Map(nodes.map((placed) => [placed.node.id, placed]));
   const edges: Edge[] = [];
@@ -486,24 +346,43 @@ function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[], direct
     const from = placedNodes.get(edge.from);
     const to = placedNodes.get(edge.to);
     if (!from || !to) continue;
-    // Left to right: right edge to left edge. Bottom to top: top edge of the prerequisite to the bottom edge of the dependent.
     const ends =
       direction === "bottom-to-top"
-        ? { x1: from.x + from.w / 2, y1: from.y, x2: to.x + to.w / 2, y2: to.y + to.h }
-        : { x1: from.x + from.w, y1: from.y + from.h / 2, x2: to.x, y2: to.y + to.h / 2 };
+        ? {
+            x1: from.x + DOT_X,
+            y1: from.y + (from.h - DOT_D) / 2,
+            x2: to.x + DOT_X,
+            y2: to.y + (to.h + DOT_D) / 2,
+          }
+        : { x1: from.x + drawnWidth(from) + 2, y1: from.y + from.h / 2, x2: to.x + DOT_X - DOT_D / 2, y2: to.y + to.h / 2 };
     const routed: Edge = {
       from: edge.from,
       to: edge.to,
       ...ends,
       dashed: Boolean(from.node.optional || to.node.optional),
     };
-    const points = routeAround(routed, nodes, direction);
+    // Left to right, the bends sit in the gaps between columns, whatever the title length.
+    const half = (COL_W - NODE_W) / 2;
+    const gutters = direction === "left-to-right" ? { a: from.x + from.w + half, b: to.x - half } : undefined;
+    const points = routeAround(routed, nodes, direction, gutters);
     edges.push(points ? { ...routed, points } : routed);
   }
   return edges;
 }
 
 const ROUTE_MARGIN = 6;
+/** Where a node's title starts (cell padding, dot, gap), and a generous width per title character. */
+const TITLE_X = 23;
+const CHAR_W = 7.5;
+
+/** The part of a node's cell that is drawn: the dot, the title and its tags (estimated), never wider than the cell.
+ * Arrows may pass through the empty rest of the cell; they never cross what is drawn. */
+export function drawnWidth(placed: PlacedNode): number {
+  const { node } = placed;
+  const tag = node.alternativeGroup || node.optional ? 32 : 0;
+  const marks = (node.reviewMark ? 48 : 0) + (node.errors.some((entry) => !entry.resolved) ? 20 : 0);
+  return Math.min(placed.w, TITLE_X + node.title.length * CHAR_W + tag + marks);
+}
 interface Box { readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number }
 type Pt = { readonly x: number; readonly y: number };
 
@@ -529,10 +408,15 @@ function segmentHits(a: Pt, b: Pt, box: Box): boolean {
 /** The bends that take an arrow around the nodes it does not connect, or undefined when the straight line is clear
  * (or no clean route exists, in which case the straight line stays). The route leaves the prerequisite into the gutter
  * between layers, runs to a free lane between pills, and enters the dependent from the gutter on its side. */
-function routeAround(edge: Edge, nodes: readonly PlacedNode[], direction: GraphDirection): Pt[] | undefined {
+function routeAround(
+  edge: Edge,
+  nodes: readonly PlacedNode[],
+  direction: GraphDirection,
+  gutters?: { readonly a: number; readonly b: number },
+): Pt[] | undefined {
   const boxes = nodes
     .filter((n) => n.node.id !== edge.from && n.node.id !== edge.to)
-    .map((n): Box => ({ x1: n.x - ROUTE_MARGIN, y1: n.y - ROUTE_MARGIN, x2: n.x + n.w + ROUTE_MARGIN, y2: n.y + n.h + ROUTE_MARGIN }));
+    .map((n): Box => ({ x1: n.x - ROUTE_MARGIN, y1: n.y - ROUTE_MARGIN, x2: n.x + drawnWidth(n) + ROUTE_MARGIN, y2: n.y + n.h + ROUTE_MARGIN }));
   const start = { x: edge.x1, y: edge.y1 };
   const end = { x: edge.x2, y: edge.y2 };
   const clear = (path: readonly Pt[]): boolean => path.every((pt, i) => i === 0 || !boxes.some((box) => segmentHits(path[i - 1]!, pt, box)));
@@ -542,10 +426,10 @@ function routeAround(edge: Edge, nodes: readonly PlacedNode[], direction: GraphD
   const P = (pt: Pt): number => (vertical ? pt.y : pt.x);
   const Q = (pt: Pt): number => (vertical ? pt.x : pt.y);
   const at = (p: number, q: number): Pt => (vertical ? { x: q, y: p } : { x: p, y: q });
-  const gutter = vertical ? ROW_GAP / 2 : (COL_W - PILL_W) / 2;
+  const gutter = vertical ? ROW_GAP / 2 : (COL_W - NODE_W) / 2;
   const sign = Math.sign(P(end) - P(start)) || 1;
-  const pA = P(start) + sign * gutter;
-  const pB = P(end) - sign * gutter;
+  const pA = gutters?.a ?? P(start) + sign * gutter;
+  const pB = gutters?.b ?? P(end) - sign * gutter;
   const lo = Math.min(pA, pB);
   const hi = Math.max(pA, pB);
   const spans = boxes
@@ -560,50 +444,16 @@ function routeAround(edge: Edge, nodes: readonly PlacedNode[], direction: GraphD
     edgeOfBlocked = Math.max(edgeOfBlocked, b);
   }
   if (edgeOfBlocked !== -Infinity) lanes.push(edgeOfBlocked + 1);
+  // The straight line can clip a neighbour in its own row (or the target's) even when nothing lies between the
+  // gutters: then running along the gutters to either end's own line is the route.
+  lanes.push(Q(start), Q(end));
   const mid = (Q(start) + Q(end)) / 2;
   lanes.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid) || a - b);
   for (const lane of lanes) {
     const path = [start, at(pA, Q(start)), at(pA, lane), at(pB, lane), at(pB, Q(end)), end];
-    if (clear(path)) return path.slice(1, -1);
+    if (clear(path)) return path.slice(1, -1).filter((pt, i, all) => i === 0 || pt.x !== all[i - 1]!.x || pt.y !== all[i - 1]!.y);
   }
   return undefined;
-}
-
-/** Place each column's nodes at `top` plus their spread offset (spreadColumns). Alternatives of one unit stay
- * adjacent (ordered by the spread); each run of two or more members of one alternative group gets a bracket. */
-function placeCells(
-  cells: ReadonlyMap<number, readonly PathNode[]>,
-  top: number,
-  moduleOf: ReadonlyMap<string, string>,
-  offsets: ReadonlyMap<string, number>,
-  size: NodeSize = TREE_SIZE,
-): { nodes: PlacedNode[]; groups: AlternativeGroup[] } {
-  const nodes: PlacedNode[] = [];
-  const groups: AlternativeGroup[] = [];
-  for (const [depth, list] of cells) {
-    const x = PAD + FRAME_PAD + depth * COL_W;
-    const yOf = (row: number): number => top + (offsets.get(list[row]!.id) ?? row * size.row);
-    list.forEach((node, row) => {
-      nodes.push({ node, moduleId: moduleOf.get(node.id)!, depth, x, y: yOf(row), w: size.w, h: size.h });
-    });
-    // Bracket each run of two or more adjacent members of one alternative group.
-    let runStart = 0;
-    for (let row = 1; row <= list.length; row += 1) {
-      if (row < list.length && unitKey(list[row]!) === unitKey(list[runStart]!)) continue;
-      const first = list[runStart]!;
-      if (first.alternativeGroup && row - runStart >= 2) {
-        groups.push({
-          alternativeGroup: first.alternativeGroup,
-          moduleId: moduleOf.get(first.id)!,
-          x: x - GROUP_BRACKET,
-          y1: yOf(runStart),
-          y2: yOf(row - 1) + size.h,
-        });
-      }
-      runStart = row;
-    }
-  }
-  return { nodes, groups };
 }
 
 /** The graph view's depth rule (LearnHarness's inference depth, graph-depth.ts) over alternative units.
@@ -619,18 +469,23 @@ function cycleSafeGraph(graph: DependencyGraph, all: readonly PathNode[]): Depen
   return { ...graph, depth, edges };
 }
 
-/** The flat graph (no module frames, no brackets): every shown node is a pill in the column of its
- * dependency depth, placed as a network (spreadColumns) with arrows from each prerequisite to its dependent.
- * `modules` and `groups` are empty; each node keeps its module id for selection. */
+/** The graph: every shown node is a dot in the row (or column) of its dependency depth, placed as a network
+ * (spreadColumns) with an arrow from each prerequisite to its dependent. Each module gets a small label at its
+ * first node (the shallowest, then the lowest and leftmost). */
 export function layoutGraph(
   path: LearningPath,
-  options: { readonly showOptional: boolean; readonly prerequisites?: readonly NodePrerequisites[]; readonly direction?: GraphDirection },
+  options: {
+    readonly showOptional: boolean;
+    readonly prerequisites?: readonly NodePrerequisites[];
+    readonly direction?: GraphDirection;
+    readonly expandedModuleId?: string | null;
+  },
 ): RoadmapLayout {
   const direction = options.direction ?? "bottom-to-top";
-  const graph = cycleSafeGraph(buildDependencyGraph(path, options), path.modules.flatMap((module) => module.nodes));
   const all = path.modules.flatMap((module) => module.nodes);
+  const graph = cycleSafeGraph(buildDependencyGraph(path, options), all);
   const flatIndex = new Map(all.map((node, index) => [node.id, index]));
-  const moduleOf = new Map(path.modules.flatMap((module) => module.nodes.map((node) => [node.id, module.id] as const)));
+  const moduleOf = new Map(path.modules.flatMap((module, index) => module.nodes.map((node) => [node.id, { id: module.id, index }] as const)));
   const firstOfUnit = new Map<string, number>();
   for (const node of all) {
     const key = unitKey(node);
@@ -646,35 +501,77 @@ export function layoutGraph(
   for (const list of cells.values()) {
     list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
   }
-  if (direction === "bottom-to-top") {
-    // The same layered placement, turned: depth is the row (depth 0 at the bottom), the spread is the position in the row.
-    const offsets = spreadColumns(cells, graph.edges, PILL_W + PILL_GAP);
-    const rowStep = PILL_H + ROW_GAP;
-    const nodes: PlacedNode[] = [];
-    for (const [depth, list] of cells) {
-      for (const node of list) {
-        nodes.push({
-          node,
-          moduleId: moduleOf.get(node.id)!,
-          depth,
-          x: PAD + FRAME_PAD + (offsets.get(node.id) ?? 0),
-          y: PAD + (columns - 1 - depth) * rowStep,
-          w: PILL_W,
-          h: PILL_H,
-        });
-      }
+  const vertical = direction === "bottom-to-top";
+  // Bottom to top, a depth wider than `rowCap` nodes wraps into several rows of that depth, so a shallow, wide
+  // roadmap uses the height instead of one long band. Units (alternatives) are dealt whole, round robin, so each row
+  // spans the depth's order and alternatives stay together. Left to right keeps one column per depth.
+  const rowCap = Math.max(MIN_ROW_CAP, Math.ceil(Math.sqrt(graph.nodeIds.length)));
+  const rows = new Map<number, PathNode[]>();
+  const depthOfRow: number[] = [];
+  for (const depth of [...cells.keys()].sort((a, b) => a - b)) {
+    const list = cells.get(depth)!;
+    const units: PathNode[][] = [];
+    for (const node of list) {
+      const last = units[units.length - 1];
+      if (last && unitKey(last[0]!) === unitKey(node)) last.push(node);
+      else units.push([node]);
     }
-    const span = offsets.size > 0 ? Math.max(...offsets.values()) : 0;
-    const width = PAD + FRAME_PAD + span + PILL_W + FRAME_PAD + PAD;
-    const height = PAD + (columns > 0 ? (columns - 1) * rowStep + PILL_H : PILL_H) + PAD + PAD_BOTTOM;
-    return { width, height, modules: [], nodes, edges: placeEdges(graph, nodes, direction), groups: [] };
+    const count = vertical ? Math.min(units.length, Math.ceil(list.length / rowCap)) : 1;
+    const first = depthOfRow.length;
+    for (let row = 0; row < count; row += 1) {
+      rows.set(first + row, []);
+      depthOfRow.push(depth);
+    }
+    units.forEach((unit, index) => rows.get(first + (index % count))!.push(...unit));
   }
-  const offsets = spreadColumns(cells, graph.edges, PILL_ROW);
-  const right = columns > 0 ? PAD + FRAME_PAD + (columns - 1) * COL_W + PILL_W : PAD + FRAME_PAD + PILL_W;
-  const width = right + FRAME_PAD + PAD;
-  const height = PAD + spreadHeight(offsets, PILL_SIZE) + PAD + PAD_BOTTOM;
-  const placed = placeCells(cells, PAD, moduleOf, offsets, PILL_SIZE);
-  const edges = placeEdges(graph, placed.nodes);
-  // Pills carry the alternative tag themselves; no brackets are drawn in the graph view.
-  return { width, height, modules: [], nodes: placed.nodes, edges, groups: [] };
+  const rowCount = depthOfRow.length;
+  const offsets = spreadColumns(rows, graph.edges, vertical ? NODE_W + NODE_GAP : NODE_ROW);
+  const rowStep = NODE_H + ROW_GAP;
+  const nodes: PlacedNode[] = [];
+  for (const [row, list] of rows) {
+    const depth = depthOfRow[row]!;
+    for (const node of list) {
+      const offset = offsets.get(node.id) ?? 0;
+      const owner = moduleOf.get(node.id)!;
+      nodes.push({
+        node,
+        moduleId: owner.id,
+        moduleIndex: owner.index,
+        depth,
+        x: vertical ? PAD + offset : PAD + depth * COL_W,
+        // Bottom to top: the first row of depth 0 is the bottom row. Left to right: the spread is the row; leave room for the labels above.
+        y: vertical ? PAD + (rowCount - 1 - row) * rowStep : PAD + LABEL_H + offset,
+        w: NODE_W,
+        h: NODE_H,
+      });
+    }
+  }
+  const width = vertical
+    ? PAD + (offsets.size > 0 ? Math.max(...offsets.values()) : 0) + NODE_W + PAD
+    : PAD + (Math.max(columns, 1) - 1) * COL_W + NODE_W + PAD;
+  const height = vertical
+    ? PAD + (rowCount > 0 ? (rowCount - 1) * rowStep + NODE_H : NODE_H) + PAD + PAD_BOTTOM
+    : PAD + LABEL_H + spreadHeight(offsets) + PAD + PAD_BOTTOM;
+
+  const modules: PlacedModule[] = [];
+  path.modules.forEach((module, index) => {
+    const own = nodes.filter((placed) => placed.moduleId === module.id);
+    if (own.length === 0) return;
+    // The module's first node: the shallowest one, then the leftmost (bottom to top) or the topmost (left to right).
+    const first = own.reduce((best, placed) =>
+      placed.depth < best.depth ||
+      (placed.depth === best.depth && (vertical ? placed.y > best.y || (placed.y === best.y && placed.x < best.x) : placed.y < best.y))
+        ? placed
+        : best,
+    );
+    modules.push({
+      module,
+      index,
+      expanded: module.id === options.expandedModuleId,
+      // Right of the arrow that leaves the dot, so the label never sits on a line from its own node.
+      x: first.x + DOT_X + DOT_D / 2 + 4,
+      y: first.y - LABEL_H - 1,
+    });
+  });
+  return { width, height, modules, nodes, edges: placeEdges(graph, nodes, direction) };
 }

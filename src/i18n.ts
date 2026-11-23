@@ -9,8 +9,6 @@ export type LocalePreference = "auto" | Locale;
 const en = {
   "view.name": "Roadmap",
   "crumb.root": "Roadmaps",
-  "view.graph": "Graph",
-  "view.tree": "Tree",
   "action.refine": "Refine",
   "action.new": "New roadmap",
   "action.lesson": "Lesson",
@@ -47,9 +45,6 @@ const en = {
   "legend.arrow": "needed first",
   "legend.moduleOrder": "arrows follow module order until prerequisites are set",
   "graph.grew": "Added to the graph: {n}",
-  "tree.expand": "Expand",
-  "tree.collapse": "Collapse",
-  "tree.alsoAfter": "also after {titles}",
   "tab.node": "Node",
   "tab.errors": "Errors",
   "tab.architect": "Architect",
@@ -128,7 +123,6 @@ const en = {
   "zoom.fit": "Fit",
   "graph.dirUp": "↑ bottom to top",
   "graph.dirRight": "→ left to right",
-  "tree.nodes": "{done} / {total}",
   "pivot.kicker": "Suggested {type} node",
   "pivot.reason": "Not sticking because: {text}",
   "pivot.note": "Nothing changes until you decide. Accepting inserts one node next to this one.",
@@ -166,7 +160,6 @@ const en = {
   "s.auto": "Auto",
   "s.ru": "Russian",
   "s.en": "English",
-  "s.defaultView": "Default view",
   "s.showOptional": "Show optional nodes",
   "s.showOptionalDesc": "Optional nodes are drawn dashed and never counted in progress.",
   "s.artifacts": "Artifact defaults",
@@ -384,9 +377,6 @@ const en = {
   // Node prerequisites (issue #44). New blocks go at the end of the table.
   "legend.prerequisitesNote": "arrows run from each prerequisite to the node that needs it; no arrow in starts a branch",
   // Roadmap views: the help text for the default view. New blocks go at the end of the table.
-  "s.defaultViewHelp": "Tree shows the roadmap, with a text-only option; Graph shows your Knowledge Graph.",
-  "tree.textOnly": "Text only",
-  "graph.knowledgeEmpty": "Your Knowledge Graph has no propositions yet. Study some material first.",
   // Open a node as a chat (latest linked chat, or a new Lesson). New blocks go at the end of the table.
   "action.openNode": "Open",
   // Architect build strip: the six steps of a roadmap build. New blocks go at the end of the table.
@@ -410,8 +400,6 @@ export type MessageKey = keyof typeof en;
 const ru: Record<MessageKey, string> = {
   "view.name": "Дорожная карта",
   "crumb.root": "Дорожные карты",
-  "view.graph": "Граф",
-  "view.tree": "Дерево",
   "action.refine": "Уточнить",
   "action.new": "Новая карта",
   "action.lesson": "Урок",
@@ -448,9 +436,6 @@ const ru: Record<MessageKey, string> = {
   "legend.arrow": "нужно раньше",
   "legend.moduleOrder": "стрелки следуют порядку модулей, пока не заданы предпосылки",
   "graph.grew": "Добавлено в граф: {n}",
-  "tree.expand": "Развернуть",
-  "tree.collapse": "Свернуть",
-  "tree.alsoAfter": "также после {titles}",
   "tab.node": "Узел",
   "tab.errors": "Ошибки",
   "tab.architect": "Архитектор",
@@ -529,7 +514,6 @@ const ru: Record<MessageKey, string> = {
   "zoom.fit": "Вписать",
   "graph.dirUp": "↑ снизу вверх",
   "graph.dirRight": "→ слева направо",
-  "tree.nodes": "{done} / {total}",
   "pivot.kicker": "Предлагается узел: {type}",
   "pivot.reason": "Не закрепляется, потому что: {text}",
   "pivot.note": "Ничего не изменится, пока вы не решите. «Принять» вставит один узел рядом с этим.",
@@ -567,7 +551,6 @@ const ru: Record<MessageKey, string> = {
   "s.auto": "Авто",
   "s.ru": "Русский",
   "s.en": "Английский",
-  "s.defaultView": "Вид по умолчанию",
   "s.showOptional": "Показывать необязательные узлы",
   "s.showOptionalDesc": "Необязательные узлы рисуются пунктиром и не входят в прогресс.",
   "s.artifacts": "Артефакты по умолчанию",
@@ -785,9 +768,6 @@ const ru: Record<MessageKey, string> = {
   // Предпосылки узлов (issue #44). Новые блоки добавляются в конец таблицы.
   "legend.prerequisitesNote": "стрелки ведут от каждой предпосылки к узлу, которому она нужна; без входящей стрелки узел начинает ветку",
   // Подсказка к виду по умолчанию. Новые блоки добавляются в конец таблицы.
-  "s.defaultViewHelp": "Дерево показывает дорожную карту, есть режим только текста; Граф показывает ваш граф знаний.",
-  "tree.textOnly": "Только текст",
-  "graph.knowledgeEmpty": "В вашем графе знаний пока нет утверждений. Сначала изучите какой-нибудь материал.",
   // Открыть узел как чат (последний связанный чат или новый урок). Новые блоки добавляются в конец таблицы.
   "action.openNode": "Открыть",
   // Полоса сборки Архитектора: шесть шагов построения дорожной карты. Новые блоки добавляются в конец таблицы.

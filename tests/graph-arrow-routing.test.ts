@@ -6,7 +6,7 @@ import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import type { NodePrerequisites } from "../src/node-prerequisites.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
-import { layoutGraph } from "../src/view/roadmap-layout.ts";
+import { drawnWidth, layoutGraph } from "../src/view/roadmap-layout.ts";
 import type { GraphDirection } from "../src/view/roadmap-layout.ts";
 import { makeNode, makePath } from "./fixtures.ts";
 
@@ -26,11 +26,13 @@ const lay = (after: Record<string, string[]>, direction: GraphDirection) => {
   return layoutGraph(path, { showOptional: true, prerequisites, direction });
 };
 
-function hits(a: { x: number; y: number }, b: { x: number; y: number }, n: { x: number; y: number; w: number; h: number }): boolean {
+/** Does the segment a-b touch what is drawn of node n (its dot, title and tags, not the empty rest of its cell)? */
+function hits(a: { x: number; y: number }, b: { x: number; y: number }, n: Parameters<typeof drawnWidth>[0]): boolean {
+  const right = n.x + drawnWidth(n);
   for (let i = 0; i <= 400; i += 1) {
     const x = a.x + ((b.x - a.x) * i) / 400;
     const y = a.y + ((b.y - a.y) * i) / 400;
-    if (x > n.x && x < n.x + n.w && y > n.y && y < n.y + n.h) return true;
+    if (x > n.x && x < right && y > n.y && y < n.y + n.h) return true;
   }
   return false;
 }
@@ -50,6 +52,24 @@ test("bottom to top: the straight a -> d arrow would cross a pill, so it has poi
   }
 });
 
+test("a wide, tangled roadmap: wrapped rows, and no arrow crosses a node it does not connect, in either direction", () => {
+  // 30 nodes; each node needs up to two earlier nodes picked by a fixed rule, so arrows skip several rows.
+  const after: Record<string, string[]> = {};
+  for (let i = 0; i < 30; i += 1) after[`t${i}`] = i < 8 ? [] : [`t${(i * 7) % i}`, `t${(i * 3 + 1) % i}`].filter((id, k, all) => all.indexOf(id) === k);
+  for (const direction of ["bottom-to-top", "left-to-right"] as const) {
+    const layout = lay(after, direction);
+    for (const edge of layout.edges) {
+      const pts = [{ x: edge.x1, y: edge.y1 }, ...(edge.points ?? []), { x: edge.x2, y: edge.y2 }];
+      for (const n of layout.nodes) {
+        if (n.node.id === edge.from || n.node.id === edge.to) continue;
+        for (let i = 1; i < pts.length; i += 1) assert.equal(hits(pts[i - 1]!, pts[i]!, n), false, `${direction}: ${edge.from}->${edge.to} crosses ${n.node.id}`);
+      }
+    }
+  }
+  const up = lay(after, "bottom-to-top");
+  assert.ok(up.width < 2.5 * up.height, `bottom to top uses the height, not one wide band (${up.width}x${up.height})`);
+});
+
 test("a clear arrow has no points", () => {
   for (const direction of ["bottom-to-top", "left-to-right"] as const) {
     for (const edge of lay(clearer, direction).edges) assert.equal(edge.points, undefined);
@@ -66,7 +86,7 @@ function draw(after: Record<string, string[]>) {
     toggleModule() {},
     setGraphDirection() {},
   });
-  const state: CanvasState = { path, selectedNodeId: null, expandedModuleId: null, view: "tree", showOptional: true, showLegend: false, prerequisites };
+  const state: CanvasState = { path, selectedNodeId: null, expandedModuleId: null, showOptional: true, showLegend: false, prerequisites };
   canvas.render(state);
   return { host, dispose: () => { canvas.dispose(); controller.abort(); } };
 }
