@@ -809,10 +809,10 @@ function twoRoadmapRoutes(): Record<string, { status: number; body: string } | n
 }
 
 /** Runs rank_roadmaps once, as the Architect would, and returns its tool result. */
-async function runRank(upstream: UpstreamArchitectOptions, log?: PluginLog): Promise<ToolResult> {
+async function runRank(upstream: UpstreamArchitectOptions, log?: PluginLog, args: Record<string, unknown> = {}): Promise<ToolResult> {
   const tool = upstreamReadTools(rankContext, upstream, new Map(), log).find((candidate) => candidate.name === "rank_roadmaps");
   assert.ok(tool?.execute, "rank_roadmaps exists");
-  return (await tool.execute("rank", {}, undefined)) as unknown as ToolResult;
+  return (await tool.execute("rank", args, undefined)) as unknown as ToolResult;
 }
 
 interface LoggedStep {
@@ -946,10 +946,70 @@ test("the rank step is logged with metadata only, and no learner text reaches th
   assert.equal(steps.length, 1);
   assert.equal(steps[0]?.step, "roadmap rank");
   const end = steps[0]?.ends[0] ?? {};
-  assert.deepEqual(Object.keys(end).sort(), ["candidates", "chosen", "failed", "graphKeys", "graphTopics", "matched", "roadmaps", "withTopics"]);
+  assert.deepEqual(Object.keys(end).sort(), [
+    "candidates", "chosen", "failed", "graphKeys", "graphTopics", "matched", "rankedBy", "requestTopics", "roadmaps", "withTopics",
+  ]);
   assert.equal(end.graphTopics, 2);
   assert.equal(end.graphKeys, 2);
   assert.equal(end.matched, "1");
   for (const value of Object.values(end)) assert.ok(typeof value === "number" || typeof value === "string", "a count or a roadmap name");
   assert.equal(JSON.stringify(steps).includes(SECRET), false, "no learner text in the log");
+});
+
+/** Two roadmaps that both answer: the graph favours the first, the request names a topic of the second. */
+function twoWorkingRoadmapRoutes(): Record<string, { status: number; body: string } | null> {
+  return {
+    ...standardRoutes(),
+    [ROADMAPS_FOLDER]: {
+      status: 200,
+      body: JSON.stringify([
+        { name: "synthetic-roadmap", type: "dir" },
+        { name: "second-roadmap", type: "dir" },
+      ]),
+    },
+    [`${ROOT}/second-roadmap/content?ref=${COMMIT}`]: {
+      status: 200,
+      body: JSON.stringify([{ name: "sql-basics@Qa1_b.md", type: "file" }]),
+    },
+    [`${ROOT}/second-roadmap/content/sql-basics@Qa1_b.md?ref=${COMMIT}`]: { status: 200, body: TOPIC_MD },
+  };
+}
+
+test("rank_roadmaps ranks by the topics the request names, even when the graph favours another roadmap", async () => {
+  const { fetch } = fakeFetch(twoWorkingRoadmapRoutes());
+  const { log, steps } = fakeLog();
+  const graph = { readGraph: () => graphBrief(["Synthetic Topic", "Other Topic"]) };
+  const result = await runRank({ fetch, commit: COMMIT, ...graph }, log, { topics: ["SQL basics", 42, "  ", "  Basics  "] });
+  const body = JSON.parse(result.content[0]?.text ?? "{}") as { chosen: { roadmap: string }[] };
+  assert.deepEqual(body.chosen.map((match) => match.roadmap), ["second-roadmap"]);
+  const end = steps[0]?.ends[0] ?? {};
+  assert.equal(end.rankedBy, "request");
+  assert.equal(end.requestTopics, 2);
+  assert.equal(end.graphTopics, 2);
+  assert.equal(JSON.stringify(steps).includes("SQL"), false, "the topic text is not logged");
+});
+
+test("rank_roadmaps without topics ranks by the learner's graph, as before", async () => {
+  const { fetch } = fakeFetch(twoWorkingRoadmapRoutes());
+  const { log, steps } = fakeLog();
+  const result = await runRank({ fetch, commit: COMMIT, readGraph: () => graphBrief(["Synthetic Topic", "Other Topic"]) }, log, {
+    topics: [7, "   "],
+  });
+  const body = JSON.parse(result.content[0]?.text ?? "{}") as { chosen: { roadmap: string }[] };
+  assert.deepEqual(body.chosen.map((match) => match.roadmap), ["synthetic-roadmap"]);
+  const end = steps[0]?.ends[0] ?? {};
+  assert.equal(end.rankedBy, "graph");
+  assert.equal(end.requestTopics, 0);
+  assert.equal(end.graphTopics, 2);
+});
+
+test("rank_roadmaps with no request topics and an empty graph gives the neither-names-a-topic note", async () => {
+  const { fetch, calls } = fakeFetch(standardRoutes());
+  for (const readGraph of [() => null, () => graphBrief([])]) {
+    const result = await runRank({ fetch, commit: COMMIT, readGraph }, undefined, { topics: [] });
+    const body = JSON.parse(result.content[0]?.text ?? "{}") as { chosen: unknown[]; note: string };
+    assert.deepEqual(body.chosen, []);
+    assert.match(body.note, /^Neither the request nor the learner's Knowledge Graph names a topic\. Ask the learner in chat/);
+  }
+  assert.equal(calls.length, 0, "no GitHub request");
 });

@@ -190,6 +190,19 @@ export const GRAPH_BRIEF_MAX_CHARS = 8_000;
 /** Statement length used when the brief must shrink to fit. */
 const GRAPH_BRIEF_SHORT_STATEMENT = 120;
 
+/** Keys (learner-map `topicKey`) of the topics the learner asked for in this request. Non-strings and empties are dropped. */
+function requestTopicKeys(value: unknown): Set<string> {
+  const keys = new Set<string>();
+  if (!Array.isArray(value)) return keys;
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const key = topicKey(item.trim().slice(0, 80));
+    if (key) keys.add(key);
+    if (keys.size >= 20) break;
+  }
+  return keys;
+}
+
 /** Normalised keys (learner-map `topicKey`) of every topic name and alias in a brief. */
 export function graphBriefTopicKeys(brief: GraphBrief): Set<string> {
   return new Set(
@@ -973,22 +986,36 @@ export function upstreamReadTools(
     {
       name: "rank_roadmaps",
       description:
-        "Rank the developer-roadmap roadmaps by how closely each covers the learner's Knowledge Graph topics: exact " +
-        "topic matches count fully, topics sharing a word count less. Reads every roadmap from the git data first. " +
+        "Rank the developer-roadmap roadmaps by how closely each covers the topics the learner asked for (`topics`) " +
+        "when given, otherwise the learner's Knowledge Graph topics: exact topic matches count fully, topics sharing a " +
+        "word count less. Reads every roadmap from the git data first. " +
         "A roadmap is chosen only when at least one topic matches exactly. Returns chosen (at most two: the best " +
         "exact match, and a second scoring at least half as much) and candidates (every roadmap with a score). If " +
         "chosen is empty, the result carries a note: ask the learner which closest roadmap fits, and build nothing " +
         "until they answer. Call it before list_roadmap_topics.",
-      parameters: objectSchema({}),
-      execute: async (_toolCallId, _rawParams, signal) => {
+      parameters: objectSchema({
+        topics: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string", minLength: 1, maxLength: 80 },
+          description:
+            "The areas the learner asked for in this request, as short English topic names (for example \"sql\", \"react\", \"docker\").",
+        },
+      }),
+      execute: async (_toolCallId, rawParams, signal) => {
         assertLive(ctx, signal);
         const step: LogStep | undefined = log?.begin("roadmap rank");
         try {
+          const params = rawParams !== null && typeof rawParams === "object" ? (rawParams as Record<string, unknown>) : {};
+          const requestKeys = requestTopicKeys(params.topics);
           const brief = upstream.readGraph?.() ?? null;
-          if (!brief || brief.topics.length === 0) {
+          const graphKeys = brief ? graphBriefTopicKeys(brief) : new Set<string>();
+          // The request decides the ranking when it names a topic; the graph is only the fallback.
+          const keys = requestKeys.size > 0 ? requestKeys : graphKeys;
+          if (keys.size === 0) {
             const note =
-              "The learner's Knowledge Graph is empty. Ask the learner in chat what they want to learn, with one question, " +
-              "and build nothing until they answer.";
+              "Neither the request nor the learner's Knowledge Graph names a topic. Ask the learner in chat what they want to " +
+              "learn, with one question, and build nothing until they answer.";
             step?.end({ candidates: 0, chosen: 0, reason: "empty_graph" });
             return textResult({ chosen: [], candidates: [], note }, JSON.stringify({ chosen: [], candidates: [], note }));
           }
@@ -1002,7 +1029,6 @@ export function upstreamReadTools(
             });
             roadmaps.set(name, refs.map((topic) => topic.slug));
           });
-          const keys = graphBriefTopicKeys(brief);
           const ranking = rankRoadmaps(keys, roadmaps);
           if (ranking.chosen.length === 0) {
             const closest = ranking.candidates.slice(0, 3).map((match) => match.roadmap);
@@ -1013,7 +1039,7 @@ export function upstreamReadTools(
               "No roadmap matches any topic exactly. Ask the learner one question in chat: which of these closest " +
               `roadmaps fits their goal — ${named} — and build nothing until they answer.`;
             step?.end({
-              graphTopics: brief.topics.length,
+              graphTopics: brief?.topics.length ?? 0,
               graphKeys: keys.size,
               roadmaps: names.length,
               withTopics: [...roadmaps.values()].filter((slugs) => slugs.length > 0).length,
@@ -1025,8 +1051,10 @@ export function upstreamReadTools(
             return textResult({ ...ranking, note }, JSON.stringify({ ...ranking, note }));
           }
           step?.end({
-            graphTopics: brief.topics.length,
-            graphKeys: keys.size,
+            graphTopics: brief?.topics.length ?? 0,
+            graphKeys: graphKeys.size,
+            requestTopics: requestKeys.size,
+            rankedBy: requestKeys.size > 0 ? "request" : "graph",
             roadmaps: names.length,
             withTopics: [...roadmaps.values()].filter((slugs) => slugs.length > 0).length,
             failed,
