@@ -53,6 +53,7 @@ test("edges to unknown ids and self-loops are ignored", () => {
 test("the graph view draws no arrows inside a cycle, and the cycle sits in one column", () => {
   const nodes = [makeNode("a", "concept"), makeNode("b", "skill"), makeNode("c", "skill")];
   const layout = layoutGraph(pathWith(nodes), {
+    direction: "left-to-right",
     showOptional: true,
     prerequisites: prerequisites({ a: ["b"], b: ["a"], c: ["b"] }, nodes),
   });

@@ -41,6 +41,7 @@ import { pivotDiscussionPrompt } from "./pivot-banner.ts";
 import type { PivotDecision } from "./pivot-banner.ts";
 import { createRoadmapCanvas } from "./roadmap-canvas.ts";
 import type { ViewMode } from "./roadmap-canvas.ts";
+import type { GraphDirection } from "./roadmap-layout.ts";
 import { defaultExpandedModule, isDone, progressCounts } from "./roadmap-layout.ts";
 import { openLinkExistingSessionDialog } from "./session-dialogs.ts";
 import { artifactLabel } from "./labels.ts";
@@ -207,6 +208,8 @@ export function mountPathHub(
   let expandedModuleId: string | null = null;
   let display: DisplaySettings = DEFAULT_DISPLAY;
   let view: ViewMode = display.defaultView;
+  // The graph view's direction: kept for the session; the user changes it with the toggle on the canvas.
+  let graphDirection: GraphDirection = "bottom-to-top";
   let tab: Tab = "node";
   let sideOpen = true;
   let autoLoadedPathId: string | null = null;
@@ -236,6 +239,11 @@ export function mountPathHub(
       if (disposed || signal.aborted) return;
       // A module head always focuses its module; it never unfocuses (as in the module drawing before).
       expandedModuleId = moduleId;
+      renderCanvas();
+    },
+    setGraphDirection(direction) {
+      if (disposed || signal.aborted) return;
+      graphDirection = direction;
       renderCanvas();
     },
   });
@@ -380,7 +388,7 @@ export function mountPathHub(
       return;
     }
     delete canvasHost.dataset.empty;
-    canvas.render({ path, selectedNodeId, expandedModuleId, view, showOptional: display.showOptional, showLegend: side.hidden });
+    canvas.render({ path, selectedNodeId, expandedModuleId, view, showOptional: display.showOptional, showLegend: side.hidden, graphDirection });
   }
 
   /** Empty state: the Architect text, plus "Build from my graph" once the graph has a topic. */

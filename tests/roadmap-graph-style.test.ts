@@ -60,6 +60,7 @@ const button = (host: HTMLElement, id: string): HTMLElement => {
 test("graph layout places each node left to right by depth, stacked vertically within a column", () => {
   const nodes = [makeNode("a", "concept"), makeNode("b", "skill"), makeNode("c", "skill"), makeNode("d", "checkpoint")];
   const layout = layoutGraph(pathWith(nodes), {
+    direction: "left-to-right",
     showOptional: true,
     prerequisites: prerequisites({ b: ["a"], c: ["a"], d: ["b", "c"] }, nodes),
   });
@@ -115,7 +116,7 @@ test("only the current (selected) node gets the highlight class", () => {
 test("arrows run from each prerequisite's right edge to its dependent's left edge", () => {
   const nodes = [makeNode("a", "concept"), makeNode("b", "skill"), makeNode("c", "skill")];
   const after = { b: ["a"], c: ["b"] };
-  const layout = layoutGraph(pathWith(nodes), { showOptional: true, prerequisites: prerequisites(after, nodes) });
+  const layout = layoutGraph(pathWith(nodes), { direction: "left-to-right", showOptional: true, prerequisites: prerequisites(after, nodes) });
   const at = (id: string) => layout.nodes.find((placed) => placed.node.id === id)!;
   assert.deepEqual(layout.edges.map((edge) => `${edge.from}->${edge.to}`).sort(), ["a->b", "b->c"]);
   for (const edge of layout.edges) {
@@ -136,7 +137,7 @@ test("arrows run from each prerequisite's right edge to its dependent's left edg
 test("the graph view draws no module frames, brackets or boxes", () => {
   const nodes = [makeNode("a", "concept"), makeNode("b", "skill", { alternativeGroup: "g" }), makeNode("c", "skill", { alternativeGroup: "g" })];
   const after = { b: ["a"], c: ["a"] };
-  const layout = layoutGraph(pathWith(nodes), { showOptional: true, prerequisites: prerequisites(after, nodes) });
+  const layout = layoutGraph(pathWith(nodes), { direction: "left-to-right", showOptional: true, prerequisites: prerequisites(after, nodes) });
   assert.deepEqual(layout.modules, [], "no module frames in the layout");
   assert.deepEqual(layout.groups, [], "no alternative brackets in the layout");
   const view = renderGraph(nodes, after);
