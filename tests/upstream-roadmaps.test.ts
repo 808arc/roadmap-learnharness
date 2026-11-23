@@ -947,11 +947,12 @@ test("the rank step is logged with metadata only, and no learner text reaches th
   assert.equal(steps[0]?.step, "roadmap rank");
   const end = steps[0]?.ends[0] ?? {};
   assert.deepEqual(Object.keys(end).sort(), [
-    "candidates", "chosen", "failed", "graphKeys", "graphTopics", "matched", "rankedBy", "requestTopics", "roadmaps", "withTopics",
+    "candidates", "chosen", "failed", "graphKeys", "graphTopics", "matched", "near", "rankedBy", "requestTopics", "roadmaps", "withTopics",
   ]);
   assert.equal(end.graphTopics, 2);
   assert.equal(end.graphKeys, 2);
   assert.equal(end.matched, "1");
+  assert.equal(end.near, "1", "the chosen roadmap's near-match count is logged: \"Topic ...\" shares a word with a roadmap topic");
   for (const value of Object.values(end)) assert.ok(typeof value === "number" || typeof value === "string", "a count or a roadmap name");
   assert.equal(JSON.stringify(steps).includes(SECRET), false, "no learner text in the log");
 });
