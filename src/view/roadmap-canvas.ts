@@ -288,8 +288,8 @@ export function createRoadmapCanvas(
     const label = el(document, "button", placed.expanded ? "rm-module-label rm-module-label-focus" : "rm-module-label", module.title);
     label.type = "button";
     label.dataset.moduleId = module.id;
-    label.style.left = `${placed.x}px`;
-    label.style.top = `${placed.y}px`;
+    label.style.left = `${(placed.labelAt ?? placed).x}px`;
+    label.style.top = `${(placed.labelAt ?? placed).y}px`;
     label.title = [module.goal ?? module.title, moduleHeaderText(module)].join("\n");
     label.addEventListener("click", () => {
       if (!disposed && !signal.aborted) callbacks.toggleModule(module.id);
