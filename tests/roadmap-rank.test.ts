@@ -75,14 +75,24 @@ test("roadmap names come from the git copy after its fetch has finished, with no
   assert.equal(calls, 0);
 });
 
-test("with no exact match, the roadmap sharing the most words with the graph is still chosen", () => {
+test("with no exact match, no roadmap is chosen, though near matches still rank them as candidates", () => {
   const ranking = rankRoadmaps(new Set(["binary-search", "time-complexity", "heat-wall"]), new Map([
     ["unrelated", ["css-basics", "html-forms"]],
     ["algorithms", ["sorting-algorithms", "time-complexity-analysis", "search-trees"]],
     ["systems", ["distributed-systems", "scheduling"]],
   ]));
-  assert.equal(ranking.chosen[0]?.roadmap, "algorithms");
-  assert.equal(ranking.chosen[0]?.matched, 0);
-  assert.equal(ranking.chosen[0]?.near, 2);
+  assert.deepEqual(ranking.chosen, []);
   assert.deepEqual(ranking.candidates.map((match) => match.roadmap), ["algorithms"]);
+  assert.equal(ranking.candidates[0]?.matched, 0);
+  assert.equal(ranking.candidates[0]?.near, 2);
+});
+
+test("a roadmap with no exact match is never chosen, even when it has the top score", () => {
+  const ranking = rankRoadmaps(new Set(["alpha-one", "beta-two", "gamma-three"]), new Map([
+    ["exact", ["alpha-one"]],
+    ["near", ["alpha-five", "beta-six", "gamma-seven"]],
+  ]));
+  assert.equal(ranking.candidates[0]?.roadmap, "near", "near has the top score");
+  assert.equal(ranking.candidates[0]?.matched, 0);
+  assert.deepEqual(ranking.chosen.map((match) => match.roadmap), ["exact"]);
 });
