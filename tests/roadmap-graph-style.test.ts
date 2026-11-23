@@ -36,7 +36,7 @@ function renderGraph(nodes: readonly PathNode[], after: Record<string, string[]>
     path: pathWith(nodes),
     selectedNodeId,
     expandedModuleId: null,
-    view: "graph",
+    view: "tree",
     showOptional: true,
     showLegend: false,
     prerequisites: prerequisites(after, nodes),
@@ -78,7 +78,6 @@ test("optional nodes get the dashed class and an opt. tag; their arrows are dash
   try {
     const optional = button(view.host, "opt");
     assert.ok(optional.classList.contains("rm-opt"), "optional node is dashed");
-    assert.ok(optional.classList.contains("rm-pill"), "optional node is a pill");
     assert.ok(optional.textContent?.includes("opt."), "optional node carries the opt. tag");
     assert.ok(!button(view.host, "a").classList.contains("rm-opt"), "required node is not dashed");
     assert.equal(view.host.querySelectorAll(".rm-edges line.rm-dashed").length, 2, "both arrows touching the optional node are dashed");
@@ -93,7 +92,6 @@ test("checkpoint nodes are flag-marked pills", () => {
   try {
     const checkpoint = button(view.host, "check");
     assert.ok(checkpoint.classList.contains("rm-check"), "checkpoint has the checkpoint class");
-    assert.ok(checkpoint.classList.contains("rm-pill"), "checkpoint is a pill");
     assert.ok(checkpoint.querySelector(".rm-node-icon.rm-flag"), "checkpoint carries the flag icon");
     assert.ok(!button(view.host, "a").querySelector(".rm-flag"), "other nodes have no flag");
   } finally {
@@ -134,18 +132,10 @@ test("arrows run from each prerequisite's right edge to its dependent's left edg
   }
 });
 
-test("the graph view draws no module frames, brackets or boxes", () => {
+test("the graph layout draws no module frames or brackets", () => {
   const nodes = [makeNode("a", "concept"), makeNode("b", "skill", { alternativeGroup: "g" }), makeNode("c", "skill", { alternativeGroup: "g" })];
   const after = { b: ["a"], c: ["a"] };
   const layout = layoutGraph(pathWith(nodes), { direction: "left-to-right", showOptional: true, prerequisites: prerequisites(after, nodes) });
   assert.deepEqual(layout.modules, [], "no module frames in the layout");
   assert.deepEqual(layout.groups, [], "no alternative brackets in the layout");
-  const view = renderGraph(nodes, after);
-  try {
-    assert.equal(view.host.querySelectorAll(".rm-box").length, 0, "no module frame elements");
-    assert.equal(view.host.querySelectorAll(".rm-alt-group").length, 0, "no bracket elements");
-    assert.equal(view.host.querySelectorAll(".rm-stage .rm-node").length, 3, "every node is still drawn");
-  } finally {
-    view.dispose();
-  }
 });

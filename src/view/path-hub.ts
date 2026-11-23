@@ -41,6 +41,8 @@ import { pivotDiscussionPrompt } from "./pivot-banner.ts";
 import type { PivotDecision } from "./pivot-banner.ts";
 import { createRoadmapCanvas } from "./roadmap-canvas.ts";
 import type { ViewMode } from "./roadmap-canvas.ts";
+import { EMPTY_KNOWLEDGE, readKnowledge } from "./knowledge-layout.ts";
+import type { KnowledgeData } from "./knowledge-layout.ts";
 import type { GraphDirection } from "./roadmap-layout.ts";
 import { defaultExpandedModule, isDone, progressCounts } from "./roadmap-layout.ts";
 import { openLinkExistingSessionDialog } from "./session-dialogs.ts";
@@ -216,6 +218,10 @@ export function mountPathHub(
   let createdPathId: string | null = null;
   /** Graph topics the learner has studied, from the backend brief; read only for the empty state. */
   let graphTopics = 0;
+  // The learner's Knowledge Graph, drawn in the Graph view; read through `graph.knowledge`.
+  let knowledge: KnowledgeData = EMPTY_KNOWLEDGE;
+  // The Tree view's text-only rendering (this session only).
+  let textOnly = false;
   let emptyControls = new AbortController();
   let loadToken = 0;
   let disposed = false;
@@ -239,6 +245,11 @@ export function mountPathHub(
       if (disposed || signal.aborted) return;
       // A module head always focuses its module; it never unfocuses (as in the module drawing before).
       expandedModuleId = moduleId;
+      renderCanvas();
+    },
+    setTextOnly(next) {
+      if (disposed || signal.aborted) return;
+      textOnly = next;
       renderCanvas();
     },
     setGraphDirection(direction) {
@@ -389,7 +400,7 @@ export function mountPathHub(
       return;
     }
     delete canvasHost.dataset.empty;
-    canvas.render({ path, selectedNodeId, expandedModuleId, view, showOptional: display.showOptional, showLegend: side.hidden, graphDirection });
+    canvas.render({ path, selectedNodeId, expandedModuleId, view, showOptional: display.showOptional, showLegend: side.hidden, graphDirection, knowledge, textOnly });
   }
 
   /** Empty state: the Architect text, plus "Build from my graph" once the graph has a topic. */
@@ -587,6 +598,8 @@ export function mountPathHub(
         if (!live(token)) return;
         mastery = read ?? [];
         masteryReady = read !== null;
+        await refreshKnowledge();
+        if (!live(token)) return;
       } else {
         chatStatuses.clear();
         tab = "architect";
@@ -628,6 +641,18 @@ export function mountPathHub(
       return Array.isArray(result.propositions) ? result.propositions : null;
     } catch {
       return null;
+    }
+  }
+
+  /** The learner's Knowledge Graph from `graph.knowledge`. A failed read leaves the last one in place. */
+  async function refreshKnowledge(): Promise<void> {
+    try {
+      const next = readKnowledge(await ctx.call("graph.knowledge"));
+      if (disposed || signal.aborted) return;
+      knowledge = next;
+      if (view === "graph") renderCanvas();
+    } catch {
+      // Keep what was drawn.
     }
   }
 
@@ -804,6 +829,7 @@ export function mountPathHub(
       view = mode;
       renderCanvas();
       renderToolbar();
+      if (mode === "graph") void refreshKnowledge();
     }, { signal });
   }
   nodeTabButton.addEventListener("click", () => setTab("node"), { signal });

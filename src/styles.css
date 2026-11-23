@@ -2651,3 +2651,13 @@ details.lp-chat-reasoning > summary {
 .rm-canvas .rm-node.rm-pill:not(.rm-check) .rm-node-icon {
   display: none;
 }
+
+/* Tree text-only rendering and the Knowledge Graph view (issue #50). */
+.rm-text-toggle { position: absolute; right: 12px; top: 12px; padding: 4px 10px; cursor: pointer; }
+.rm-text-tree { overflow: auto; height: 100%; padding: 16px 20px; }
+.rm-text-modules, .rm-text-nodes { list-style: none; margin: 0; padding: 0; }
+.rm-text-nodes { padding-left: 20px; }
+.rm-text-open { background: none; border: 0; color: inherit; cursor: pointer; padding: 3px 0; text-align: left; }
+.rm-text-open.rm-sel { font-weight: 600; }
+.rm-kg-node { cursor: default; }
+.rm-kg-empty { position: absolute; left: 28px; top: 28px; margin: 0; opacity: 0.7; }
