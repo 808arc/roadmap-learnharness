@@ -1,7 +1,7 @@
 /** Learning Path — backend activation.
  *
  * Wires these things over one plugin-owned store:
- * - the persistent Path Architect definition, registered from `architect-model.json`
+ * - the persistent Path Architect definition, registered from `logs/architect-model.jsonl`
  *   on activation and re-registered when the learner chooses another model;
  * - `ctx.handle` operations for paths, uploaded sources, Architect conversations
  *   (create/send/abort), child-session links (prepare/link/unlink/status),

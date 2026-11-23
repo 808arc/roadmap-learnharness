@@ -7,9 +7,9 @@
  *
  * Folders the plugin writes under the data directory:
  *   secrets/          search-key.json (plain-text API key)          -> ignored
- *   logs/             architect-runs.jsonl (timing log)                  -> ignored
+ *   logs/             architect-runs.jsonl (timing log), architect-model.jsonl -> ignored
  *   *.tmp             leftovers of an interrupted atomic write      -> ignored
- *   roadmaps-index.json and roadmaps/ (one file per roadmap), settings.json, architect-model.json,
+ *   roadmaps-index.json and roadmaps/ (one file per roadmap),  settings.json,
  *   sources/, research/, research-chats.json, declined-proposals.json -> versioned
  * The plugin keeps no on-disk cache, so there is no cache folder to ignore.
  */

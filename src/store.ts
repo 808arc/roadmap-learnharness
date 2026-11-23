@@ -6,7 +6,8 @@
  *   learning-paths.json      legacy single file; migrated once, then kept as
  *                            learning-paths.json.migrated
  *   settings.json            versioned plugin settings
- *   architect-model.json     chosen Architect model (needed to re-register; reads migrate architect.json once)
+ *   logs/architect-model.jsonl  chosen Architect model, one JSON line (needed to re-register;
+ *                            migrated once from architect-model.json or architect.json)
  *   sources/<sourceId>.md    converted learner uploads (UUID names only)
  *   sources/index.json       versioned upload metadata, for hash deduplication
  * Host-reserved `agents/`, `tasks/` and `usage.jsonl` are never read or written.
@@ -45,8 +46,12 @@ export const ROADMAP_INDEX_FILE = "roadmaps-index.json";
 export const ROADMAP_MIGRATION_VERSION = 1;
 export const MIGRATED_LEGACY_SUFFIX = ".migrated";
 export const SETTINGS_FILE = "settings.json";
-export const ARCHITECT_FILE = "architect-model.json";
-/** The pre-rename name of `ARCHITECT_FILE`: read once and copied to `ARCHITECT_FILE`, never deleted. */
+/** Architect model settings live in the logs folder (ignored by the Git plugin), one JSON line. */
+export const ARCHITECT_LOG_DIRECTORY = "logs";
+export const ARCHITECT_FILE = path.join(ARCHITECT_LOG_DIRECTORY, "architect-model.jsonl");
+/** The name before the move to `logs/`: read once and copied to `ARCHITECT_FILE`, never deleted. */
+export const PRE_LOG_ARCHITECT_FILE = "architect-model.json";
+/** The pre-rename name of `PRE_LOG_ARCHITECT_FILE`: read once when that file is absent, never deleted. */
 export const LEGACY_ARCHITECT_FILE = "architect.json";
 export const SOURCES_DIRECTORY = "sources";
 export const SOURCE_INDEX_FILE = "index.json";
@@ -58,7 +63,7 @@ export { THINKING_LEVELS };
 export type { ThinkingLevelName } from "./domain.ts";
 
 /** The Architect definition needs an explicit model, which survives restart in
- * `architect-model.json`; plugin settings may override it through the Settings page. */
+ * `logs/architect-model.jsonl`; plugin settings may override it through the Settings page. */
 export interface ArchitectModelConfig {
   readonly provider: string;
   readonly id: string;
@@ -490,9 +495,8 @@ function parseArchitectModel(value: unknown): ArchitectModelConfig {
   return model;
 }
 
-function loadArchitectFile(filename: string): { model: ArchitectModelConfig | null; revision: number } {
-  const raw = readJsonFile(filename);
-  if (raw === undefined) return { model: null, revision: 0 };
+/** Validate a parsed Architect model file; corrupt or newer data throws before anything is written. */
+function architectFromRaw(raw: unknown, filename: string): { model: ArchitectModelConfig; revision: number } {
   const record = asRecord(raw, filename);
   readSchemaVersion(record, filename);
   const revision = readRevision(record, filename);
@@ -501,6 +505,12 @@ function loadArchitectFile(filename: string): { model: ArchitectModelConfig | nu
   } catch {
     throw new StoreError("corrupt", `Roadmap data at ${filename} is corrupt: invalid Architect model. No data was changed.`);
   }
+}
+
+function loadArchitectFile(filename: string): { model: ArchitectModelConfig | null; revision: number } {
+  const raw = readJsonFile(filename);
+  if (raw === undefined) return { model: null, revision: 0 };
+  return architectFromRaw(raw, filename);
 }
 
 function loadSourceIndex(directory: string): { sources: UploadedSourceReference[]; revision: number } {
@@ -604,6 +614,11 @@ function sortKeys(value: unknown): unknown {
 /** Pretty-printed JSON with a stable key order, so the same data always gives the same bytes. */
 function serialize(value: unknown): string {
   return `${JSON.stringify(sortKeys(value), null, 2)}\n`;
+}
+
+/** One JSON object on one line (JSON Lines), with a stable key order. */
+function serializeLine(value: unknown): string {
+  return `${JSON.stringify(sortKeys(value))}\n`;
 }
 
 /** True when the file already holds this data (revision aside), so a save would change nothing. */
@@ -756,11 +771,19 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
   };
 
   let settingsState = loadSettingsFile(settingsFilename);
-  // One-time copy of the pre-rename `architect.json`; the old file is never removed.
-  const legacyArchitectFilename = path.join(directory, LEGACY_ARCHITECT_FILE);
-  if (!pathExists(architectFilename) && pathExists(legacyArchitectFilename)) {
-    const legacyText = readTextFile(legacyArchitectFilename);
-    if (legacyText !== undefined) atomicWrite(architectFilename, legacyText);
+  // One-time migration into logs/architect-model.jsonl from `architect-model.json`, else
+  // from the pre-rename `architect.json`. Legacy files are validated, then never removed.
+  // Once the new file exists it is the only one read, so this never runs twice.
+  if (!pathExists(architectFilename)) {
+    for (const legacyName of [PRE_LOG_ARCHITECT_FILE, LEGACY_ARCHITECT_FILE]) {
+      const legacyFilename = path.join(directory, legacyName);
+      const legacyRaw = readJsonFile(legacyFilename);
+      if (legacyRaw === undefined) continue;
+      const legacy = architectFromRaw(legacyRaw, legacyFilename);
+      fs.mkdirSync(path.dirname(architectFilename), { recursive: true, mode: 0o700 });
+      atomicWrite(architectFilename, serializeLine({ schemaVersion: STORE_SCHEMA_VERSION, revision: legacy.revision, model: legacy.model } satisfies ArchitectFile));
+      break;
+    }
   }
   let architectState = loadArchitectFile(architectFilename);
   let sourceState = loadSourceIndex(sourcesDirectory);
@@ -982,9 +1005,10 @@ export function openLearningPathStore(dataDirectory: string): LearningPathStore 
     saveArchitectModel(value) {
       const parsed = parseArchitectModel(value);
       if (sameData(architectFilename, architectState.revision, architectState.model, parsed)) return parsed;
+      fs.mkdirSync(path.dirname(architectFilename), { recursive: true, mode: 0o700 });
       atomicWrite(
         architectFilename,
-        serialize({
+        serializeLine({
           schemaVersion: STORE_SCHEMA_VERSION,
           revision: architectState.revision + 1,
           model: parsed,

@@ -9,6 +9,7 @@ import {
   ARCHITECT_FILE,
   LEARNING_PATHS_FILE,
   LEGACY_ARCHITECT_FILE,
+  PRE_LOG_ARCHITECT_FILE,
   ROADMAPS_DIRECTORY,
   ROADMAP_INDEX_FILE,
   SETTINGS_FILE,
@@ -31,8 +32,10 @@ function directory(t: { after: (fn: () => void) => void }): string {
 
 const read = (dir: string, name: string): string => fs.readFileSync(path.join(dir, name), "utf8");
 const roadmapFile = (dir: string, id: string): string => path.join(dir, ROADMAPS_DIRECTORY, roadmapFileName(id));
-const write = (dir: string, name: string, content: string): void =>
+const write = (dir: string, name: string, content: string): void => {
+  fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
   fs.writeFileSync(path.join(dir, name), content);
+};
 const temporaryFiles = (dir: string): string[] =>
   fs.readdirSync(dir).filter((name) => name.endsWith(".tmp"));
 
@@ -339,35 +342,62 @@ test("Architect model config round-trips and rejects invalid choices", (t) => {
   assert.deepEqual(openLearningPathStore(dir).architectModel(), model);
 });
 
-test("the Architect model is written to architect-model.json only", (t) => {
+test("a new save writes one JSON line to logs/architect-model.jsonl", (t) => {
   const dir = directory(t);
   const model = { provider: "pi", id: "fresh-model" };
   openLearningPathStore(dir).saveArchitectModel(model);
-  assert.equal(ARCHITECT_FILE, "architect-model.json");
-  assert.deepEqual(JSON.parse(read(dir, ARCHITECT_FILE)).model, model);
+  assert.equal(ARCHITECT_FILE, path.join("logs", "architect-model.jsonl"));
+  const text = read(dir, ARCHITECT_FILE);
+  assert.equal(text.split("\n").length, 2);
+  assert.ok(text.endsWith("\n"));
+  assert.deepEqual(JSON.parse(text).model, model);
+  assert.equal(fs.existsSync(path.join(dir, PRE_LOG_ARCHITECT_FILE)), false);
   assert.equal(fs.existsSync(path.join(dir, LEGACY_ARCHITECT_FILE)), false);
+  assert.deepEqual(temporaryFiles(path.join(dir, "logs")), []);
 });
 
-test("an old architect.json is migrated once to architect-model.json and kept", (t) => {
+test("an old architect-model.json is migrated once to the logs file with content kept", (t) => {
   const dir = directory(t);
-  const legacy = JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 3, model: { provider: "pi", id: "saved-model", thinkingLevel: "high" } }, null, 2);
-  write(dir, LEGACY_ARCHITECT_FILE, legacy);
+  const old = JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 3, model: { provider: "pi", id: "saved-model", thinkingLevel: "high" } }, null, 2);
+  write(dir, PRE_LOG_ARCHITECT_FILE, old);
   const store = openLearningPathStore(dir);
   assert.deepEqual(store.architectModel(), { provider: "pi", id: "saved-model", thinkingLevel: "high" });
-  assert.equal(read(dir, ARCHITECT_FILE), legacy);
-  assert.equal(read(dir, LEGACY_ARCHITECT_FILE), legacy);
-  assert.deepEqual(temporaryFiles(dir), []);
-  // A later save writes only the new name and leaves the old file untouched.
+  const migrated = read(dir, ARCHITECT_FILE);
+  assert.equal(migrated.split("\n").length, 2);
+  assert.deepEqual(JSON.parse(migrated), JSON.parse(old));
+  assert.equal(read(dir, PRE_LOG_ARCHITECT_FILE), old);
+  assert.deepEqual(temporaryFiles(path.join(dir, "logs")), []);
+  // A second open reads the logs file and never migrates again, even if the old file changes.
+  write(dir, PRE_LOG_ARCHITECT_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 9, model: { provider: "x", id: "other" } }));
+  assert.equal(openLearningPathStore(dir).architectModel()?.id, "saved-model");
+  assert.equal(read(dir, ARCHITECT_FILE), migrated);
+  // A later save writes only the logs file and leaves the old file untouched.
   store.saveArchitectModel({ provider: "pi", id: "newer-model" });
-  assert.equal(read(dir, LEGACY_ARCHITECT_FILE), legacy);
   assert.equal(openLearningPathStore(dir).architectModel()?.id, "newer-model");
 });
 
-test("architect-model.json wins over a leftover architect.json", (t) => {
+test("an old architect.json is migrated to the logs file and kept", (t) => {
+  const dir = directory(t);
+  const legacy = JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 3, model: { provider: "pi", id: "ancient-model" } });
+  write(dir, LEGACY_ARCHITECT_FILE, legacy);
+  assert.equal(openLearningPathStore(dir).architectModel()?.id, "ancient-model");
+  assert.deepEqual(JSON.parse(read(dir, ARCHITECT_FILE)).model, { provider: "pi", id: "ancient-model" });
+  assert.equal(read(dir, LEGACY_ARCHITECT_FILE), legacy);
+});
+
+test("the logs file wins over leftover old files", (t) => {
   const dir = directory(t);
   write(dir, LEGACY_ARCHITECT_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 1, model: { provider: "old", id: "old" } }));
-  write(dir, ARCHITECT_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 1, model: { provider: "new", id: "new" } }));
+  write(dir, PRE_LOG_ARCHITECT_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 1, model: { provider: "mid", id: "mid" } }));
+  write(dir, ARCHITECT_FILE, JSON.stringify({ schemaVersion: STORE_SCHEMA_VERSION, revision: 1, model: { provider: "new", id: "new" } }) + "\n");
   assert.equal(openLearningPathStore(dir).architectModel()?.id, "new");
+});
+
+test("a corrupt architect model line refuses the file and changes nothing", (t) => {
+  const dir = directory(t);
+  write(dir, ARCHITECT_FILE, "{not json\n");
+  assert.throws(() => openLearningPathStore(dir), (error: unknown) => error instanceof StoreError && error.code === "corrupt");
+  assert.equal(read(dir, ARCHITECT_FILE), "{not json\n");
 });
 
 test("a fresh settings read follows the host cheap slot", (t) => {

@@ -199,9 +199,9 @@ Settings → Roadmap:
 
 Everything lives in the plugin's own data folder (`<plugins>/roadmap-learnharness/data/`):
 `roadmaps/` (one file per roadmap, named by a hash of its id), `roadmaps-index.json`, `settings.json`,
-`architect-model.json`, `sources/`, `research/` (research notes), `research-chats.json`,
+`sources/`, `research/` (research notes), `research-chats.json`,
 `declined-proposals.json` (roadmap offers you declined), `secrets/search-key.json` (only if you save
-your own search key), `logs/architect-runs.jsonl` (see Logs), and a `.gitignore` the plugin writes so that
+your own search key), `logs/architect-model.jsonl` (the chosen Architect model, one JSON line), `logs/architect-runs.jsonl` (see Logs), and a `.gitignore` the plugin writes so that
 `secrets/`, `logs/` and `*.tmp` stay out of a Git-versioned data folder. LearnHarness reserves
 `agents/`, `tasks/` and `usage.jsonl` here; Roadmap never reads or writes them. An older
 `learning-paths.json` is read once to write the roadmap files; it stays in the data folder as
@@ -215,7 +215,7 @@ overwritten. Roadmap never deletes native chats or Knowledge Graph records.
 
 ## Logs
 
-Architect runs are logged to `data/logs/architect-runs.jsonl`, capped at 512 KB. Each
+Architect runs are logged to `data/logs/architect-runs.jsonl`, capped at 512 KB. The chosen Architect model is kept in `data/logs/architect-model.jsonl`; an older `data/architect-model.json` (or `architect.json`) is copied there once, on first open, and kept. Each
 line holds timings and counts only: model, provider and token counts per run,
 whether your graph was attached and how many topics and chains it had, each
 research call with its outcome, and a short reason for rejected calls (URLs
