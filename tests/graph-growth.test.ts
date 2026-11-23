@@ -24,7 +24,7 @@ function prerequisites(after: Record<string, string[]>, nodes: readonly PathNode
 }
 
 function graphOf(nodes: readonly PathNode[], after: Record<string, string[]>) {
-  return layoutGraph(pathWith(nodes), { showOptional: true, prerequisites: prerequisites(after, nodes) });
+  return layoutGraph(pathWith(nodes), { direction: "left-to-right", showOptional: true, prerequisites: prerequisites(after, nodes) });
 }
 
 test("the first drawing of a graph animates nothing", () => {

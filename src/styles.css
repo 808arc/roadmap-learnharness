@@ -671,6 +671,19 @@
   background: var(--rm-panel);
 }
 
+.rm-direction {
+  bottom: 54px;
+}
+
+.rm-direction[hidden] {
+  display: none;
+}
+
+.rm-direction .rm-on {
+  background: var(--rm-panel-2);
+  font-weight: 600;
+}
+
 .rm-zoom-btn,
 .rm-zoom-value {
   height: 26px;

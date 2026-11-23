@@ -11,6 +11,7 @@ import type { NodePrerequisites } from "../node-prerequisites.ts";
 import { ICONS, setIcon, statusIcon } from "./icons.ts";
 import { EMPTY_SNAPSHOT, edgeKey, growthPlan, snapshotOf } from "./graph-growth.ts";
 import type { GraphSnapshot, GrowthPlan } from "./graph-growth.ts";
+import type { GraphDirection } from "./roadmap-layout.ts";
 import { buildDependencyGraph, isDone, layoutGraph, layoutRoadmap, moduleCounts } from "./roadmap-layout.ts";
 import type { PlacedModule, PlacedNode, RoadmapLayout } from "./roadmap-layout.ts";
 import { el } from "./dom.ts";
@@ -26,6 +27,8 @@ export interface CanvasState {
   readonly showOptional: boolean;
   /** The legend shows only when the side panel is closed, as in the mockups. */
   readonly showLegend: boolean;
+  /** Which way the graph view runs. Absent: bottom to top. */
+  readonly graphDirection?: GraphDirection;
   /** Prerequisites per node. Absent: each node's own, else module order. */
   readonly prerequisites?: readonly NodePrerequisites[];
 }
@@ -33,6 +36,8 @@ export interface CanvasState {
 export interface CanvasCallbacks {
   selectNode(nodeId: string): void;
   toggleModule(moduleId: string): void;
+  /** The user picked a graph direction. */
+  setGraphDirection?(direction: GraphDirection): void;
 }
 
 export interface RoadmapCanvas {
@@ -83,12 +88,25 @@ export function createRoadmapCanvas(
   zoomIn.setAttribute("aria-label", "+");
   zoomLabel.title = t("zoom.fit");
   controls.append(zoomOut, zoomLabel, zoomIn);
+  const directionBar = el(document, "div", "rm-zoom rm-direction");
+  const directionButtons = new Map<GraphDirection, HTMLButtonElement>();
+  for (const [direction, key] of [
+    ["bottom-to-top", "graph.dirUp"],
+    ["left-to-right", "graph.dirRight"],
+  ] as const) {
+    const button = el(document, "button", "rm-zoom-value", t(key));
+    button.type = "button";
+    button.dataset.direction = direction;
+    button.addEventListener("click", () => callbacks.setGraphDirection?.(direction), { signal });
+    directionButtons.set(direction, button);
+    directionBar.append(button);
+  }
   const legend = el(document, "div", "rm-legend");
   // Announces how many nodes a save added; the graph itself is not a live region.
   const growStatus = el(document, "p", "rm-grow-status");
   growStatus.setAttribute("role", "status");
   growStatus.setAttribute("aria-live", "polite");
-  root.append(viewport, controls, legend, growStatus);
+  root.append(viewport, controls, directionBar, legend, growStatus);
   host.append(root);
 
   let state: CanvasState | null = null;
@@ -343,7 +361,7 @@ export function createRoadmapCanvas(
   const renderGraph = (current: CanvasState): void => {
     const withModules = current.view === "tree";
     const options = { showOptional: current.showOptional, prerequisites: current.prerequisites };
-    layout = withModules ? layoutRoadmap(current.path, { ...options, expandedModuleId: current.expandedModuleId }) : layoutGraph(current.path, options);
+    layout = withModules ? layoutRoadmap(current.path, { ...options, expandedModuleId: current.expandedModuleId }) : layoutGraph(current.path, { ...options, direction: current.graphDirection ?? "bottom-to-top" });
     stage.style.width = `${layout.width}px`;
     stage.style.height = `${layout.height}px`;
     // Only items new since the last drawing animate; a re-render of the same graph animates nothing.
@@ -439,6 +457,12 @@ export function createRoadmapCanvas(
       state = next;
       root.dataset.view = next.view;
       legend.hidden = !next.showLegend;
+      directionBar.hidden = next.view !== "graph";
+      const direction = next.graphDirection ?? "bottom-to-top";
+      for (const [value, button] of directionButtons) {
+        button.setAttribute("aria-pressed", String(value === direction));
+        button.classList.toggle("rm-on", value === direction);
+      }
       renderLegend();
       renderGraph(next);
     },

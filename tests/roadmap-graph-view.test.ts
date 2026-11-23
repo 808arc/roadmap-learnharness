@@ -214,6 +214,7 @@ test("the two views render: the module tree by default and the bare graph", () =
 test("the graph layout has no module frames and places each node by dependency depth", () => {
   const nodes = [makeNode("a", "concept"), makeNode("b", "skill"), makeNode("c", "skill")];
   const layout = layoutGraph(pathWith(nodes), {
+    direction: "left-to-right",
     showOptional: true,
     prerequisites: prerequisites({ b: ["a"], c: ["a"] }, nodes),
   });

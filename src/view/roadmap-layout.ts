@@ -453,21 +453,30 @@ export function layoutRoadmap(
   return { width, height, modules, nodes, edges, groups };
 }
 
+/** Which way the graph view runs: depth as rows from the bottom up, or as columns from the left. */
+export type GraphDirection = "bottom-to-top" | "left-to-right";
+
+/** Vertical gap between two rows of pills, and horizontal gap between pills of one row, in bottom-to-top graphs. */
+const ROW_GAP = 56;
+const PILL_GAP = 24;
+
 /** Arrows from each prerequisite's right edge to its dependent's left edge (both ends must be placed). */
-function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[]): Edge[] {
+function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[], direction: GraphDirection = "left-to-right"): Edge[] {
   const placedNodes = new Map(nodes.map((placed) => [placed.node.id, placed]));
   const edges: Edge[] = [];
   for (const edge of graph.edges) {
     const from = placedNodes.get(edge.from);
     const to = placedNodes.get(edge.to);
     if (!from || !to) continue;
+    // Left to right: right edge to left edge. Bottom to top: top edge of the prerequisite to the bottom edge of the dependent.
+    const ends =
+      direction === "bottom-to-top"
+        ? { x1: from.x + from.w / 2, y1: from.y, x2: to.x + to.w / 2, y2: to.y + to.h }
+        : { x1: from.x + from.w, y1: from.y + from.h / 2, x2: to.x, y2: to.y + to.h / 2 };
     edges.push({
       from: edge.from,
       to: edge.to,
-      x1: from.x + from.w,
-      y1: from.y + from.h / 2,
-      x2: to.x,
-      y2: to.y + to.h / 2,
+      ...ends,
       dashed: Boolean(from.node.optional || to.node.optional),
     });
   }
@@ -529,8 +538,9 @@ function cycleSafeGraph(graph: DependencyGraph, all: readonly PathNode[]): Depen
  * `modules` and `groups` are empty; each node keeps its module id for selection. */
 export function layoutGraph(
   path: LearningPath,
-  options: { readonly showOptional: boolean; readonly prerequisites?: readonly NodePrerequisites[] },
+  options: { readonly showOptional: boolean; readonly prerequisites?: readonly NodePrerequisites[]; readonly direction?: GraphDirection },
 ): RoadmapLayout {
+  const direction = options.direction ?? "bottom-to-top";
   const graph = cycleSafeGraph(buildDependencyGraph(path, options), path.modules.flatMap((module) => module.nodes));
   const all = path.modules.flatMap((module) => module.nodes);
   const flatIndex = new Map(all.map((node, index) => [node.id, index]));
@@ -549,6 +559,29 @@ export function layoutGraph(
   }
   for (const list of cells.values()) {
     list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
+  }
+  if (direction === "bottom-to-top") {
+    // The same layered placement, turned: depth is the row (depth 0 at the bottom), the spread is the position in the row.
+    const offsets = spreadColumns(cells, graph.edges, PILL_W + PILL_GAP);
+    const rowStep = PILL_H + ROW_GAP;
+    const nodes: PlacedNode[] = [];
+    for (const [depth, list] of cells) {
+      for (const node of list) {
+        nodes.push({
+          node,
+          moduleId: moduleOf.get(node.id)!,
+          depth,
+          x: PAD + FRAME_PAD + (offsets.get(node.id) ?? 0),
+          y: PAD + (columns - 1 - depth) * rowStep,
+          w: PILL_W,
+          h: PILL_H,
+        });
+      }
+    }
+    const span = offsets.size > 0 ? Math.max(...offsets.values()) : 0;
+    const width = PAD + FRAME_PAD + span + PILL_W + FRAME_PAD + PAD;
+    const height = PAD + (columns > 0 ? (columns - 1) * rowStep + PILL_H : PILL_H) + PAD + PAD_BOTTOM;
+    return { width, height, modules: [], nodes, edges: placeEdges(graph, nodes, direction), groups: [] };
   }
   const offsets = spreadColumns(cells, graph.edges, PILL_ROW);
   const right = columns > 0 ? PAD + FRAME_PAD + (columns - 1) * COL_W + PILL_W : PAD + FRAME_PAD + PILL_W;
