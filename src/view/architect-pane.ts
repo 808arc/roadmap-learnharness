@@ -180,8 +180,16 @@ export function createArchitectPane(
   container.append(root);
   // What the Architect is running right now: the open steps of its timing log, refreshed every second.
   const showActivity = (steps: readonly unknown[]): void => {
-    const names = [...new Set(steps.filter((step): step is string => typeof step === "string"))];
-    logLine.textContent = names.length > 0 ? t("a.running", { steps: names.join(", ") }) : t("a.idle");
+    const described = steps.flatMap((step) => {
+      const entry = step as { step?: unknown; elapsedMs?: unknown; fields?: unknown } | null;
+      if (typeof entry?.step !== "string") return [];
+      const seconds = typeof entry.elapsedMs === "number" ? `${(entry.elapsedMs / 1000).toFixed(1)}s` : "";
+      const details = Object.entries((entry.fields ?? {}) as Record<string, unknown>)
+        .filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+        .map(([key, value]) => `${key}=${String(value)}`);
+      return [[entry.step, ...details, seconds].filter((part) => part !== "").join(" · ")];
+    });
+    logLine.textContent = described.length > 0 ? t("a.running", { steps: described.join("; ") }) : t("a.idle");
   };
   const activityTimer = setInterval(() => {
     ctx.call<{ steps?: unknown[] }>("architect.activity", {}).then((result) => {
