@@ -586,3 +586,20 @@ test("a refused roadmap file is named in the hub banner with the Git view to res
     fixture.restore();
   }
 });
+
+test("toggling the Graph direction saves it in the display settings", async () => {
+  const fixture = createViewFixture({ paths: [makePath()], conversations: [snapshot("chat-architect")] });
+  try {
+    await mounted(fixture);
+    toolbar(fixture, "Graph").click();
+    await fixture.flush();
+    fixture.root.querySelector<HTMLButtonElement>(".rm-direction button[data-direction=left-to-right]")!.click();
+    await fixture.flush();
+    await fixture.flush();
+    assert.ok(fixture.calls.some((call) => call.name === "settings.save"));
+    assert.equal(fixture.settings.display?.graphDirection, "left-to-right");
+    assert.equal(fixture.settings.display?.language, "en", "the other display settings are kept");
+  } finally {
+    fixture.restore();
+  }
+});

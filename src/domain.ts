@@ -148,16 +148,21 @@ export type ViewMode = (typeof VIEW_MODES)[number];
 export const LANGUAGE_PREFERENCES = ["auto", "ru", "en"] as const;
 export type LanguagePreference = (typeof LANGUAGE_PREFERENCES)[number];
 
+export const GRAPH_DIRECTIONS = ["bottom-to-top", "left-to-right"] as const;
+export type GraphDirectionSetting = (typeof GRAPH_DIRECTIONS)[number];
+
 export interface DisplaySettings {
   /** Interface language; `auto` follows the system language. */
   readonly language: LanguagePreference;
   readonly defaultView: ViewMode;
   readonly showOptional: boolean;
+  /** Which way the Graph view grows; an unknown stored value reads as the default. */
+  readonly graphDirection: GraphDirectionSetting;
   /** Show the one-line question-template suggestion in the node panel. */
   readonly patternHints: boolean;
 }
 
-export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "tree", showOptional: true, patternHints: true };
+export const DEFAULT_DISPLAY: DisplaySettings = { language: "auto", defaultView: "tree", showOptional: true, graphDirection: "bottom-to-top", patternHints: true };
 
 /** How the Architect reaches beyond its own memory. Every channel can be switched off;
  * with all of them off the Architect works offline from what the model knows. */
@@ -953,6 +958,9 @@ function readDisplaySettings(value: unknown, path: string): DisplaySettings {
     language: record.language === undefined ? DEFAULT_DISPLAY.language : readEnum(record.language, LANGUAGE_PREFERENCES, `${path}.language`),
     defaultView: readDefaultView(record.defaultView, `${path}.defaultView`),
     showOptional: record.showOptional === undefined ? DEFAULT_DISPLAY.showOptional : readBoolean(record.showOptional, `${path}.showOptional`),
+    graphDirection: (GRAPH_DIRECTIONS as readonly unknown[]).includes(record.graphDirection)
+      ? (record.graphDirection as GraphDirectionSetting)
+      : DEFAULT_DISPLAY.graphDirection,
     patternHints: record.patternHints === undefined ? DEFAULT_DISPLAY.patternHints : readBoolean(record.patternHints, `${path}.patternHints`),
   };
 }

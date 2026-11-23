@@ -101,7 +101,7 @@ test("the display setting defaults on, and old settings data without it still va
   const old = validatePluginSettings({ artifactDefaults: {}, display: { language: "en", defaultView: "graph", showOptional: false } });
   assert.equal(old.ok, true);
   if (!old.ok) return;
-  assert.deepEqual(old.value.display, { language: "en", defaultView: "graph", showOptional: false, patternHints: true });
+  assert.deepEqual(old.value.display, { language: "en", defaultView: "graph", showOptional: false, graphDirection: "bottom-to-top", patternHints: true });
 
   const off = validatePluginSettings({ artifactDefaults: {}, display: { ...DEFAULT_DISPLAY, patternHints: false } });
   assert.equal(off.ok, true);

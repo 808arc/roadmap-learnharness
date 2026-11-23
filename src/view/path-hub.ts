@@ -208,8 +208,8 @@ export function mountPathHub(
   let expandedModuleId: string | null = null;
   let display: DisplaySettings = DEFAULT_DISPLAY;
   let view: ViewMode = display.defaultView;
-  // The graph view's direction: kept for the session; the user changes it with the toggle on the canvas.
-  let graphDirection: GraphDirection = "bottom-to-top";
+  // The graph view's direction: read from the saved display settings; the toggle on the canvas saves it.
+  let graphDirection: GraphDirection = display.graphDirection;
   let tab: Tab = "node";
   let sideOpen = true;
   let autoLoadedPathId: string | null = null;
@@ -245,6 +245,7 @@ export function mountPathHub(
       if (disposed || signal.aborted) return;
       graphDirection = direction;
       renderCanvas();
+      void saveGraphDirection(direction);
     },
   });
   const inspector = createNodeInspector(ctx, nodePanel, signal, {
@@ -493,6 +494,23 @@ export function mountPathHub(
   }
 
   // ── Data ─────────────────────────────────────────────────────────────
+  /** Persists the direction in the display settings; a failed save leaves the session choice in place. */
+  async function saveGraphDirection(direction: GraphDirection): Promise<void> {
+    try {
+      const result = await ctx.call<{ settings: PluginSettings }>("settings.get");
+      if (disposed || signal.aborted) return;
+      const current = result.settings;
+      const saved = await ctx.call<{ settings: PluginSettings }>("settings.save", {
+        ...current,
+        display: { ...(current.display ?? DEFAULT_DISPLAY), graphDirection: direction },
+      });
+      if (disposed || signal.aborted) return;
+      display = saved.settings?.display ?? { ...display, graphDirection: direction };
+    } catch {
+      // Not saved: the toggle still works for this session.
+    }
+  }
+
   async function loadDisplay(): Promise<void> {
     try {
       const result = await ctx.call<{ settings: PluginSettings }>("settings.get");
@@ -500,6 +518,7 @@ export function mountPathHub(
       const next = result.settings?.display ?? DEFAULT_DISPLAY;
       const viewChanged = next.defaultView !== display.defaultView;
       display = next;
+      graphDirection = display.graphDirection;
       if (viewChanged) view = display.defaultView;
     } catch {
       display = DEFAULT_DISPLAY;

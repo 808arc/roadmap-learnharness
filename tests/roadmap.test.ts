@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseLearningPath, parsePluginSettings } from "../src/domain.ts";
+import { parseLearningPath, parsePluginSettings, validatePluginSettings } from "../src/domain.ts";
 import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import { resolveLocale, setLocale, t } from "../src/i18n.ts";
 import type { MessageKey } from "../src/i18n.ts";
@@ -175,7 +175,7 @@ test("node marks, outcomes and resources validate, and bad links are refused", (
 test("display settings default sensibly and reject unknown values", () => {
   assert.deepEqual(parsePluginSettings({ artifactDefaults: {} }), { artifactDefaults: {} });
   const parsed = parsePluginSettings({ artifactDefaults: {}, display: { language: "ru" }, contentLanguage: "en" });
-  assert.deepEqual(parsed.display, { language: "ru", defaultView: "tree", showOptional: true, patternHints: true });
+  assert.deepEqual(parsed.display, { language: "ru", defaultView: "tree", showOptional: true, graphDirection: "bottom-to-top", patternHints: true });
   assert.equal(parsed.contentLanguage, "en");
   assert.throws(() => parsePluginSettings({ artifactDefaults: {}, display: { defaultView: "kanban" } }));
 });
@@ -268,4 +268,16 @@ test("every interface string exists in both languages and the locale follows the
   assert.equal(t("foot.summary" as MessageKey, { done: 7, total: 14, progress: 2 }), "пройдено 7 из 14 · в работе 2");
   setLocale("en");
   assert.equal(t("foot.summary" as MessageKey, { done: 7, total: 14, progress: 2 }), "consolidated 7 of 14 · in progress 2");
+});
+
+test("graphDirection defaults to bottom-to-top, keeps a saved left-to-right and falls back on an invalid value", () => {
+  assert.equal(parsePluginSettings({ artifactDefaults: {}, display: { language: "en" } }).display?.graphDirection, "bottom-to-top");
+  const saved = validatePluginSettings({ artifactDefaults: {}, display: { graphDirection: "left-to-right" } });
+  assert.ok(saved.ok);
+  assert.equal(saved.value.display?.graphDirection, "left-to-right");
+  for (const bad of ["diagonal", 3, null]) {
+    const result = validatePluginSettings({ artifactDefaults: {}, display: { graphDirection: bad } });
+    assert.ok(result.ok);
+    assert.equal(result.value.display?.graphDirection, "bottom-to-top");
+  }
 });
