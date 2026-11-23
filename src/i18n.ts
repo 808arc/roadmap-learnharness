@@ -384,7 +384,9 @@ const en = {
   // Node prerequisites (issue #44). New blocks go at the end of the table.
   "legend.prerequisitesNote": "arrows run from each prerequisite to the node that needs it; no arrow in starts a branch",
   // Roadmap views: the help text for the default view. New blocks go at the end of the table.
-  "s.defaultViewHelp": "Tree draws modules as blocks; Graph draws nodes and arrows only.",
+  "s.defaultViewHelp": "Tree shows the roadmap, with a text-only option; Graph shows your Knowledge Graph.",
+  "tree.textOnly": "Text only",
+  "graph.knowledgeEmpty": "Your Knowledge Graph has no propositions yet. Study some material first.",
   // Open a node as a chat (latest linked chat, or a new Lesson). New blocks go at the end of the table.
   "action.openNode": "Open",
   // Architect build strip: the six steps of a roadmap build. New blocks go at the end of the table.
@@ -783,7 +785,9 @@ const ru: Record<MessageKey, string> = {
   // Предпосылки узлов (issue #44). Новые блоки добавляются в конец таблицы.
   "legend.prerequisitesNote": "стрелки ведут от каждой предпосылки к узлу, которому она нужна; без входящей стрелки узел начинает ветку",
   // Подсказка к виду по умолчанию. Новые блоки добавляются в конец таблицы.
-  "s.defaultViewHelp": "Дерево рисует модули блоками; Граф — только узлы и стрелки.",
+  "s.defaultViewHelp": "Дерево показывает дорожную карту, есть режим только текста; Граф показывает ваш граф знаний.",
+  "tree.textOnly": "Только текст",
+  "graph.knowledgeEmpty": "В вашем графе знаний пока нет утверждений. Сначала изучите какой-нибудь материал.",
   // Открыть узел как чат (последний связанный чат или новый урок). Новые блоки добавляются в конец таблицы.
   "action.openNode": "Открыть",
   // Полоса сборки Архитектора: шесть шагов построения дорожной карты. Новые блоки добавляются в конец таблицы.

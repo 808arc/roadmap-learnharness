@@ -25,8 +25,10 @@ Russian (Settings → Roadmap → Interface language; *Auto* follows the system)
   dependency depth, and arrows run from each prerequisite to the node that needs
   it. Interchangeable choices (GCC *or* Clang) are bracketed and marked `alt.`;
   optional nodes are dashed. Drag to pan, Ctrl + wheel or the zoom control to zoom.
-- **Graph view.** Only the nodes and their prerequisite arrows, in columns by
-  dependency depth, with no module frames. Pan and zoom work the same way.
+  **Text only** swaps the diagram for the same modules and nodes as a nested text list.
+- **Graph view.** Your Knowledge Graph, read through `ctx.learning.graph()`:
+  propositions as nodes and reasoning chains as arrows (premise to conclusion).
+  It is not the roadmap's nodes. Pan and zoom work the same way.
 - **Node panel** (Node / Errors / Architect tabs): status, type, the goal,
   *After this node I can…*, the source anchor with a pre-reading pointer, typed
   resources (book, article, video, course, docs, exercises; free or not), the

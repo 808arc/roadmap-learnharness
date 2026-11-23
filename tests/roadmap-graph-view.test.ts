@@ -13,6 +13,8 @@ import type { CanvasState } from "../src/view/roadmap-canvas.ts";
 import { DEFAULT_DISPLAY, VIEW_MODES, parsePluginSettings, validatePluginSettings } from "../src/domain.ts";
 import { ROW, SUB_H, buildDependencyGraph, layoutGraph, layoutRoadmap } from "../src/view/roadmap-layout.ts";
 import { makeNode, makePath } from "./fixtures.ts";
+import { readKnowledgeGraph } from "../src/backend.ts";
+import { layoutKnowledge, readKnowledge } from "../src/view/knowledge-layout.ts";
 
 const { parseHTML } = createRequire(import.meta.url)("linkedom") as {
   parseHTML(html: string): { document: Document };
@@ -109,7 +111,7 @@ test("a column with many nodes keeps every node, stacked in rows without overlap
   assert.ok(layout.height >= 29 * ROW + SUB_H, "the canvas grows with the column");
 });
 
-test("the graph and the tree both render all five children of a node", () => {
+test("the tree renders all five children of a node", () => {
   const parent = makeNode("root", "concept");
   const children = ["one", "two", "three", "four", "five"].map((id) => makeNode(id, "skill"));
   const nodes = [parent, ...children];
@@ -131,11 +133,6 @@ test("the graph and the tree both render all five children of a node", () => {
     prerequisites: prerequisites(after, nodes),
   });
   try {
-    canvas.render(state("graph"));
-    const graphIds = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
-    for (const id of ["root", "one", "two", "three", "four", "five"]) assert.ok(graphIds.includes(id), `graph shows ${id}`);
-    assert.equal(host.querySelectorAll(".rm-edges line").length >= 5, true, "five arrows are drawn");
-
     canvas.render(state("tree"));
     const treeIds = [...host.querySelectorAll<HTMLElement>(".rm-stage .rm-node")].map((node) => node.dataset.nodeId);
     for (const id of ["root", "one", "two", "three", "four", "five"]) assert.ok(treeIds.includes(id), `tree shows ${id}`);
@@ -168,7 +165,7 @@ test("the new interface strings exist in both languages", () => {
   }
 });
 
-test("the two views render: the module tree by default and the bare graph", () => {
+test("the two views render: the roadmap tree by default and the learner's Knowledge Graph", () => {
   const parent = makeNode("root", "concept");
   const children = ["one", "two"].map((id) => makeNode(id, "skill"));
   const nodes = [parent, ...children];
@@ -188,6 +185,17 @@ test("the two views render: the module tree by default and the bare graph", () =
     showOptional: true,
     showLegend: false,
     prerequisites: prerequisites(after, nodes),
+    knowledge: {
+      nodes: [
+        { id: "p1", name: "Premise", statement: "A premise." },
+        { id: "p2", name: "Other premise", statement: "Another." },
+        { id: "c1", name: "Conclusion", statement: "A conclusion." },
+      ],
+      edges: [
+        { from: "p1", to: "c1" },
+        { from: "p2", to: "c1" },
+      ],
+    },
   });
   const visible = (selector: string): boolean => !host.querySelector<HTMLElement>(selector)!.hidden;
   try {
@@ -201,7 +209,9 @@ test("the two views render: the module tree by default and the bare graph", () =
 
     canvas.render(state("graph"));
     assert.equal(host.querySelectorAll(".rm-module-label").length, 0, "graph draws no module labels");
-    assert.equal(host.querySelectorAll(".rm-stage .rm-node").length, 3, "graph shows every node");
+    assert.equal(host.querySelectorAll(".rm-stage .rm-node").length, 3, "graph shows every proposition");
+    assert.ok(host.querySelector('.rm-stage [data-proposition-id="c1"]'), "nodes are propositions, not roadmap nodes");
+    assert.equal(host.querySelector('.rm-stage [data-node-id]'), null, "no roadmap node is drawn");
     assert.equal(host.querySelectorAll(".rm-edges line").length, 2, "graph draws the arrows");
     assert.ok(visible(".rm-viewport"), "graph shows the canvas");
     assert.equal(host.querySelector(".rm-tree"), null, "no text list is rendered");
@@ -233,4 +243,80 @@ test("the graph and tree default views validate; a saved list falls back to tree
   assert.equal(validatePluginSettings({ artifactDefaults: {}, display: { defaultView: "list" } }).ok, true, "a saved list still validates");
   assert.equal((parsePluginSettings({ artifactDefaults: {} }).display ?? DEFAULT_DISPLAY).defaultView, "tree", "no saved value: tree");
   assert.equal(validatePluginSettings({ artifactDefaults: {}, display: { defaultView: "kanban" } }).ok, false);
+});
+
+test("the tree has a text-only rendering with the same modules and nodes", () => {
+  const nodes = [makeNode("a", "concept"), makeNode("b", "skill")];
+  const { document } = parseHTML("<!doctype html><html><body><div id=\"host\"></div></body></html>");
+  const host = document.getElementById("host") as HTMLElement;
+  const controller = new AbortController();
+  const picked: string[] = [];
+  const toggled: boolean[] = [];
+  const canvas = createRoadmapCanvas(document as unknown as Document, host, controller.signal, {
+    selectNode: (id) => picked.push(id),
+    toggleModule() {},
+    setTextOnly: (next) => toggled.push(next),
+  });
+  const state = (view: CanvasState["view"], textOnly: boolean): CanvasState => ({
+    path: pathWith(nodes), selectedNodeId: null, expandedModuleId: null, view, showOptional: true, showLegend: false, textOnly,
+  });
+  try {
+    canvas.render(state("tree", true));
+    assert.equal(host.querySelector<HTMLElement>(".rm-text-tree")!.hidden, false);
+    assert.equal(host.querySelector<HTMLElement>(".rm-viewport")!.hidden, true);
+    assert.equal(host.querySelectorAll(".rm-text-module").length, 1);
+    assert.equal(host.querySelectorAll(".rm-text-node").length, 2);
+    assert.equal(host.querySelectorAll(".rm-stage .rm-node").length, 0, "no diagram nodes");
+    host.querySelector<HTMLButtonElement>('.rm-text-open[data-node-id="b"]')!.click();
+    assert.deepEqual(picked, ["b"]);
+    host.querySelector<HTMLButtonElement>(".rm-text-toggle")!.click();
+    assert.deepEqual(toggled, [false], "the toggle reports the opposite of the current mode");
+    canvas.render(state("tree", false));
+    assert.equal(host.querySelector<HTMLElement>(".rm-text-tree")!.hidden, true);
+    assert.equal(host.querySelectorAll(".rm-stage .rm-node").length, 2);
+    canvas.render(state("graph", true));
+    assert.equal(host.querySelector<HTMLElement>(".rm-text-tree")!.hidden, true, "text-only belongs to the tree");
+    assert.equal(host.querySelector<HTMLElement>(".rm-text-toggle")!.hidden, true);
+  } finally {
+    canvas.dispose();
+    controller.abort();
+  }
+});
+
+test("an empty Knowledge Graph says so; the layout puts premises before conclusions and survives cycles", () => {
+  const { document } = parseHTML("<!doctype html><html><body><div id=\"host\"></div></body></html>");
+  const host = document.getElementById("host") as HTMLElement;
+  const controller = new AbortController();
+  const canvas = createRoadmapCanvas(document as unknown as Document, host, controller.signal, { selectNode() {}, toggleModule() {} });
+  try {
+    canvas.render({ path: makePath(), selectedNodeId: null, expandedModuleId: null, view: "graph", showOptional: true, showLegend: false });
+    assert.equal(host.querySelector(".rm-kg-empty")?.textContent, t("graph.knowledgeEmpty"));
+  } finally {
+    canvas.dispose();
+    controller.abort();
+  }
+  const data = {
+    nodes: ["a", "b", "c"].map((id) => ({ id, name: id, statement: id })),
+    edges: [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "c", to: "a" }],
+  };
+  assert.equal(layoutKnowledge(data).nodes.length, 3, "a cycle keeps every node");
+  const chain = layoutKnowledge({ ...data, edges: data.edges.slice(0, 2) });
+  const y = (id: string): number => chain.nodes.find((entry) => entry.node.id === id)!.y;
+  assert.ok(y("a") > y("b") && y("b") > y("c"), "bottom to top: premises sit lower");
+  assert.deepEqual(readKnowledge({ nodes: [{ id: "x", name: "X" }, { id: 3 }], edges: [{ from: "x", to: "nope" }] }), {
+    nodes: [{ id: "x", name: "X", statement: "" }],
+    edges: [],
+  });
+});
+
+test("graph.knowledge turns stored propositions and chains into nodes and premise-to-conclusion arrows", () => {
+  const node = (id: string) => ({ id, name: id.toUpperCase(), statement: `${id} holds`, aliases: [], createdAt: "t", provenance: [] });
+  const chain = (id: string, premises: string[], conclusion: string) => ({ id, premises, conclusion, provenance: [], createdAt: "t" });
+  const graph = {
+    propositions: [node("a"), node("b"), node("c")],
+    chains: [chain("x1", ["a", "b"], "c"), chain("x2", ["a"], "c"), chain("x3", ["a"], "gone")],
+  };
+  const result = readKnowledgeGraph({ graph: () => graph } as never);
+  assert.deepEqual(result.nodes.map((entry) => entry.id), ["a", "b", "c"]);
+  assert.deepEqual(result.edges, [{ from: "a", to: "c" }, { from: "b", to: "c" }]);
 });

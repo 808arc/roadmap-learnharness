@@ -139,12 +139,12 @@ test("the graph lays modules bottom-up, expands the working module and follows s
     );
     toolbar(fixture, "Graph").click();
     await fixture.flush();
+    toolbar(fixture, "Tree").click();
+    await fixture.flush();
     assert.ok(canvasNode(fixture, "n-contrast").classList.contains("rm-sel"));
 
     // Session rows open the native chat.
     await selectNode(fixture, "n-skill");
-    toolbar(fixture, "Graph").click();
-    await fixture.flush();
     await selectNode(fixture, "n-concept");
     const session = inspector(fixture).querySelector<HTMLButtonElement>(".rm-session-open")!;
     session.click();
