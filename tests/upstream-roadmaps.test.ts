@@ -382,6 +382,7 @@ test("upstream mode offers only the graph brief, the two upstream reads and the 
     [
       "get_learning_path",
       "list_roadmap_topics",
+      "rank_roadmaps",
       "read_learner_graph",
       "read_roadmap_topic",
       "read_roadmap_topics",

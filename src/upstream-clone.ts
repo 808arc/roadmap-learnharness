@@ -70,6 +70,15 @@ export function createLocalRoadmapCopy(options: LocalRoadmapCopyOptions): LocalR
 
   return {
     ready,
+    async listRoadmaps() {
+      if (!available) return null;
+      try {
+        const names = await fs.readdir(path.join(options.directory, "roadmaps"));
+        return names.filter((name) => ROADMAP_SLUG.test(name));
+      } catch {
+        return null;
+      }
+    },
     async listFiles(roadmap) {
       const folder = available ? contentFolder(roadmap) : null;
       if (!folder) return null;

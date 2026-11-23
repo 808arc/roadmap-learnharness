@@ -43,7 +43,9 @@ import {
   readLocalTopics,
   readTopic,
   topicReadConcurrency,
+  listRoadmapNames,
 } from "./upstream-roadmaps.ts";
+import { rankRoadmaps } from "./roadmap-rank.ts";
 import type { TopicReadStep, UpstreamErrorKind, UpstreamOptions, UpstreamTopic } from "./upstream-roadmaps.ts";
 
 /** Stable definition id: conversations reference it across activations. */
@@ -968,6 +970,45 @@ export function upstreamReadTools(
     throw error;
   };
   return [
+    {
+      name: "rank_roadmaps",
+      description:
+        "Rank the developer-roadmap roadmaps by how many of the learner's Knowledge Graph topics each covers. Reads " +
+        "every roadmap from the git data first. Returns chosen (at most two: the best match, and a second that covers " +
+        "at least half as many graph topics) and candidates (every roadmap covering a graph topic). Call it before " +
+        "list_roadmap_topics.",
+      parameters: objectSchema({}),
+      execute: async (_toolCallId, _rawParams, signal) => {
+        assertLive(ctx, signal);
+        const step: LogStep | undefined = log?.begin("roadmap rank");
+        try {
+          const brief = upstream.readGraph?.() ?? null;
+          if (!brief || brief.topics.length === 0) {
+            const note =
+              "The learner's Knowledge Graph is empty. Ask the learner in chat what they want to learn, with one question, " +
+              "and build nothing until they answer.";
+            step?.end({ candidates: 0, chosen: 0, reason: "empty_graph" });
+            return textResult({ chosen: [], candidates: [], note }, JSON.stringify({ chosen: [], candidates: [], note }));
+          }
+          const names = await listRoadmapNames(upstream.commit, upstream);
+          const roadmaps = new Map<string, string[]>();
+          await mapWithConcurrency(names, topicReadConcurrency(upstream), async (name) => {
+            const refs = await listRoadmapTopics(name, upstream.commit, upstream).catch(() => []);
+            roadmaps.set(name, refs.map((topic) => topic.slug));
+          });
+          const ranking = rankRoadmaps(graphBriefTopicKeys(brief), roadmaps);
+          step?.end({
+            candidates: ranking.candidates.length,
+            chosen: ranking.chosen.length,
+            matched: ranking.chosen.map((match) => match.matched).join(","),
+          });
+          return textResult(ranking, JSON.stringify(ranking));
+        } catch (error) {
+          step?.fail(error);
+          return upstreamFailure(error);
+        }
+      },
+    },
     {
       name: "list_roadmap_topics",
       description:
