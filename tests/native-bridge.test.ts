@@ -166,7 +166,7 @@ test("linked sessions receive the node brief with source anchor, artifacts and u
     assert.match(result.text, /# Roadmap child session brief/);
     assert.match(result.text, /Anchor: OSTEP — chapter 26, section 27\.1, pages 301-320/);
     assert.match(result.text, /Drops a sign while expanding\./);
-    assert.match(result.text, /Retrieval cue/);
+    assert.match(result.text, /Memory cues/);
     assert.match(result.text, /Never restructure the path yourself/);
   } finally {
     close(host, directory);

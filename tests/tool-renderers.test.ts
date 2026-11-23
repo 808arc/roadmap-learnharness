@@ -53,9 +53,9 @@ test("renders brief, progress, error and pivot results as short readable cards",
         output: {
           nodeTitle: "Node n-contrast",
           watchpoints: [{}, {}],
-          artifact: { label: "Retrieval cue / flashcard seed" },
+          artifact: { label: "Memory cues" },
         },
-        expected: /Brief for Node n-contrast.*2 open errors.*Retrieval cue/s,
+        expected: /Brief for Node n-contrast.*2 open errors.*Memory cues/s,
       },
       {
         toolName: "roadmap_update_progress",
