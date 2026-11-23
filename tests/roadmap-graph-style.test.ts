@@ -7,7 +7,7 @@ import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import type { NodePrerequisites } from "../src/node-prerequisites.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
-import { DOT_D, DOT_X, layoutGraph } from "../src/view/roadmap-layout.ts";
+import { DOT_D, DOT_X, drawnWidth, layoutGraph } from "../src/view/roadmap-layout.ts";
 import { makeNode, makePath } from "./fixtures.ts";
 
 const { parseHTML } = createRequire(import.meta.url)("linkedom") as {
@@ -117,7 +117,7 @@ test("left to right: arrows run from the end of each prerequisite's title to its
   const at = (id: string) => layout.nodes.find((placed) => placed.node.id === id)!;
   assert.deepEqual(layout.edges.map((edge) => `${edge.from}->${edge.to}`).sort(), ["a->b", "b->c"]);
   for (const edge of layout.edges) {
-    assert.equal(edge.x1, at(edge.from).x + at(edge.from).w, "arrow starts at the end of the prerequisite's title");
+    assert.equal(edge.x1, at(edge.from).x + drawnWidth(at(edge.from)) + 2, "arrow starts at the end of the prerequisite's title");
     assert.equal(edge.x2, at(edge.to).x + DOT_X - DOT_D / 2, "arrow ends at the dependent's dot");
     assert.ok(edge.x1 < edge.x2, "arrow points right");
   }

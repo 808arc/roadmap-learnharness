@@ -8,7 +8,7 @@ import type { NodePrerequisites } from "../src/node-prerequisites.ts";
 import { tables } from "../src/i18n.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
-import { DOT_D, DOT_X, NODE_H, NODE_W, layoutGraph } from "../src/view/roadmap-layout.ts";
+import { DOT_D, DOT_X, NODE_H, NODE_W, drawnWidth, layoutGraph } from "../src/view/roadmap-layout.ts";
 import type { GraphDirection } from "../src/view/roadmap-layout.ts";
 import { makeNode, makePath } from "./fixtures.ts";
 
@@ -43,7 +43,7 @@ test("left to right: depth is the column, depth 0 is leftmost, arrows run from a
   assert.equal(at(layout, "b").x, at(layout, "c").x);
   assert.notEqual(at(layout, "b").y, at(layout, "c").y);
   for (const edge of layout.edges) {
-    assert.equal(edge.x1, at(layout, edge.from).x + NODE_W);
+    assert.equal(edge.x1, at(layout, edge.from).x + drawnWidth(at(layout, edge.from)) + 2);
     assert.equal(edge.x2, at(layout, edge.to).x + DOT_X - DOT_D / 2);
   }
 });

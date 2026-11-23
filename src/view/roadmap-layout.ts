@@ -144,7 +144,7 @@ export function unitKey(node: PathNode): string {
 
 const pairKey = (from: string, to: string): string => `${from}\u0000${to}`;
 
-/** Dependency depth for every shown node, the arrows between them and the tree parents.
+/** Dependency depth for every shown node and the arrows between them.
  *
  * Prerequisites come from `prerequisites` (default: nodePrerequisites, which uses each node's own
  * prerequisites, then module order).
@@ -333,6 +333,8 @@ export type GraphDirection = "bottom-to-top" | "left-to-right";
 /** Vertical gap between two rows of nodes, and horizontal gap between nodes of one row, in bottom-to-top graphs. */
 const ROW_GAP = 56;
 const NODE_GAP = 24;
+/** Bottom to top: the fewest nodes a row holds before its depth wraps into another row (more for larger roadmaps). */
+const MIN_ROW_CAP = 5;
 
 /** Arrows from each prerequisite to its dependent (both ends must be placed). Bottom to top: from the top of the
  * prerequisite's dot to the bottom of the dependent's dot. Left to right: from the end of the prerequisite's title
@@ -352,20 +354,35 @@ function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[], direct
             x2: to.x + DOT_X,
             y2: to.y + (to.h + DOT_D) / 2,
           }
-        : { x1: from.x + from.w, y1: from.y + from.h / 2, x2: to.x + DOT_X - DOT_D / 2, y2: to.y + to.h / 2 };
+        : { x1: from.x + drawnWidth(from) + 2, y1: from.y + from.h / 2, x2: to.x + DOT_X - DOT_D / 2, y2: to.y + to.h / 2 };
     const routed: Edge = {
       from: edge.from,
       to: edge.to,
       ...ends,
       dashed: Boolean(from.node.optional || to.node.optional),
     };
-    const points = routeAround(routed, nodes, direction);
+    // Left to right, the bends sit in the gaps between columns, whatever the title length.
+    const half = (COL_W - NODE_W) / 2;
+    const gutters = direction === "left-to-right" ? { a: from.x + from.w + half, b: to.x - half } : undefined;
+    const points = routeAround(routed, nodes, direction, gutters);
     edges.push(points ? { ...routed, points } : routed);
   }
   return edges;
 }
 
 const ROUTE_MARGIN = 6;
+/** Where a node's title starts (cell padding, dot, gap), and a generous width per title character. */
+const TITLE_X = 23;
+const CHAR_W = 7.5;
+
+/** The part of a node's cell that is drawn: the dot, the title and its tags (estimated), never wider than the cell.
+ * Arrows may pass through the empty rest of the cell; they never cross what is drawn. */
+export function drawnWidth(placed: PlacedNode): number {
+  const { node } = placed;
+  const tag = node.alternativeGroup || node.optional ? 32 : 0;
+  const marks = (node.reviewMark ? 48 : 0) + (node.errors.some((entry) => !entry.resolved) ? 20 : 0);
+  return Math.min(placed.w, TITLE_X + node.title.length * CHAR_W + tag + marks);
+}
 interface Box { readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number }
 type Pt = { readonly x: number; readonly y: number };
 
@@ -391,10 +408,15 @@ function segmentHits(a: Pt, b: Pt, box: Box): boolean {
 /** The bends that take an arrow around the nodes it does not connect, or undefined when the straight line is clear
  * (or no clean route exists, in which case the straight line stays). The route leaves the prerequisite into the gutter
  * between layers, runs to a free lane between pills, and enters the dependent from the gutter on its side. */
-function routeAround(edge: Edge, nodes: readonly PlacedNode[], direction: GraphDirection): Pt[] | undefined {
+function routeAround(
+  edge: Edge,
+  nodes: readonly PlacedNode[],
+  direction: GraphDirection,
+  gutters?: { readonly a: number; readonly b: number },
+): Pt[] | undefined {
   const boxes = nodes
     .filter((n) => n.node.id !== edge.from && n.node.id !== edge.to)
-    .map((n): Box => ({ x1: n.x - ROUTE_MARGIN, y1: n.y - ROUTE_MARGIN, x2: n.x + n.w + ROUTE_MARGIN, y2: n.y + n.h + ROUTE_MARGIN }));
+    .map((n): Box => ({ x1: n.x - ROUTE_MARGIN, y1: n.y - ROUTE_MARGIN, x2: n.x + drawnWidth(n) + ROUTE_MARGIN, y2: n.y + n.h + ROUTE_MARGIN }));
   const start = { x: edge.x1, y: edge.y1 };
   const end = { x: edge.x2, y: edge.y2 };
   const clear = (path: readonly Pt[]): boolean => path.every((pt, i) => i === 0 || !boxes.some((box) => segmentHits(path[i - 1]!, pt, box)));
@@ -406,8 +428,8 @@ function routeAround(edge: Edge, nodes: readonly PlacedNode[], direction: GraphD
   const at = (p: number, q: number): Pt => (vertical ? { x: q, y: p } : { x: p, y: q });
   const gutter = vertical ? ROW_GAP / 2 : (COL_W - NODE_W) / 2;
   const sign = Math.sign(P(end) - P(start)) || 1;
-  const pA = P(start) + sign * gutter;
-  const pB = P(end) - sign * gutter;
+  const pA = gutters?.a ?? P(start) + sign * gutter;
+  const pB = gutters?.b ?? P(end) - sign * gutter;
   const lo = Math.min(pA, pB);
   const hi = Math.max(pA, pB);
   const spans = boxes
@@ -422,11 +444,14 @@ function routeAround(edge: Edge, nodes: readonly PlacedNode[], direction: GraphD
     edgeOfBlocked = Math.max(edgeOfBlocked, b);
   }
   if (edgeOfBlocked !== -Infinity) lanes.push(edgeOfBlocked + 1);
+  // The straight line can clip a neighbour in its own row (or the target's) even when nothing lies between the
+  // gutters: then running along the gutters to either end's own line is the route.
+  lanes.push(Q(start), Q(end));
   const mid = (Q(start) + Q(end)) / 2;
   lanes.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid) || a - b);
   for (const lane of lanes) {
     const path = [start, at(pA, Q(start)), at(pA, lane), at(pB, lane), at(pB, Q(end)), end];
-    if (clear(path)) return path.slice(1, -1);
+    if (clear(path)) return path.slice(1, -1).filter((pt, i, all) => i === 0 || pt.x !== all[i - 1]!.x || pt.y !== all[i - 1]!.y);
   }
   return undefined;
 }
@@ -446,7 +471,7 @@ function cycleSafeGraph(graph: DependencyGraph, all: readonly PathNode[]): Depen
 
 /** The graph: every shown node is a dot in the row (or column) of its dependency depth, placed as a network
  * (spreadColumns) with an arrow from each prerequisite to its dependent. Each module gets a small label at its
- * first node (the shallowest, then the leftmost in the first row). */
+ * first node (the shallowest, then the lowest and leftmost). */
 export function layoutGraph(
   path: LearningPath,
   options: {
@@ -477,10 +502,34 @@ export function layoutGraph(
     list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
   }
   const vertical = direction === "bottom-to-top";
-  const offsets = spreadColumns(cells, graph.edges, vertical ? NODE_W + NODE_GAP : NODE_ROW);
+  // Bottom to top, a depth wider than `rowCap` nodes wraps into several rows of that depth, so a shallow, wide
+  // roadmap uses the height instead of one long band. Units (alternatives) are dealt whole, round robin, so each row
+  // spans the depth's order and alternatives stay together. Left to right keeps one column per depth.
+  const rowCap = Math.max(MIN_ROW_CAP, Math.ceil(Math.sqrt(graph.nodeIds.length)));
+  const rows = new Map<number, PathNode[]>();
+  const depthOfRow: number[] = [];
+  for (const depth of [...cells.keys()].sort((a, b) => a - b)) {
+    const list = cells.get(depth)!;
+    const units: PathNode[][] = [];
+    for (const node of list) {
+      const last = units[units.length - 1];
+      if (last && unitKey(last[0]!) === unitKey(node)) last.push(node);
+      else units.push([node]);
+    }
+    const count = vertical ? Math.min(units.length, Math.ceil(list.length / rowCap)) : 1;
+    const first = depthOfRow.length;
+    for (let row = 0; row < count; row += 1) {
+      rows.set(first + row, []);
+      depthOfRow.push(depth);
+    }
+    units.forEach((unit, index) => rows.get(first + (index % count))!.push(...unit));
+  }
+  const rowCount = depthOfRow.length;
+  const offsets = spreadColumns(rows, graph.edges, vertical ? NODE_W + NODE_GAP : NODE_ROW);
   const rowStep = NODE_H + ROW_GAP;
   const nodes: PlacedNode[] = [];
-  for (const [depth, list] of cells) {
+  for (const [row, list] of rows) {
+    const depth = depthOfRow[row]!;
     for (const node of list) {
       const offset = offsets.get(node.id) ?? 0;
       const owner = moduleOf.get(node.id)!;
@@ -490,8 +539,8 @@ export function layoutGraph(
         moduleIndex: owner.index,
         depth,
         x: vertical ? PAD + offset : PAD + depth * COL_W,
-        // Bottom to top: depth 0 is the bottom row. Left to right: the spread is the row; leave room for the labels above.
-        y: vertical ? PAD + (columns - 1 - depth) * rowStep : PAD + LABEL_H + offset,
+        // Bottom to top: the first row of depth 0 is the bottom row. Left to right: the spread is the row; leave room for the labels above.
+        y: vertical ? PAD + (rowCount - 1 - row) * rowStep : PAD + LABEL_H + offset,
         w: NODE_W,
         h: NODE_H,
       });
@@ -501,7 +550,7 @@ export function layoutGraph(
     ? PAD + (offsets.size > 0 ? Math.max(...offsets.values()) : 0) + NODE_W + PAD
     : PAD + (Math.max(columns, 1) - 1) * COL_W + NODE_W + PAD;
   const height = vertical
-    ? PAD + (columns > 0 ? (columns - 1) * rowStep + NODE_H : NODE_H) + PAD + PAD_BOTTOM
+    ? PAD + (rowCount > 0 ? (rowCount - 1) * rowStep + NODE_H : NODE_H) + PAD + PAD_BOTTOM
     : PAD + LABEL_H + spreadHeight(offsets) + PAD + PAD_BOTTOM;
 
   const modules: PlacedModule[] = [];
@@ -510,7 +559,10 @@ export function layoutGraph(
     if (own.length === 0) return;
     // The module's first node: the shallowest one, then the leftmost (bottom to top) or the topmost (left to right).
     const first = own.reduce((best, placed) =>
-      placed.depth < best.depth || (placed.depth === best.depth && (vertical ? placed.x < best.x : placed.y < best.y)) ? placed : best,
+      placed.depth < best.depth ||
+      (placed.depth === best.depth && (vertical ? placed.y > best.y || (placed.y === best.y && placed.x < best.x) : placed.y < best.y))
+        ? placed
+        : best,
     );
     modules.push({
       module,

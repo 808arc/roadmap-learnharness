@@ -89,14 +89,19 @@ test("optional nodes get dashed arrows, and hiding one reconnects its neighbours
   assert.deepEqual(hidden.edges.map((edge) => [edge.from, edge.to, edge.dashed]), [["a", "c", false]]);
 });
 
-test("a row with many nodes keeps every node, side by side without overlap", () => {
+test("a depth with many nodes keeps every node and wraps into several rows instead of one long band", () => {
   const nodes = Array.from({ length: 30 }, (_, index) => makeNode(`n${index}`, "skill"));
   const layout = layoutGraph(pathWith(nodes), { showOptional: true, prerequisites: prerequisites({}, nodes) });
   assert.equal(layout.nodes.length, 30, "no node is dropped");
-  assert.equal(new Set(layout.nodes.map((placed) => placed.x)).size, 30, "one slot per node");
-  const sorted = [...layout.nodes].sort((a, b) => a.x - b.x);
-  for (let i = 1; i < sorted.length; i += 1) assert.ok(sorted[i]!.x >= sorted[i - 1]!.x + sorted[i - 1]!.w, "no two nodes overlap");
-  assert.ok(layout.width >= 30 * sorted[0]!.w, "the canvas grows with the row");
+  assert.ok(layout.nodes.every((placed) => placed.depth === 0), "wrapping keeps the depth");
+  const wrapped = new Map<number, typeof layout.nodes[number][]>();
+  for (const placed of layout.nodes) wrapped.set(placed.y, [...(wrapped.get(placed.y) ?? []), placed]);
+  assert.ok(wrapped.size >= 4, `30 nodes at one depth use several rows (got ${wrapped.size})`);
+  for (const row of wrapped.values()) {
+    const sorted = [...row].sort((a, b) => a.x - b.x);
+    for (let i = 1; i < sorted.length; i += 1) assert.ok(sorted[i]!.x >= sorted[i - 1]!.x + sorted[i - 1]!.w, "no two nodes of a row overlap");
+  }
+  assert.ok(layout.width < 10 * layout.nodes[0]!.w, `the band stays narrow (width ${layout.width})`);
   const across = layoutGraph(pathWith(nodes), { showOptional: true, prerequisites: prerequisites({}, nodes), direction: "left-to-right" });
   const rows = [...across.nodes].sort((a, b) => a.y - b.y);
   for (let i = 1; i < rows.length; i += 1) assert.ok(rows[i]!.y >= rows[i - 1]!.y + NODE_ROW, "left to right: rows keep their pitch");
