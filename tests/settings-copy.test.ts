@@ -72,3 +72,14 @@ test("no interface string names the upstream roadmap source", () => {
     }
   }
 });
+
+test("artifact names avoid unexplained jargon", () => {
+  for (const [lang, table] of [
+    ["en", en],
+    ["ru", ru],
+  ] as const) {
+    for (const key of [...table.keys()].filter((candidate) => candidate.startsWith("art."))) {
+      assert.doesNotMatch(table.get(key) ?? "", /seed|textbook|заготовк/i, `${lang} ${key} stays in plain words`);
+    }
+  }
+});
