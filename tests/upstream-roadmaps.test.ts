@@ -758,3 +758,18 @@ test("a batch request goes only to the pinned repo under roadmaps/", async (t) =
   const listingCalls = calls.filter((call) => call.url.includes("/content?ref="));
   assert.equal(listingCalls.length, 1, "the listing is read once for the batch");
 });
+
+test("a slug with more than one file is listed once, at its first position", async () => {
+  const { topicRefsOf } = await import("../src/upstream-roadmaps.ts");
+  const refs = topicRefsOf([
+    "c@n4IsklfYJXFIyF1rGWuEa.md",
+    "c@1kQJs-3Aw8Bi7d_Xh67zS.md",
+    "c@jHKCLfLml8oZyj4829gx0.md",
+    "a@Yrk2PLUa-_FAPlhCkMl3e.md",
+    "README.md",
+  ]);
+  assert.deepEqual(refs, [
+    { slug: "c", file: "c@n4IsklfYJXFIyF1rGWuEa.md" },
+    { slug: "a", file: "a@Yrk2PLUa-_FAPlhCkMl3e.md" },
+  ]);
+});
