@@ -140,7 +140,7 @@ test("a child brief carries the anchor, pre-reading, priming, interleaving and w
   assert.match(brief.text, /\[procedural_slip\] Drops a sign while expanding\./);
   assert.match(brief.text, /still unresolved/);
   assert.doesNotMatch(brief.text, /Assumes the map is the proof/);
-  assert.match(brief.text, /Recommended: Retrieval cue \/ flashcard seed \(retrieval_cue\)/);
+  assert.match(brief.text, /Recommended: Memory cues \(retrieval_cue\)/);
   assert.ok(brief.text.includes(ARTIFACT_CATALOG.find((entry) => entry.type === "retrieval_cue")!.justification));
   assert.match(brief.text, /there is no gate and no priming requirement/);
   assert.doesNotMatch(brief.text, PACING);

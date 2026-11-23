@@ -72,3 +72,25 @@ test("no interface string names the upstream roadmap source", () => {
     }
   }
 });
+
+test("artifact names avoid unexplained jargon", () => {
+  for (const [lang, table] of [
+    ["en", en],
+    ["ru", ru],
+  ] as const) {
+    for (const key of [...table.keys()].filter((candidate) => candidate.startsWith("art."))) {
+      assert.doesNotMatch(table.get(key) ?? "", /seed|textbook|заготовк/i, `${lang} ${key} stays in plain words`);
+    }
+  }
+});
+
+test("artifact catalog text in domain.ts avoids seed and textbook wording", () => {
+  const domain = fs.readFileSync(new URL("../src/domain.ts", import.meta.url), "utf8");
+  const catalog = domain.slice(domain.indexOf("ARTIFACT_CATALOG"), domain.indexOf("export function artifactCatalogEntry"));
+  assert.ok(catalog.length > 100, "catalog block was found");
+  const texts = [...catalog.matchAll(/(?:label|justification):\s*\n?\s*"((?:[^"\\]|\\.)*)"/g)].map((match) => match[1]!);
+  assert.ok(texts.length > 0, "catalog strings were found");
+  for (const text of texts) {
+    assert.doesNotMatch(text, /seed|textbook|flashcard|заготовк|учебник/i, `catalog text stays in plain words: ${text}`);
+  }
+});

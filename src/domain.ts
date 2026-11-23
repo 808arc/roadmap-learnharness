@@ -89,14 +89,14 @@ export const ARTIFACT_CATALOG: readonly ArtifactCatalogEntry[] = [
     label: "Derivation / worked trace",
     bestFor: ["concept", "skill"],
     justification:
-      "Verifies step-by-step causal continuity without relying on the textbook's visual scaffolding.",
+      "Verifies step-by-step causal continuity without leaning on the source's diagrams and layout.",
   },
   {
     type: "retrieval_cue",
-    label: "Retrieval cue / flashcard seed",
+    label: "Memory cues",
     bestFor: ["skill"],
     justification:
-      "Crystallizes atomic hooks and heuristics after comprehension is established so tactical fluency stays sharp.",
+      "Turns short hooks and rules of thumb into memory cues after comprehension is established so tactical fluency stays sharp.",
   },
   {
     type: "none",
