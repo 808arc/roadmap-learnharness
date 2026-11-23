@@ -265,112 +265,247 @@ function isotonic(values: readonly number[]): number[] {
   return blocks.flatMap((block) => Array.from({ length: block.count }, () => block.sum / block.count));
 }
 
-/** Sweeps over the columns: each sweep left to right (towards prerequisites), then right to left (towards dependents). */
-const SPREAD_SWEEPS = 4;
-
-/** Network placement of one set of depth columns (layered-graph method).
- *
- * Each column is reordered and every node gets a vertical offset near its neighbours on the arrows that touch it,
- * so a node sits centred on its prerequisites or dependents, branches fan out and merges converge. Nodes in a
- * column keep their order and stay at least `pitch` apart: each column is packed with the least-squares fit that
- * keeps both (pool adjacent violators). Alternatives of one unit move as one key, so they stay adjacent.
- * Arrows whose ends are not both in `cells` are ignored. Reorders the lists in `cells`; returns offsets from 0.
- * Deterministic: the same columns and arrows always give the same placement. */
-export function spreadColumns(
-  cells: ReadonlyMap<number, PathNode[]>,
-  edges: readonly DependencyEdge[],
-  pitch: number,
-): Map<string, number> {
-  const depths = [...cells.keys()].sort((a, b) => a - b);
-  const y = new Map<string, number>();
-  for (const depth of depths) cells.get(depth)!.forEach((node, row) => y.set(node.id, row * pitch));
-  const prerequisites = new Map<string, string[]>();
-  const dependents = new Map<string, string[]>();
-  for (const edge of edges) {
-    if (!y.has(edge.from) || !y.has(edge.to)) continue;
-    prerequisites.set(edge.to, [...(prerequisites.get(edge.to) ?? []), edge.from]);
-    dependents.set(edge.from, [...(dependents.get(edge.from) ?? []), edge.to]);
-  }
-
-  const place = (list: PathNode[], neighbours: ReadonlyMap<string, readonly string[]>): void => {
-    const desired = new Map<string, number>();
-    for (const node of list) {
-      const near = neighbours.get(node.id) ?? [];
-      desired.set(node.id, near.length > 0 ? near.reduce((sum, id) => sum + y.get(id)!, 0) / near.length : y.get(node.id)!);
-    }
-    const index = new Map(list.map((node, row) => [node.id, row] as const));
-    const unitSum = new Map<string, { sum: number; count: number; first: number }>();
-    for (const node of list) {
-      const key = unitKey(node);
-      const entry = unitSum.get(key) ?? { sum: 0, count: 0, first: index.get(node.id)! };
-      unitSum.set(key, { sum: entry.sum + desired.get(node.id)!, count: entry.count + 1, first: entry.first });
-    }
-    const unitOf = (node: PathNode) => unitSum.get(unitKey(node))!;
-    list.sort((a, b) => {
-      const ua = unitOf(a);
-      const ub = unitOf(b);
-      return ua.sum / ua.count - ub.sum / ub.count || ua.first - ub.first || index.get(a.id)! - index.get(b.id)!;
-    });
-    const fitted = isotonic(list.map((node, row) => desired.get(node.id)! - row * pitch));
-    list.forEach((node, row) => y.set(node.id, fitted[row]! + row * pitch));
-  };
-
-  for (let sweep = 0; sweep < SPREAD_SWEEPS; sweep += 1) {
-    for (const depth of depths) place(cells.get(depth)!, prerequisites);
-    for (const depth of [...depths].reverse()) place(cells.get(depth)!, dependents);
-  }
-  const top = y.size > 0 ? Math.min(...y.values()) : 0;
-  return new Map([...y].map(([id, offset]) => [id, offset - top] as const));
-}
-
-/** Height of a spread: from offset 0 to the bottom of the lowest node. */
-const spreadHeight = (offsets: ReadonlyMap<string, number>): number =>
-  offsets.size === 0 ? 0 : Math.max(...offsets.values()) + NODE_H;
-
 /** Which way the graph view runs: depth as rows from the bottom up, or as columns from the left. */
 export type GraphDirection = "bottom-to-top" | "left-to-right";
 
 /** Vertical gap between two rows of nodes, and horizontal gap between nodes of one row, in bottom-to-top graphs. */
 const ROW_GAP = 56;
 const NODE_GAP = 24;
+/** Left to right: free space kept between two nodes of one column. */
+const COL_NODE_GAP = NODE_ROW - NODE_H;
 /** Bottom to top: the fewest nodes a row holds before its depth wraps into another row (more for larger roadmaps). */
 const MIN_ROW_CAP = 5;
+/** Left to right: the fewest nodes a column holds before its depth wraps into another column. */
+const MIN_COL_CAP = 8;
+/** Width reserved for the lane of an arrow that passes through a layer without a node there. */
+const LANE_W = 8;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Layered arrangement: order each layer by the barycenter of its neighbours, then place the nodes evenly.
+// A layer is a row (bottom to top) or a column (left to right). An arrow that spans more than one layer gets an
+// invisible dummy slot in every layer it passes, so ordering and placement leave a free lane for it.
+
+/** One slot in a layer: a node, or the lane of a long arrow. `size` is its extent across the layer. */
+interface Slot {
+  readonly id: string;
+  /** Alternatives share a unit and stay adjacent; a lane is its own unit. */
+  readonly unit: string;
+  readonly size: number;
+  /** Free space kept around it; two neighbours keep the mean of their two gaps between them. */
+  readonly gap: number;
+  readonly node?: PathNode;
+}
+
+interface LayerLink {
+  /** A slot in layer k. */
+  readonly from: string;
+  /** A slot in layer k + 1. */
+  readonly to: string;
+}
+
+/** Sweeps of the ordering: each is one pass towards the dependents and one back towards the prerequisites. */
+const ORDER_SWEEPS = 12;
+/** Sweeps of the placement before the final passes that centre each slot between both sides. */
+const PLACE_SWEEPS = 4;
+const FINAL_PASSES = 4;
+/** How strongly a slot is held towards the middle line, counted as that many extra neighbours. */
+const HOME_PULL = 3;
+
+interface Arranged {
+  readonly order: Slot[][];
+  /** Centre of each slot across its layer, from 0. */
+  readonly centre: ReadonlyMap<string, number>;
+  /** Extent across: from the lowest slot edge to the highest. */
+  readonly span: number;
+}
+
+/** Layered arrangement of `layers` (slots in the given order as the starting point) joined by `links` between
+ * consecutive layers. Deterministic: the same input always gives the same arrangement. */
+function arrange(layers: readonly (readonly Slot[])[], links: readonly LayerLink[]): Arranged {
+  const order = layers.map((layer) => [...layer]);
+  const before = new Map<string, string[]>();
+  const after = new Map<string, string[]>();
+  for (const link of links) {
+    before.set(link.to, [...(before.get(link.to) ?? []), link.from]);
+    after.set(link.from, [...(after.get(link.from) ?? []), link.to]);
+  }
+  const pos = new Map<string, number>();
+  const refresh = (): void => order.forEach((layer) => layer.forEach((slot, index) => pos.set(slot.id, index)));
+  refresh();
+  const unitCount = new Map<string, number>();
+  for (const layer of order) for (const slot of layer) unitCount.set(slot.unit, (unitCount.get(slot.unit) ?? 0) + 1);
+
+  // Links per layer pair, so crossings are counted without scanning every link.
+  const layerOf = new Map<string, number>();
+  order.forEach((layer, k) => layer.forEach((slot) => layerOf.set(slot.id, k)));
+  const linksAt = order.map((_, k) => links.filter((link) => layerOf.get(link.from) === k));
+  const crossingsAt = (k: number): number => {
+    const pairs = linksAt[k]!.map((link) => [pos.get(link.from)!, pos.get(link.to)!] as const);
+    let count = 0;
+    for (let i = 0; i < pairs.length; i += 1) {
+      for (let j = i + 1; j < pairs.length; j += 1) {
+        const a = pairs[i]!;
+        const b = pairs[j]!;
+        if ((a[0] - b[0]) * (a[1] - b[1]) < 0) count += 1;
+      }
+    }
+    return count;
+  };
+  const totalCrossings = (): number => order.reduce((sum, _layer, k) => sum + (k < order.length - 1 ? crossingsAt(k) : 0), 0);
+
+  const reorder = (k: number, neighbours: ReadonlyMap<string, readonly string[]>): void => {
+    const layer = order[k]!;
+    const desired = new Map<string, number>();
+    for (const slot of layer) {
+      const near = neighbours.get(slot.id) ?? [];
+      desired.set(slot.id, near.length > 0 ? near.reduce((sum, id) => sum + pos.get(id)!, 0) / near.length : pos.get(slot.id)!);
+    }
+    const unitSum = new Map<string, { sum: number; count: number; first: number }>();
+    for (const slot of layer) {
+      const entry = unitSum.get(slot.unit) ?? { sum: 0, count: 0, first: pos.get(slot.id)! };
+      unitSum.set(slot.unit, { sum: entry.sum + desired.get(slot.id)!, count: entry.count + 1, first: entry.first });
+    }
+    layer.sort((a, b) => {
+      const ua = unitSum.get(a.unit)!;
+      const ub = unitSum.get(b.unit)!;
+      return ua.sum / ua.count - ub.sum / ub.count || ua.first - ub.first || pos.get(a.id)! - pos.get(b.id)!;
+    });
+    layer.forEach((slot, index) => pos.set(slot.id, index));
+  };
+
+  /** Crossings of the arrows of two adjacent slots, with `left` standing left of `right`. */
+  const pairCrossings = (left: Slot, right: Slot): number => {
+    let count = 0;
+    for (const neighbours of [before, after]) {
+      for (const a of neighbours.get(left.id) ?? []) {
+        for (const b of neighbours.get(right.id) ?? []) if (pos.get(a)! > pos.get(b)!) count += 1;
+      }
+    }
+    return count;
+  };
+  const transpose = (): void => {
+    for (let pass = 0; pass < 6; pass += 1) {
+      let improved = false;
+      for (const layer of order) {
+        for (let i = 0; i + 1 < layer.length; i += 1) {
+          const a = layer[i]!;
+          const b = layer[i + 1]!;
+          if (a.unit === b.unit || unitCount.get(a.unit) !== 1 || unitCount.get(b.unit) !== 1) continue;
+          if (pairCrossings(b, a) < pairCrossings(a, b)) {
+            layer[i] = b;
+            layer[i + 1] = a;
+            pos.set(a.id, i + 1);
+            pos.set(b.id, i);
+            improved = true;
+          }
+        }
+      }
+      if (!improved) break;
+    }
+  };
+
+  let best = order.map((layer) => [...layer]);
+  let bestCount = totalCrossings();
+  for (let sweep = 0; sweep < ORDER_SWEEPS && bestCount > 0; sweep += 1) {
+    if (sweep % 2 === 0) for (let k = 1; k < order.length; k += 1) reorder(k, before);
+    else for (let k = order.length - 2; k >= 0; k -= 1) reorder(k, after);
+    transpose();
+    const count = totalCrossings();
+    if (count < bestCount) {
+      bestCount = count;
+      best = order.map((layer) => [...layer]);
+    }
+  }
+  best.forEach((layer, k) => {
+    order[k] = layer;
+  });
+  refresh();
+
+  // Placement: every layer is packed at the least-squares fit of "centred on the neighbours" that keeps the order
+  // and the minimum distance between slots (pool adjacent violators).
+  const centre = new Map<string, number>();
+  const offsets = order.map((layer) => {
+    const offset: number[] = [];
+    layer.forEach((slot, index) => offset.push(index === 0 ? 0 : offset[index - 1]! + (layer[index - 1]!.size + slot.size + layer[index - 1]!.gap + slot.gap) / 2));
+    return offset;
+  });
+  order.forEach((layer, k) => layer.forEach((slot, index) => centre.set(slot.id, offsets[k]![index]!)));
+  // A slot is also drawn a little towards its place in a layer packed around the common middle line, so long
+  // arrows cannot stretch a layer into a staircase that grows wider than the graph is deep.
+  const widest = Math.max(0, ...offsets.map((offset) => (offset.length > 0 ? offset[offset.length - 1]! : 0)));
+  const home = (k: number, index: number): number => offsets[k]![index]! - offsets[k]![offsets[k]!.length - 1]! / 2 + widest / 2;
+  const place = (k: number, sides: readonly ReadonlyMap<string, readonly string[]>[]): void => {
+    const layer = order[k]!;
+    const targets = layer.map((slot, index) => {
+      const near = sides.flatMap((side) => side.get(slot.id) ?? []);
+      const wanted =
+        near.length > 0
+          ? (near.reduce((sum, id) => sum + centre.get(id)!, 0) + HOME_PULL * home(k, index)) / (near.length + HOME_PULL)
+          : centre.get(slot.id)!;
+      return wanted - offsets[k]![index]!;
+    });
+    const fitted = isotonic(targets);
+    layer.forEach((slot, index) => centre.set(slot.id, fitted[index]! + offsets[k]![index]!));
+  };
+  for (let sweep = 0; sweep < PLACE_SWEEPS; sweep += 1) {
+    for (let k = 1; k < order.length; k += 1) place(k, [before]);
+    for (let k = order.length - 2; k >= 0; k -= 1) place(k, [after]);
+  }
+  for (let pass = 0; pass < FINAL_PASSES; pass += 1) {
+    for (let k = 0; k < order.length; k += 1) place(k, [before, after]);
+  }
+  let low = Infinity;
+  let high = -Infinity;
+  for (const layer of order) {
+    for (const slot of layer) {
+      low = Math.min(low, centre.get(slot.id)! - slot.size / 2);
+      high = Math.max(high, centre.get(slot.id)! + slot.size / 2);
+    }
+  }
+  if (!Number.isFinite(low)) return { order, centre, span: 0 };
+  for (const [id, value] of centre) centre.set(id, value - low);
+  return { order, centre, span: high - low };
+}
+
+interface Lane {
+  /** The layer the arrow passes through. */
+  readonly layer: number;
+  /** Where it crosses that layer: x (bottom to top) or y (left to right) of its centre line. */
+  readonly at: number;
+}
+
+interface Geometry {
+  readonly direction: GraphDirection;
+  /** Top (bottom to top) or left (left to right) of a layer. */
+  readonly start: (layer: number) => number;
+  /** Lanes of arrows that span more than one layer, in order from the prerequisite's layer to the dependent's. */
+  readonly lanes: ReadonlyMap<string, readonly Lane[]>;
+}
+
+export const laneKey = (from: string, to: string): string => `${from}\u0000${to}`;
 
 /** Arrows from each prerequisite to its dependent (both ends must be placed). Bottom to top: from the top of the
  * prerequisite's dot to the bottom of the dependent's dot. Left to right: from the end of the prerequisite's title
  * to the left of the dependent's dot. */
-function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[], direction: GraphDirection = "left-to-right"): Edge[] {
+function placeEdges(graph: DependencyGraph, nodes: readonly PlacedNode[], geometry: Geometry): Edge[] {
   const placedNodes = new Map(nodes.map((placed) => [placed.node.id, placed]));
+  const vertical = geometry.direction === "bottom-to-top";
   const edges: Edge[] = [];
   for (const edge of graph.edges) {
     const from = placedNodes.get(edge.from);
     const to = placedNodes.get(edge.to);
     if (!from || !to) continue;
-    const ends =
-      direction === "bottom-to-top"
-        ? {
-            x1: from.x + DOT_X,
-            y1: from.y + (from.h - DOT_D) / 2,
-            x2: to.x + DOT_X,
-            y2: to.y + (to.h + DOT_D) / 2,
-          }
-        : { x1: from.x + drawnWidth(from) + 2, y1: from.y + from.h / 2, x2: to.x + DOT_X - DOT_D / 2, y2: to.y + to.h / 2 };
-    const routed: Edge = {
-      from: edge.from,
-      to: edge.to,
-      ...ends,
-      dashed: Boolean(from.node.optional || to.node.optional),
-    };
-    // Left to right, the bends sit in the gaps between columns, whatever the title length.
-    const half = (COL_W - NODE_W) / 2;
-    const gutters = direction === "left-to-right" ? { a: from.x + from.w + half, b: to.x - half } : undefined;
-    const points = routeAround(routed, nodes, direction, gutters);
-    edges.push(points ? { ...routed, points } : routed);
+    const ends = vertical
+      ? { x1: from.x + DOT_X, y1: from.y + (from.h - DOT_D) / 2, x2: to.x + DOT_X, y2: to.y + (to.h + DOT_D) / 2 }
+      : { x1: from.x + drawnWidth(from) + 2, y1: from.y + from.h / 2, x2: to.x + DOT_X - DOT_D / 2, y2: to.y + to.h / 2 };
+    const routed: Edge = { from: edge.from, to: edge.to, ...ends, dashed: Boolean(from.node.optional || to.node.optional) };
+    const points = routeEdge(routed, from, to, nodes, geometry);
+    edges.push(points.length > 0 ? { ...routed, points } : routed);
   }
   return edges;
 }
 
-const ROUTE_MARGIN = 6;
+const ROUTE_MARGIN = 3;
 /** Where a node's title starts (cell padding, dot, gap), and a generous width per title character. */
 const TITLE_X = 23;
 const CHAR_W = 7.5;
@@ -405,55 +540,52 @@ function segmentHits(a: Pt, b: Pt, box: Box): boolean {
   return true;
 }
 
-/** The bends that take an arrow around the nodes it does not connect, or undefined when the straight line is clear
- * (or no clean route exists, in which case the straight line stays). The route leaves the prerequisite into the gutter
- * between layers, runs to a free lane between pills, and enters the dependent from the gutter on its side. */
-function routeAround(
-  edge: Edge,
-  nodes: readonly PlacedNode[],
-  direction: GraphDirection,
-  gutters?: { readonly a: number; readonly b: number },
-): Pt[] | undefined {
+/** Drops duplicate points and points that lie on the straight line between their neighbours. */
+function simplify(path: readonly Pt[]): Pt[] {
+  const kept: Pt[] = [];
+  for (const pt of path) {
+    const last = kept[kept.length - 1];
+    if (last && last.x === pt.x && last.y === pt.y) continue;
+    kept.push(pt);
+  }
+  const out: Pt[] = [];
+  kept.forEach((pt, index) => {
+    const prev = out[out.length - 1];
+    const next = kept[index + 1];
+    if (prev && next && Math.abs((pt.x - prev.x) * (next.y - pt.y) - (pt.y - prev.y) * (next.x - pt.x)) < 1e-6) {
+      const forward = (pt.x - prev.x) * (next.x - pt.x) + (pt.y - prev.y) * (next.y - pt.y) > 0;
+      if (forward) return;
+    }
+    out.push(pt);
+  });
+  return out;
+}
+
+/** The bends of one arrow (start and end excluded). The arrow runs straight when that is clear; otherwise it leaves
+ * the prerequisite's cell along the depth axis, crosses each layer it passes in that arrow's own lane (free space
+ * between nodes), and enters the dependent's cell along the depth axis. Between two layers it runs diagonally in
+ * the open gap, where no node stands. */
+function routeEdge(edge: Edge, from: PlacedNode, to: PlacedNode, nodes: readonly PlacedNode[], geometry: Geometry): Pt[] {
+  const vertical = geometry.direction === "bottom-to-top";
+  const start = { x: edge.x1, y: edge.y1 };
+  const end = { x: edge.x2, y: edge.y2 };
   const boxes = nodes
     .filter((n) => n.node.id !== edge.from && n.node.id !== edge.to)
     .map((n): Box => ({ x1: n.x - ROUTE_MARGIN, y1: n.y - ROUTE_MARGIN, x2: n.x + drawnWidth(n) + ROUTE_MARGIN, y2: n.y + n.h + ROUTE_MARGIN }));
-  const start = { x: edge.x1, y: edge.y1 };
-  const end = { x: edge.x2, y: edge.y2 };
   const clear = (path: readonly Pt[]): boolean => path.every((pt, i) => i === 0 || !boxes.some((box) => segmentHits(path[i - 1]!, pt, box)));
-  if (clear([start, end])) return undefined;
-  // p runs along depth, q across it; bottom to top: p = y, q = x. Left to right: p = x, q = y.
-  const vertical = direction === "bottom-to-top";
-  const P = (pt: Pt): number => (vertical ? pt.y : pt.x);
-  const Q = (pt: Pt): number => (vertical ? pt.x : pt.y);
-  const at = (p: number, q: number): Pt => (vertical ? { x: q, y: p } : { x: p, y: q });
-  const gutter = vertical ? ROW_GAP / 2 : (COL_W - NODE_W) / 2;
-  const sign = Math.sign(P(end) - P(start)) || 1;
-  const pA = gutters?.a ?? P(start) + sign * gutter;
-  const pB = gutters?.b ?? P(end) - sign * gutter;
-  const lo = Math.min(pA, pB);
-  const hi = Math.max(pA, pB);
-  const spans = boxes
-    .filter((box) => (vertical ? box.y2 > lo && box.y1 < hi : box.x2 > lo && box.x1 < hi))
-    .map((box): [number, number] => (vertical ? [box.x1, box.x2] : [box.y1, box.y2]))
-    .sort((a, b) => a[0] - b[0]);
-  const lanes: number[] = [];
-  let edgeOfBlocked = -Infinity;
-  for (const [a, b] of spans) {
-    if (edgeOfBlocked === -Infinity) lanes.push(a - 1);
-    else if (a > edgeOfBlocked) lanes.push((edgeOfBlocked + a) / 2);
-    edgeOfBlocked = Math.max(edgeOfBlocked, b);
-  }
-  if (edgeOfBlocked !== -Infinity) lanes.push(edgeOfBlocked + 1);
-  // The straight line can clip a neighbour in its own row (or the target's) even when nothing lies between the
-  // gutters: then running along the gutters to either end's own line is the route.
-  lanes.push(Q(start), Q(end));
-  const mid = (Q(start) + Q(end)) / 2;
-  lanes.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid) || a - b);
-  for (const lane of lanes) {
-    const path = [start, at(pA, Q(start)), at(pA, lane), at(pB, lane), at(pB, Q(end)), end];
-    if (clear(path)) return path.slice(1, -1).filter((pt, i, all) => i === 0 || pt.x !== all[i - 1]!.x || pt.y !== all[i - 1]!.y);
-  }
-  return undefined;
+  const lanes = geometry.lanes.get(laneKey(edge.from, edge.to)) ?? [];
+  // Through a lane: bottom to top the arrow rises through the row, left to right it runs along the column.
+  const through = lanes.flatMap((lane): Pt[] => {
+    const a = geometry.start(lane.layer);
+    return vertical
+      ? [{ x: lane.at, y: a + NODE_H }, { x: lane.at, y: a }]
+      : [{ x: a, y: lane.at }, { x: a + NODE_W, y: lane.at }];
+  });
+  const direct = [start, ...through, end];
+  if (clear(direct)) return simplify(direct).slice(1, -1);
+  const out: Pt = vertical ? { x: start.x, y: from.y } : { x: Math.max(start.x, from.x + from.w), y: start.y };
+  const into: Pt = vertical ? { x: end.x, y: to.y + to.h } : { x: to.x, y: end.y };
+  return simplify([start, out, ...through, into, end]).slice(1, -1);
 }
 
 /** The graph view's depth rule (LearnHarness's inference depth, graph-depth.ts) over alternative units.
@@ -469,9 +601,11 @@ function cycleSafeGraph(graph: DependencyGraph, all: readonly PathNode[]): Depen
   return { ...graph, depth, edges };
 }
 
-/** The graph: every shown node is a dot in the row (or column) of its dependency depth, placed as a network
- * (spreadColumns) with an arrow from each prerequisite to its dependent. Each module gets a small label at its
- * first node (the shallowest, then the lowest and leftmost). */
+
+/** The graph: every shown node is a dot in the layer (row or column) of its dependency depth, arranged by the
+ * layered method (arrange) with an arrow from each prerequisite to its dependent. Each module gets a small label at
+ * its first node (the shallowest, then the lowest and leftmost). A depth with more nodes than fit one layer wraps
+ * into several layers, in both directions, so the graph keeps a bounded shape. */
 export function layoutGraph(
   path: LearningPath,
   options: {
@@ -491,7 +625,6 @@ export function layoutGraph(
     const key = unitKey(node);
     if (!firstOfUnit.has(key)) firstOfUnit.set(key, flatIndex.get(node.id)!);
   }
-  const columns = graph.nodeIds.length === 0 ? 0 : Math.max(...graph.depth.values()) + 1;
   const cells = new Map<number, PathNode[]>();
   for (const node of all) {
     const depth = graph.depth.get(node.id);
@@ -502,56 +635,104 @@ export function layoutGraph(
     list.sort((a, b) => firstOfUnit.get(unitKey(a))! - firstOfUnit.get(unitKey(b))! || flatIndex.get(a.id)! - flatIndex.get(b.id)!);
   }
   const vertical = direction === "bottom-to-top";
-  // Bottom to top, a depth wider than `rowCap` nodes wraps into several rows of that depth, so a shallow, wide
-  // roadmap uses the height instead of one long band. Units (alternatives) are dealt whole, round robin, so each row
-  // spans the depth's order and alternatives stay together. Left to right keeps one column per depth.
-  const rowCap = Math.max(MIN_ROW_CAP, Math.ceil(Math.sqrt(graph.nodeIds.length)));
-  const rows = new Map<number, PathNode[]>();
-  const depthOfRow: number[] = [];
-  for (const depth of [...cells.keys()].sort((a, b) => a - b)) {
-    const list = cells.get(depth)!;
-    const units: PathNode[][] = [];
-    for (const node of list) {
-      const last = units[units.length - 1];
-      if (last && unitKey(last[0]!) === unitKey(node)) last.push(node);
-      else units.push([node]);
-    }
-    const count = vertical ? Math.min(units.length, Math.ceil(list.length / rowCap)) : 1;
-    const first = depthOfRow.length;
-    for (let row = 0; row < count; row += 1) {
-      rows.set(first + row, []);
-      depthOfRow.push(depth);
-    }
-    units.forEach((unit, index) => rows.get(first + (index % count))!.push(...unit));
+  const slotSize = vertical ? NODE_W : NODE_H;
+  const laneSize = vertical ? LANE_W : 4;
+  const gap = vertical ? NODE_GAP : COL_NODE_GAP;
+  const laneGap = vertical ? 8 : 6;
+  const depths = [...cells.keys()].sort((a, b) => a - b);
+
+  /** Arranges layers of nodes, with a lane slot in every layer an arrow passes through. */
+  const solve = (layerNodes: readonly (readonly PathNode[])[]) => {
+    const layerOf = new Map<string, number>();
+    layerNodes.forEach((list, k) => list.forEach((node) => layerOf.set(node.id, k)));
+    const layers: Slot[][] = layerNodes.map((list) => list.map((node) => ({ id: node.id, unit: unitKey(node), size: slotSize, gap, node })));
+    const links: LayerLink[] = [];
+    const laneSlots = new Map<string, { readonly layer: number; readonly id: string }[]>();
+    graph.edges.forEach((edge, index) => {
+      const a = layerOf.get(edge.from);
+      const b = layerOf.get(edge.to);
+      if (a === undefined || b === undefined || b <= a) return;
+      let previous = edge.from;
+      const chain: { layer: number; id: string }[] = [];
+      for (let k = a + 1; k < b; k += 1) {
+        const id = `lane:${index}:${k}`;
+        layers[k]!.push({ id, unit: id, size: laneSize, gap: laneGap });
+        links.push({ from: previous, to: id });
+        chain.push({ layer: k, id });
+        previous = id;
+      }
+      links.push({ from: previous, to: edge.to });
+      laneSlots.set(laneKey(edge.from, edge.to), chain);
+    });
+    return { arranged: arrange(layers, links), laneSlots };
+  };
+
+  // Order with one layer per depth first; then wrap a depth that is wider than `cap` into several layers (consecutive
+  // runs of that order, alternatives kept whole) and arrange again from that order.
+  const cap = vertical
+    ? Math.max(MIN_ROW_CAP, Math.ceil(Math.sqrt(graph.nodeIds.length)))
+    : Math.max(MIN_COL_CAP, Math.ceil(1.5 * Math.sqrt(graph.nodeIds.length)));
+  let solved = solve(depths.map((depth) => cells.get(depth)!));
+  let depthOfLayer = depths;
+  if (depths.some((depth) => cells.get(depth)!.length > cap)) {
+    const wrapped: PathNode[][] = [];
+    depthOfLayer = [];
+    depths.forEach((depth, k) => {
+      const list = solved.arranged.order[k]!.flatMap((slot) => (slot.node ? [slot.node] : []));
+      const units: PathNode[][] = [];
+      for (const node of list) {
+        const last = units[units.length - 1];
+        if (last && unitKey(last[0]!) === unitKey(node)) last.push(node);
+        else units.push([node]);
+      }
+      const count = Math.min(units.length, Math.ceil(list.length / cap));
+      const target = Math.ceil(list.length / count);
+      const chunks: PathNode[][] = [[]];
+      for (const unit of units) {
+        const current = chunks[chunks.length - 1]!;
+        if (current.length > 0 && current.length + unit.length > target && chunks.length < count) chunks.push([...unit]);
+        else current.push(...unit);
+      }
+      for (const chunk of chunks) {
+        wrapped.push(chunk);
+        depthOfLayer.push(depth);
+      }
+    });
+    solved = solve(wrapped);
   }
-  const rowCount = depthOfRow.length;
-  const offsets = spreadColumns(rows, graph.edges, vertical ? NODE_W + NODE_GAP : NODE_ROW);
+  const { arranged, laneSlots } = solved;
+  const layerCount = arranged.order.length;
   const rowStep = NODE_H + ROW_GAP;
+  /** Top (bottom to top: layer 0 is the bottom row) or left (left to right) of a layer. */
+  const layerStart = (layer: number): number => (vertical ? PAD + (layerCount - 1 - layer) * rowStep : PAD + layer * COL_W);
+  const across = (id: string): number => (vertical ? PAD : PAD + LABEL_H) + arranged.centre.get(id)!;
+
   const nodes: PlacedNode[] = [];
-  for (const [row, list] of rows) {
-    const depth = depthOfRow[row]!;
-    for (const node of list) {
-      const offset = offsets.get(node.id) ?? 0;
+  arranged.order.forEach((layer, k) => {
+    for (const slot of layer) {
+      const node = slot.node;
+      if (!node) continue;
       const owner = moduleOf.get(node.id)!;
       nodes.push({
         node,
         moduleId: owner.id,
         moduleIndex: owner.index,
-        depth,
-        x: vertical ? PAD + offset : PAD + depth * COL_W,
-        // Bottom to top: the first row of depth 0 is the bottom row. Left to right: the spread is the row; leave room for the labels above.
-        y: vertical ? PAD + (rowCount - 1 - row) * rowStep : PAD + LABEL_H + offset,
+        depth: depthOfLayer[k]!,
+        x: vertical ? across(node.id) - NODE_W / 2 : layerStart(k),
+        y: vertical ? layerStart(k) : across(node.id) - NODE_H / 2,
         w: NODE_W,
         h: NODE_H,
       });
     }
-  }
+  });
+  const lanes = new Map<string, Lane[]>();
+  for (const [key, chain] of laneSlots) lanes.set(key, chain.map((slot) => ({ layer: slot.layer, at: across(slot.id) })));
   const width = vertical
-    ? PAD + (offsets.size > 0 ? Math.max(...offsets.values()) : 0) + NODE_W + PAD
-    : PAD + (Math.max(columns, 1) - 1) * COL_W + NODE_W + PAD;
+    ? PAD + Math.max(arranged.span, NODE_W) + PAD
+    : PAD + (Math.max(layerCount, 1) - 1) * COL_W + NODE_W + PAD;
   const height = vertical
-    ? PAD + (rowCount > 0 ? (rowCount - 1) * rowStep + NODE_H : NODE_H) + PAD + PAD_BOTTOM
-    : PAD + LABEL_H + spreadHeight(offsets) + PAD + PAD_BOTTOM;
+    ? PAD + (layerCount > 0 ? (layerCount - 1) * rowStep + NODE_H : NODE_H) + PAD + PAD_BOTTOM
+    : PAD + LABEL_H + arranged.span + PAD + PAD_BOTTOM;
 
   const modules: PlacedModule[] = [];
   path.modules.forEach((module, index) => {
@@ -573,5 +754,6 @@ export function layoutGraph(
       y: first.y - LABEL_H - 1,
     });
   });
-  return { width, height, modules, nodes, edges: placeEdges(graph, nodes, direction) };
+  const geometry: Geometry = { direction, start: layerStart, lanes };
+  return { width, height, modules, nodes, edges: placeEdges(graph, nodes, geometry) };
 }

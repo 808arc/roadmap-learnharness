@@ -103,9 +103,15 @@ test("a depth with many nodes keeps every node and wraps into several rows inste
   }
   assert.ok(layout.width < 10 * layout.nodes[0]!.w, `the band stays narrow (width ${layout.width})`);
   const across = layoutGraph(pathWith(nodes), { showOptional: true, prerequisites: prerequisites({}, nodes), direction: "left-to-right" });
-  const rows = [...across.nodes].sort((a, b) => a.y - b.y);
-  for (let i = 1; i < rows.length; i += 1) assert.ok(rows[i]!.y >= rows[i - 1]!.y + NODE_ROW, "left to right: rows keep their pitch");
-  assert.ok(across.height >= 29 * NODE_ROW + NODE_H, "left to right: the canvas grows with the column");
+  const columns = new Map<number, typeof across.nodes[number][]>();
+  for (const placed of across.nodes) columns.set(placed.x, [...(columns.get(placed.x) ?? []), placed]);
+  assert.ok(columns.size >= 2, `left to right: 30 nodes at one depth wrap into several columns (got ${columns.size})`);
+  for (const column of columns.values()) {
+    const rows = [...column].sort((a, b) => a.y - b.y);
+    assert.ok(rows.length <= 11, "left to right: a column stays short");
+    for (let i = 1; i < rows.length; i += 1) assert.ok(rows[i]!.y >= rows[i - 1]!.y + NODE_ROW, "left to right: rows keep their pitch");
+  }
+  assert.ok(across.height < 14 * NODE_ROW + 400, `left to right: the height stays bounded (${across.height})`);
 });
 
 test("the graph renders every child of a node, with one module label and no frame", () => {
