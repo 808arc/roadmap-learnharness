@@ -107,9 +107,9 @@ test("no offer in node-linked chats, research sessions, declined chats, or when 
 test("the Architect gets the dossier rules and moves misconceptions into the Error Ledger", async () => {
   const prompt = buildArchitectSystemPrompt({ researchTools: [] });
   assert.match(prompt, /Building from a diagnostic dossier/);
-  assert.match(prompt, /Do not ask again for anything the dossier already answers/);
-  assert.match(prompt, /bridge nodes for every prerequisite gap/);
-  assert.match(prompt, /contrast node for each misconception/);
+  assert.match(prompt, /Never re-ask what dossier answers/);
+  assert.match(prompt, /bridge node per prerequisite gap/);
+  assert.match(prompt, /Misconceptions: contrast node each/);
   // Issue #19: the Architect is not offered the misconception-apply tool, so the prompt never names it.
   assert.doesNotMatch(prompt, /apply_dossier_misconceptions/);
   assert.match(buildMessage("abc", "ru"), /досье из диагностики abc/);

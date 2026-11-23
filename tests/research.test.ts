@@ -31,7 +31,7 @@ test("presets: hybrid = session + open catalogs; offline turns everything off; c
 test("only enabled channels give the Architect tools; with everything off it has none but notes", () => {
   const off = effectiveResearch({ ...HYBRID_RESEARCH, preset: "offline" });
   assert.deepEqual(names(off), ["list_research_notes", "read_research_note"]);
-  assert.match(buildArchitectSystemPrompt({ researchTools: [] }), /no research tools in this setup/);
+  assert.match(buildArchitectSystemPrompt({ researchTools: [] }), /Offline: no research tools/);
 
   const hybrid = names(effectiveResearch(undefined));
   assert.ok(hybrid.includes("find_books") && hybrid.includes("read_page"));
@@ -44,8 +44,8 @@ test("only enabled channels give the Architect tools; with everything off it has
 
   const prompt = buildArchitectSystemPrompt({ researchTools: hybrid });
   assert.match(prompt, /Roadmap author method/);
-  assert.match(prompt, /most recommended books/);
-  assert.match(prompt, /book_contents on every book/);
+  assert.match(prompt, /Books: name field's most recommended/);
+  assert.match(prompt, /book_contents on every path book/);
   assert.doesNotMatch(prompt, /web_search from many angles/);
 });
 
