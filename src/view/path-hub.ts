@@ -1,8 +1,8 @@
 /** Roadmap view (formerly the Learning Paths "Path Hub").
  *
  * Layout after the Learny roadmap mockup:
- * - a toolbar: roadmap switcher, Tree/Graph, Refine, New roadmap;
- * - the roadmap canvas (module tree or node graph with pan/zoom);
+ * - a toolbar: roadmap switcher, Refine, New roadmap;
+ * - the roadmap canvas (one node graph with pan/zoom);
  * - a side panel with Node / Errors / Architect tabs;
  * - a status line with progress and open errors.
  *
