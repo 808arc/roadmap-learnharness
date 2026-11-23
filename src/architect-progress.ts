@@ -83,15 +83,34 @@ function toolCallsOf(message: unknown): ToolCallRef[] {
   return calls;
 }
 
-/** Topics a batch read returned without error; its text is the JSON of `{ results }`. */
-function okTopicCount(text: string): number {
+function parseJson(text: string): unknown {
   try {
-    const parsed: unknown = JSON.parse(text);
-    if (!isRecord(parsed) || !Array.isArray(parsed.results)) return 0;
-    return parsed.results.filter((entry) => isRecord(entry) && entry.ok === true).length;
+    return JSON.parse(text) as unknown;
   } catch {
-    return 0;
+    return undefined;
   }
+}
+
+/** Slugs of topics whose content came back in one result, so a topic counted twice is still one topic.
+ * `list_roadmap_topics` carries full content for each topic it answers; `read_roadmap_topic(s)` answer one or many. */
+function readTopicSlugs(result: ToolResultRef): string[] {
+  const parsed = parseJson(result.text);
+  if (result.toolName === "list_roadmap_topics") {
+    if (!isRecord(parsed) || !Array.isArray(parsed.topics)) return [];
+    return parsed.topics
+      .filter((entry) => isRecord(entry) && entry.content !== null && entry.content !== undefined)
+      .map((entry) => (isRecord(entry) && typeof entry.slug === "string" ? entry.slug : ""))
+      .filter((slug) => slug !== "");
+  }
+  if (result.toolName === "read_roadmap_topics") {
+    if (!isRecord(parsed) || !Array.isArray(parsed.results)) return [];
+    return parsed.results.flatMap((entry, index) => {
+      if (!isRecord(entry) || entry.ok !== true) return [];
+      return [typeof entry.slug === "string" ? entry.slug : `${result.toolCallId}#${index}`];
+    });
+  }
+  // A single read without a slug in its result is keyed by its call, so it still counts once.
+  return [isRecord(parsed) && typeof parsed.slug === "string" ? parsed.slug : `${result.toolCallId}#0`];
 }
 
 function resultOf(message: unknown): ToolResultRef | null {
@@ -116,12 +135,8 @@ function topicTotal(results: readonly ToolResultRef[]): number | undefined {
   for (let index = results.length - 1; index >= 0; index -= 1) {
     const result = results[index]!;
     if (result.toolName !== "list_roadmap_topics" || result.isError) continue;
-    try {
-      const parsed = JSON.parse(result.text) as unknown;
-      if (isRecord(parsed) && Array.isArray(parsed.topics)) return parsed.topics.length;
-    } catch {
-      // Not JSON: the total stays unknown.
-    }
+    const parsed = parseJson(result.text);
+    if (isRecord(parsed) && Array.isArray(parsed.topics)) return parsed.topics.length;
   }
   return undefined;
 }
@@ -175,11 +190,13 @@ export function architectSteps(
   const frontier = Math.max(reached, runningIndex ?? -1);
 
   const total = topicTotal(results);
-  const topicsDone = results.reduce((done, result) => {
-    if (result.isError) return done;
-    if (result.toolName === "read_roadmap_topic") return done + 1;
-    return result.toolName === "read_roadmap_topics" ? done + okTopicCount(result.text) : done;
-  }, 0);
+  const doneSlugs = new Set<string>();
+  for (const result of results) {
+    if (result.isError) continue;
+    if (result.toolName !== "list_roadmap_topics" && result.toolName !== "read_roadmap_topic" && result.toolName !== "read_roadmap_topics") continue;
+    for (const slug of readTopicSlugs(result)) doneSlugs.add(slug);
+  }
+  const topicsDone = doneSlugs.size;
 
   return ARCHITECT_STEPS.map((step, index) => {
     const state: ArchitectStepState =
