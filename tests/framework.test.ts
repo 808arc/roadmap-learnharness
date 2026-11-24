@@ -109,6 +109,21 @@ test("refinement mode summarizes the existing path and keeps ids stable", () => 
   assert.doesNotMatch(prompt, PACING);
 });
 
+test("#55: the Architect prompt asks for telegraphic output and keeps the Language section", () => {
+  for (const upstream of [false, true]) {
+    for (const contentLanguage of ["auto", "en", "ru"] as const) {
+      const prompt = buildArchitectSystemPrompt({ upstream, settings: { artifactDefaults: {}, contentLanguage } });
+      assert.match(prompt, /## Output style\n/);
+      assert.match(prompt, /extreme telegraphic/);
+      assert.match(prompt, /Tool names, field names, enum values unchanged/);
+      assert.match(prompt, /Book\/course\/resource titles stay as published/);
+      assert.match(prompt, /## Language\nWrite every learner-facing field/);
+      assert.match(prompt, /Keep book and course titles as published/);
+      assert.ok(prompt.indexOf("## Output style") < prompt.indexOf("## Language"), "style comes before Language");
+    }
+  }
+});
+
 test("plugin artifact defaults appear in the Architect prompt when configured", () => {
   const prompt = buildArchitectSystemPrompt({
     settings: { artifactDefaults: { contrast: "relational_map" } },
