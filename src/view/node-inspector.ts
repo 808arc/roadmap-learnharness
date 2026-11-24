@@ -9,7 +9,7 @@
  * reported to the caller.
  */
 import type { PluginDialogProps, PluginFrontendContext, PluginWidgetHandle } from "learnharness-plugin-api";
-import { ARTIFACT_CATALOG, PROGRESSION_STATES, artifactCatalogEntry, recommendedArtifactsFor } from "../domain.ts";
+import { ARTIFACT_CATALOG, PROGRESSION_STATES, artifactCatalogEntry, recommendedArtifactsFor, rootNodeId } from "../domain.ts";
 import type {
   ArtifactType,
   ChildSessionKind,
@@ -280,7 +280,9 @@ export function createNodeInspector(
     setIcon(chevron, ICONS.chevronDown);
     status.append(statusIconHost, el(document, "span", undefined, t(`status.${node.progression}` as MessageKey)), chevron);
     status.addEventListener("click", () => {
-      menu(status, t("insp.type"), PROGRESSION_STATES.map((state) => ({
+      // The root starts the roadmap: it cannot be skipped (issue #58).
+      const states = node.id === rootNodeId(path) ? PROGRESSION_STATES.filter((state) => state !== "skipped") : PROGRESSION_STATES;
+      menu(status, t("insp.type"), states.map((state) => ({
         key: state,
         label: t(`status.${state}` as MessageKey),
         onSelect: () => {

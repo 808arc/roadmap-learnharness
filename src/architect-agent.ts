@@ -23,8 +23,8 @@ import type {
   PluginBackendContext,
   PluginModelSpec,
 } from "learnharness-plugin-api";
-import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, isSourceId, parseLearningPath } from "./domain.ts";
-import type { LearningPath, UploadedSourceReference } from "./domain.ts";
+import { ARTIFACT_TYPES, DomainValidationError, NODE_TYPES, PROGRESSION_STATES, RESOURCE_KINDS, isSourceId, parseLearningPath, rootNodeId } from "./domain.ts";
+import type { LearningPath, PathNode, UploadedSourceReference } from "./domain.ts";
 import { buildGraphBrief } from "./graph-brief.ts";
 import type { GraphBrief } from "./graph-brief.ts";
 import { topicKey } from "./learner-map.ts";
@@ -564,7 +564,7 @@ async function saveDraft(
     candidate.updatedAt = now;
     candidate.architectChatId = chatId;
     // Validate as drafted (messages name the model's ids), then swap draft-local ids for server ids.
-    parsed = withMandatoryRoot(parseLearningPath(replaceDraftIds(parseLearningPath(candidate), existing)));
+    parsed = withMandatoryRoot(parseLearningPath(replaceDraftIds(parseLearningPath(candidate), existing)), existing);
     for (const source of uploadedSources(parsed)) {
       const check = checkStoredSource(options.store, source.sourceId);
       if (check.status === "refused") return errorResult(check.message);
@@ -651,17 +651,34 @@ export function checkStoredSource(store: LearningPathStore, sourceId: string): S
 }
 
 /**
- * Every roadmap has one root: its first node, which starts the path and depends on nothing. Other
- * nodes that would start a branch ([]) hang under it instead, so the root cannot be removed or
- * skipped. Paths without explicit prerequisites keep module order, where the first node is the root.
+ * Every roadmap has one root (issue #58), auto-designated: the draft's first node, from its first topic.
+ * The root starts the path ([]), is never optional or an alternative, and stays first on every refinement,
+ * so the Architect cannot remove it. Other nodes that would start a branch ([]) hang under it. Paths
+ * without explicit prerequisites keep module order, where the first node already leads.
  */
-export function withMandatoryRoot(path: LearningPath): LearningPath {
+export function withMandatoryRoot(path: LearningPath, existing: LearningPath | null = null): LearningPath {
   const nodes = path.modules.flatMap((module) => module.nodes);
   const root = nodes[0];
-  if (!root || !nodes.some((node) => node.prerequisites !== undefined)) return path;
-  const fix = (node: (typeof nodes)[number]): (typeof nodes)[number] => {
-    if (node.id === root.id) return node.prerequisites?.length === 0 ? node : { ...node, prerequisites: [] };
-    return node.prerequisites?.length === 0 ? { ...node, prerequisites: [root.id] } : node;
+  if (!root) return path;
+  const keptId = existing ? rootNodeId(existing) : null;
+  if (keptId !== null && root.id !== keptId) {
+    const kept = existing!.modules.flatMap((module) => module.nodes).find((node) => node.id === keptId)!;
+    throw new DraftError(
+      `The root node "${kept.title}" (${kept.id}) must stay the first node of the first module; nothing was written.`,
+    );
+  }
+  if (root.prerequisites !== undefined && root.prerequisites.length > 0) {
+    throw new DraftError(
+      `The first node "${root.title}" is the roadmap's root: its prerequisites must be []; nothing was written.`,
+    );
+  }
+  const explicit = nodes.some((node) => node.prerequisites !== undefined);
+  const fix = (node: PathNode): PathNode => {
+    if (node.id === root.id) {
+      const { optional: _optional, alternativeGroup: _group, ...required } = node;
+      return required;
+    }
+    return explicit && node.prerequisites?.length === 0 ? { ...node, prerequisites: [root.id] } : node;
   };
   return { ...path, modules: path.modules.map((module) => ({ ...module, nodes: module.nodes.map(fix) })) };
 }
