@@ -155,3 +155,15 @@ test("left to right: a wide layer wraps so the height stays bounded", () => {
   const layout = lay(after, "left-to-right");
   assert.ok(layout.height < 14 * 40 + 400, `height ${layout.height}`);
 });
+
+test("a long arrow with room beside the layers it passes runs straight through them, in both directions", () => {
+  // a -> e skips three layers; each of them has room for the arrow's lane.
+  const after = { a: [], b: ["a"], x: ["a"], c: ["b", "x"], y: ["x"], d: ["c", "y"], z: ["y"], e: ["d", "a", "z"] };
+  for (const direction of DIRECTIONS) {
+    const long = lay(after, direction).edges.find((edge) => edge.from === "a" && edge.to === "e")!;
+    const points = long.points ?? [];
+    assert.equal(points.length, 2, `${direction}: one straight run between the two ends (${JSON.stringify(points)})`);
+    const along = direction === "bottom-to-top" ? (pt: Pt) => pt.x : (pt: Pt) => pt.y;
+    assert.equal(along(points[0]!), along(points[1]!), `${direction}: the run is parallel to the depth axis`);
+  }
+});

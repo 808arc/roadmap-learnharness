@@ -454,6 +454,7 @@ function arrange(layers: readonly (readonly Slot[])[], links: readonly LayerLink
   for (let pass = 0; pass < FINAL_PASSES; pass += 1) {
     for (let k = 0; k < order.length; k += 1) place(k, [before, after]);
   }
+  straightenLanes(order, centre, before, after);
   let low = Infinity;
   let high = -Infinity;
   for (const layer of order) {
@@ -465,6 +466,59 @@ function arrange(layers: readonly (readonly Slot[])[], links: readonly LayerLink
   if (!Number.isFinite(low)) return { order, centre, span: 0 };
   for (const [id, value] of centre) centre.set(id, value - low);
   return { order, centre, span: high - low };
+}
+
+/** Lines up the lanes of each long arrow, so the arrow runs straight through the layers it passes instead of
+ * zigzagging from one layer's free space to the next. Every lane only moves within the room its two neighbours in
+ * its layer leave it (order and minimum distances kept), so nothing new overlaps and no crossing is added. The
+ * lanes of one arrow share one position where that room allows, else each run of them that can does; longer arrows
+ * first. */
+function straightenLanes(
+  order: readonly (readonly Slot[])[],
+  centre: Map<string, number>,
+  before: ReadonlyMap<string, readonly string[]>,
+  after: ReadonlyMap<string, readonly string[]>,
+): void {
+  const where = new Map<string, { readonly layer: readonly Slot[]; readonly index: number }>();
+  for (const layer of order) layer.forEach((slot, index) => where.set(slot.id, { layer, index }));
+  const isLane = (id: string): boolean => where.has(id) && !where.get(id)!.layer[where.get(id)!.index]!.node;
+  const chains: string[][] = [];
+  for (const layer of order) {
+    for (const slot of layer) {
+      if (slot.node || (before.get(slot.id) ?? []).some(isLane)) continue;
+      const chain = [slot.id];
+      for (let next = after.get(slot.id)?.[0]; next !== undefined && isLane(next); next = after.get(next)?.[0]) chain.push(next);
+      chains.push(chain);
+    }
+  }
+  chains.sort((a, b) => b.length - a.length);
+  /** The room a slot has between its neighbours in its layer. */
+  const room = (id: string): [number, number] => {
+    const { layer, index } = where.get(id)!;
+    const slot = layer[index]!;
+    const apart = (other: Slot): number => (other.size + slot.size + other.gap + slot.gap) / 2;
+    const previous = layer[index - 1];
+    const next = layer[index + 1];
+    return [previous ? centre.get(previous.id)! + apart(previous) : -Infinity, next ? centre.get(next.id)! - apart(next) : Infinity];
+  };
+  for (const chain of chains) {
+    let start = 0;
+    while (start < chain.length) {
+      let [lo, hi] = room(chain[start]!);
+      let end = start + 1;
+      for (; end < chain.length; end += 1) {
+        const [a, b] = room(chain[end]!);
+        if (Math.max(lo, a) > Math.min(hi, b)) break;
+        lo = Math.max(lo, a);
+        hi = Math.min(hi, b);
+      }
+      const run = chain.slice(start, end);
+      const mean = run.reduce((sum, id) => sum + centre.get(id)!, 0) / run.length;
+      const at = Math.min(hi, Math.max(lo, mean));
+      for (const id of run) centre.set(id, at);
+      start = end;
+    }
+  }
 }
 
 interface Lane {
