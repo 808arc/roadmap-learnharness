@@ -2539,3 +2539,36 @@ details.lp-chat-reasoning > summary {
 .rm-proposal-build:disabled {
   opacity: 0.5;
 }
+
+/* Graph replay: controls and a one-line caption, above the direction toggle. Off until play is pressed. */
+.rm-replay {
+  position: absolute;
+  left: 14px;
+  bottom: 96px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 28px);
+  padding: 0 2px;
+  border: 1px solid var(--rm-line-2);
+  border-radius: 6px;
+  background: var(--rm-panel);
+}
+
+.rm-replay .rm-replay-caption {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 2px 8px 6px;
+  font-size: var(--rm-font-sm);
+  color: var(--rm-muted);
+}
+
+.rm-replay button[aria-pressed="true"] {
+  background: var(--rm-panel-2);
+  font-weight: 600;
+}
+
+.rm-replay button:disabled {
+  opacity: 0.4;
+}
