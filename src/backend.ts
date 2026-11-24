@@ -93,6 +93,7 @@ import {
   removeChildLink,
   resolvePivotSuggestion,
   updateErrorEntry,
+  updateNodeProgress,
 } from "./session-links.ts";
 import type { PivotAction } from "./session-links.ts";
 import {
@@ -1147,7 +1148,15 @@ export function activate(ctx: PluginBackendContext): void {
       createdAt: now,
       label: label ?? (record.title.trim().slice(0, 200) || `${kind} session`),
     };
-    const saved = store.savePath(addChildLink(path, nodeId, link, now));
+    // Opening a chat starts the node; it stays in progress until the learner
+    // finishes it. Never downgrade in_progress, consolidated or skipped, and
+    // closing the chat never touches progression.
+    const linkedPath = addChildLink(path, nodeId, link, now);
+    const toSave =
+      node.progression === "unstarted"
+        ? updateNodeProgress(linkedPath, nodeId, { progression: "in_progress" }, now)
+        : linkedPath;
+    const saved = store.savePath(toSave);
     emit(EVENT_PATHS_CHANGED, { id: saved.id, nodeId, chatId, updatedAt: saved.updatedAt });
     return { path: saved, link, deduplicated: false };
   });
