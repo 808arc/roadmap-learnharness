@@ -1,10 +1,10 @@
-/** Graph replay: the graph is revealed layer by layer from the root; manual, never automatic. */
+/** Graph replay: the graph is revealed layer by layer from the root; it runs by itself on first show and after a save, and stays controllable. */
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import { setLocale, tables } from "../src/i18n.ts";
-import { REPLAY_STEP_MS, replayOf } from "../src/view/graph-replay.ts";
+import { REPLAY_STEP_MS, markReplayed, replayOf, resetReplayMemory } from "../src/view/graph-replay.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
 import { layoutGraph } from "../src/view/roadmap-layout.ts";
@@ -26,7 +26,10 @@ const prerequisites: NodePrerequisites[] = nodes.map((node) => ({
 const modules: PathModule[] = [{ id: "module-graph", title: "Graph", nodes }];
 const path: LearningPath = { ...makePath(), modules };
 
-function mount() {
+/** `auto` mounts a roadmap not yet replayed in this session; otherwise it counts as already replayed (manual tests). */
+function mount(auto = false) {
+  resetReplayMemory();
+  if (!auto) markReplayed(path.id, nodes.map((node) => node.id));
   const { document } = parseHTML("<!doctype html><html><body><div id='host'></div></body></html>");
   const host = document.getElementById("host") as HTMLElement;
   const controller = new AbortController();
@@ -46,7 +49,7 @@ test("the reveal order starts at the root, one layer per step", () => {
   assert.deepEqual(steps[0]!.items[0]!.after, []);
 });
 
-test("the replay is off by default: every node is drawn", () => {
+test("an already replayed roadmap is drawn whole, with no replay", () => {
   const f = mount();
   assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e"]);
   f.controller.abort();
@@ -167,7 +170,112 @@ test("another roadmap ends the replay", () => {
   const f = mount();
   f.press("forward");
   assert.deepEqual(f.shown(), ["a"]);
+  markReplayed("other-path", nodes.map((node) => node.id));
   f.canvas.render({ ...f.state, path: { ...path, id: "other-path" } });
   assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e"]);
   f.controller.abort();
+});
+
+test("the replay starts by itself on first show, root first, and ends on every node", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const f = mount(true);
+    assert.deepEqual(f.shown(), ["a"], "the root alone");
+    mock.timers.tick(REPLAY_STEP_MS.normal);
+    assert.deepEqual(f.shown(), ["a", "b", "c"]);
+    for (let i = 0; i < 2; i++) mock.timers.tick(REPLAY_STEP_MS.normal);
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e"], "ends with every node visible");
+    mock.timers.tick(REPLAY_STEP_MS.normal * 5);
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e"]);
+    f.controller.abort();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("a re-render does not restart the automatic replay", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const f = mount(true);
+    mock.timers.tick(REPLAY_STEP_MS.normal);
+    f.canvas.render({ ...f.state, selectedNodeId: "b" });
+    assert.deepEqual(f.shown(), ["a", "b", "c"], "same step, not back to the root");
+    f.controller.abort();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("pause stops the automatic replay", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const f = mount(true);
+    f.press("play"); // pause
+    mock.timers.tick(REPLAY_STEP_MS.normal * 5);
+    assert.deepEqual(f.shown(), ["a"]);
+    f.press("exit"); // Show all
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e"]);
+    f.controller.abort();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("the same roadmap is not replayed a second time in the session", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const f = mount(true);
+    f.press("exit");
+    f.canvas.render({ ...f.state, path: { ...path, id: "other-path" } });
+    assert.deepEqual(f.shown(), ["a"], "another roadmap replays");
+    f.press("exit");
+    f.canvas.render(f.state);
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e"], "switching back does not replay");
+    f.controller.abort();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("nodes saved during a paused replay join it, and a click after the end does not replay them again", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const f = mount(true);
+    f.press("play"); // pause at the root
+    const added = [...nodes, makeNode("f", "concept")];
+    const more: NodePrerequisites[] = [...prerequisites, { nodeId: "f", prerequisiteIds: ["e"], source: "node" }];
+    const saved: CanvasState = { ...f.state, path: { ...path, modules: [{ id: "module-graph", title: "Graph", nodes: added }] }, prerequisites: more };
+    f.canvas.render(saved);
+    assert.deepEqual(f.shown(), ["a"], "the paused replay keeps its step");
+    for (let i = 0; i < 5; i++) f.press("forward");
+    const back = () => (f.host.querySelector('[data-replay="back"]') as HTMLButtonElement).disabled;
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e", "f"], "the saved node is part of this replay");
+    assert.equal(back(), false, "still on the last step of this replay, not a new one-step replay of f");
+    f.canvas.render({ ...saved, selectedNodeId: "b" });
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e", "f"]);
+    assert.equal(back(), false, "a click does not start another replay");
+    f.controller.abort();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("a save with new nodes replays only the new nodes", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const f = mount(); // already replayed
+    const added = [...nodes, makeNode("f", "concept"), makeNode("g", "concept")];
+    const more: NodePrerequisites[] = [
+      ...prerequisites,
+      { nodeId: "f", prerequisiteIds: ["e"], source: "node" },
+      { nodeId: "g", prerequisiteIds: ["f"], source: "node" },
+    ];
+    f.canvas.render({ ...f.state, path: { ...path, modules: [{ id: "module-graph", title: "Graph", nodes: added }] }, prerequisites: more });
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e", "f"], "old nodes stay; the first new layer shows, no re-run of the old ones");
+    mock.timers.tick(REPLAY_STEP_MS.normal);
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e", "f", "g"]);
+    f.controller.abort();
+  } finally {
+    mock.timers.reset();
+  }
 });

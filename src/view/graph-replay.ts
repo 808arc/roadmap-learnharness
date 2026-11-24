@@ -30,11 +30,13 @@ export interface ReplayStep {
 
 export interface Replay {
   readonly steps: readonly ReplayStep[];
+  /** Nodes already on screen before step 1 (a replay of only the nodes a save added); empty for a full replay. */
+  readonly base: ReadonlySet<string>;
 }
 
 /** `rootId` (the roadmap's one root, domain.ts rootNodeId) is revealed alone as step 1 when it is shown; other
  * nodes without prerequisites follow it in the next step. */
-export function replayOf(layout: RoadmapLayout, rootId: string | null = null): Replay {
+export function replayOf(layout: RoadmapLayout, rootId: string | null = null, base: ReadonlySet<string> = new Set()): Replay {
   const titles = new Map(layout.nodes.map((placed) => [placed.node.id, placed.node.title] as const));
   const prerequisites = new Map<string, string[]>();
   for (const edge of layout.edges) {
@@ -43,9 +45,10 @@ export function replayOf(layout: RoadmapLayout, rootId: string | null = null): R
     prerequisites.set(edge.to, list);
   }
   const item = (node: PlacedNode): ReplayItem => ({ node, after: prerequisites.get(node.node.id) ?? [] });
-  const root = layout.nodes.find((placed) => placed.node.id === rootId);
+  const fresh = layout.nodes.filter((placed) => !base.has(placed.node.id));
+  const root = fresh.find((placed) => placed.node.id === rootId);
   const byDepth = new Map<number, PlacedNode[]>();
-  for (const placed of layout.nodes) {
+  for (const placed of fresh) {
     if (placed === root) continue;
     byDepth.set(placed.depth, [...(byDepth.get(placed.depth) ?? []), placed]);
   }
@@ -53,12 +56,12 @@ export function replayOf(layout: RoadmapLayout, rootId: string | null = null): R
   for (const depth of [...byDepth.keys()].sort((a, b) => a - b)) {
     steps.push({ depth, items: byDepth.get(depth)!.sort((a, b) => a.x - b.x || a.y - b.y).map(item) });
   }
-  return { steps };
+  return { steps, base };
 }
 
 /** Node ids and arrow keys on screen once `step` (1-based) has been revealed. */
 export function revealedAt(replay: Replay, layout: RoadmapLayout, step: number): { nodes: Set<string>; edges: Set<string> } {
-  const nodes = new Set<string>();
+  const nodes = new Set<string>(replay.base);
   for (const entry of replay.steps.slice(0, Math.max(0, step))) for (const item of entry.items) nodes.add(item.node.node.id);
   const edges = new Set<string>();
   for (const edge of layout.edges) if (nodes.has(edge.from) && nodes.has(edge.to)) edges.add(edgeKey(edge.from, edge.to));
@@ -74,4 +77,32 @@ export function layoutAt(replay: Replay, layout: RoadmapLayout, step: number): R
     edges: layout.edges.filter((edge) => shown.edges.has(edgeKey(edge.from, edge.to))),
     modules: layout.modules.filter((placed) => placed.module.nodes.some((node) => shown.nodes.has(node.id))),
   };
+}
+
+/** Per-session memory (in memory only): which nodes of each roadmap the replay has already covered, so a roadmap
+ * is not replayed again when shown again, and a save replays only what it added. */
+const replayedNodes = new Map<string, Set<string>>();
+
+export function replayedOf(pathId: string): ReadonlySet<string> | undefined {
+  return replayedNodes.get(pathId);
+}
+
+export function markReplayed(pathId: string, nodeIds: Iterable<string>): void {
+  const set = replayedNodes.get(pathId) ?? new Set<string>();
+  for (const id of nodeIds) set.add(id);
+  replayedNodes.set(pathId, set);
+}
+
+let autoReplay = true;
+/** For tests of the plain graph: switch the automatic replay off. */
+export function setAutoReplay(on: boolean): void {
+  autoReplay = on;
+}
+export function autoReplayOn(): boolean {
+  return autoReplay;
+}
+
+/** For tests: forget what was replayed. */
+export function resetReplayMemory(): void {
+  replayedNodes.clear();
 }

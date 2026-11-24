@@ -13,7 +13,7 @@ import type { NodePrerequisites } from "../node-prerequisites.ts";
 import { ICONS, setIcon } from "./icons.ts";
 import { EMPTY_SNAPSHOT, edgeKey, growthPlan, snapshotOf } from "./graph-growth.ts";
 import type { GraphSnapshot, GrowthPlan } from "./graph-growth.ts";
-import { REPLAY_SPEEDS, REPLAY_STEP_MS, layoutAt, replayOf } from "./graph-replay.ts";
+import { REPLAY_SPEEDS, autoReplayOn, REPLAY_STEP_MS, layoutAt, markReplayed, replayOf, replayedOf } from "./graph-replay.ts";
 import type { Replay, ReplaySpeed } from "./graph-replay.ts";
 import type { GraphDirection } from "./roadmap-layout.ts";
 import { isDone, layoutGraph, moduleCounts } from "./roadmap-layout.ts";
@@ -142,7 +142,9 @@ export function createRoadmapCanvas(
   let replayPlaying = false;
   let replaySpeed: ReplaySpeed = "normal";
   let replayTimer: ReturnType<typeof setTimeout> | null = null;
-  let replayData: Replay = { steps: [] };
+  let replayData: Replay = { steps: [], base: new Set() };
+  /** Nodes shown from the start of the current replay (a save's replay covers only the new nodes). */
+  let replayBase: ReadonlySet<string> = new Set();
   /** The roadmap the replay belongs to; another roadmap ends it. */
   let replayPathId: string | null = null;
   /** What the replay drew last, so a re-render (a click, a store change) does not grow the same layer again. */
@@ -385,7 +387,29 @@ export function createRoadmapCanvas(
       replayStep = null;
       replayShown = null;
     }
-    replayData = replayOf(full, rootNodeId(current.path));
+    // Replays by itself: the first time a roadmap is shown, and for the nodes a save added (not on a plain re-render).
+    const finished = replayStep !== null && !replayPlaying && replayStep >= replayData.steps.length;
+    if (autoReplayOn() && (replayStep === null || finished)) {
+      const seen = replayedOf(current.path.id);
+      const fresh = full.nodes.filter((placed) => !seen?.has(placed.node.id));
+      if (fresh.length > 0) {
+        const base = new Set(full.nodes.filter((placed) => seen?.has(placed.node.id)).map((placed) => placed.node.id));
+        markReplayed(current.path.id, full.nodes.map((placed) => placed.node.id));
+        const planned = replayOf(full, rootNodeId(current.path), base);
+        if (planned.steps.length > 0) {
+          stopTimer();
+          replayBase = base;
+          replayPathId = current.path.id;
+          replayStep = 1;
+          replayShown = snapshotOf(layoutAt(planned, full, 0));
+          replayPlaying = planned.steps.length > 1;
+          if (replayPlaying) replayTimer = setTimeout(tick, REPLAY_STEP_MS[replaySpeed]);
+        }
+      }
+    }
+    replayData = replayOf(full, rootNodeId(current.path), replayStep !== null ? replayBase : new Set());
+    // Nodes a save adds while a replay is on screen join that replay; they must not replay again on the next click.
+    if (replayStep !== null) markReplayed(current.path.id, full.nodes.map((placed) => placed.node.id));
     if (replayStep !== null) replayStep = Math.min(replayStep, Math.max(1, replayData.steps.length));
     // During a replay only the revealed layers are drawn; the layer just revealed grows in.
     const replaying = replayStep !== null;
@@ -434,7 +458,7 @@ export function createRoadmapCanvas(
     const items = entry.items
       .map((item) => (item.after.length > 0 ? t("replay.item", { title: item.node.node.title, from: item.after.join(", ") }) : item.node.node.title))
       .join("; ");
-    return t(replayStep === 1 ? "replay.rootStep" : "replay.step", { i: replayStep, n: replayData.steps.length, items });
+    return t(replayStep === 1 && replayData.base.size === 0 ? "replay.rootStep" : "replay.step", { i: replayStep, n: replayData.steps.length, items });
   };
 
   const renderReplayBar = (): void => {
@@ -493,6 +517,7 @@ export function createRoadmapCanvas(
     if (replayStep !== null) return;
     replayPathId = state?.path.id ?? null;
     replayShown = null;
+    replayBase = new Set();
   };
 
   const stepReplay = (delta: number): void => {
@@ -519,11 +544,13 @@ export function createRoadmapCanvas(
     if (replayStep === null || replayStep >= replayData.steps.length) {
       replayStep = 1;
       replayShown = null;
+      replayBase = new Set();
     }
-    replayPlaying = replayData.steps.length > 1;
     stopTimer();
+    redraw(); // recomputes the replay for the whole graph
+    replayPlaying = replayData.steps.length > 1;
     if (replayPlaying) replayTimer = setTimeout(tick, REPLAY_STEP_MS[replaySpeed]);
-    redraw();
+    renderReplayBar();
   }, { signal });
   replaySpeedButton.addEventListener("click", () => {
     replaySpeed = REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(replaySpeed) + 1) % REPLAY_SPEEDS.length]!;
