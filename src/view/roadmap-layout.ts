@@ -19,7 +19,7 @@ export const NODE_H = 24;
 /** Left to right: row pitch. */
 export const NODE_ROW = 40;
 /** Horizontal room between two columns when running left to right, where the arrows run. */
-export const COL_GAP = 64;
+export const COL_GAP = 40;
 export const COL_W = NODE_W + COL_GAP;
 /** The dot: its diameter, and the offset of its centre from the cell's left edge (the cell has 4px padding). */
 export const DOT_D = 12;
@@ -269,8 +269,8 @@ function isotonic(values: readonly number[]): number[] {
 export type GraphDirection = "bottom-to-top" | "left-to-right";
 
 /** Vertical gap between two rows of nodes, and horizontal gap between nodes of one row, in bottom-to-top graphs. */
-const ROW_GAP = 56;
-const NODE_GAP = 24;
+const ROW_GAP = 28;
+const NODE_GAP = 40;
 /** Left to right: free space kept between two nodes of one column. */
 const COL_NODE_GAP = NODE_ROW - NODE_H;
 /** Bottom to top: the fewest nodes a row holds before its depth wraps into another row (more for larger roadmaps). */
@@ -309,7 +309,7 @@ const ORDER_SWEEPS = 12;
 const PLACE_SWEEPS = 4;
 const FINAL_PASSES = 4;
 /** How strongly a slot is held towards the middle line, counted as that many extra neighbours. */
-const HOME_PULL = 3;
+const HOME_PULL = 2;
 
 interface Arranged {
   readonly order: Slot[][];
@@ -724,7 +724,7 @@ export function layoutGraph(
   // Order with one layer per depth first; then wrap a depth that is wider than `cap` into several layers (consecutive
   // runs of that order, alternatives kept whole) and arrange again from that order.
   const cap = vertical
-    ? Math.max(MIN_ROW_CAP, Math.ceil(Math.sqrt(graph.nodeIds.length)))
+    ? Math.max(MIN_ROW_CAP, Math.ceil(0.8 * Math.sqrt(graph.nodeIds.length)))
     : Math.max(MIN_COL_CAP, Math.ceil(1.5 * Math.sqrt(graph.nodeIds.length)));
   let solved = solve(depths.map((depth) => cells.get(depth)!));
   let depthOfLayer = depths;

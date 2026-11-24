@@ -65,7 +65,7 @@ test("a wide, tangled roadmap: wrapped rows, and no arrow crosses a node it does
     }
   }
   const up = lay(after, "bottom-to-top");
-  assert.ok(up.width < 3 * up.height, `bottom to top uses the height, not one wide band (${up.width}x${up.height})`);
+  assert.ok(up.width < 4 * up.height, `bottom to top uses the height, not one wide band (${up.width}x${up.height})`);
 });
 
 test("a clear arrow has no points", () => {
