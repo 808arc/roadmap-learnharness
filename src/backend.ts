@@ -1009,7 +1009,6 @@ export function activate(ctx: PluginBackendContext): void {
       nodeId: node.id,
       nodeTitle: node.title,
       kind,
-      // The view sends its interface language so the chat title matches the UI.
       title: `${kind === "teaching" ? "Lesson" : "Practice"}: ${node.title}`,
       prompt: brief.text,
       watchpoints: brief.watchpoints.length,

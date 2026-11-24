@@ -99,20 +99,16 @@ test("the toggle renders two buttons and marks the current direction pressed", (
   }
 });
 
-test("direction buttons follow the interface language: English labels", () => {
+test("direction buttons carry English labels", () => {
   const original = locale();
   try {
-    for (const [language, expectCyrillic] of [["en", false]] as const) {
-      setLocale(language);
-      const view = renderCanvas();
-      try {
-        const texts = [...view.host.querySelectorAll<HTMLButtonElement>(".rm-direction button")].map((button) => button.textContent ?? "");
-        assert.equal(texts.length, 2);
-        for (const text of texts) assert.equal(/[\u0400-\u04FF]/.test(text), expectCyrillic, `${language}: ${text}`);
-        if (language === "en") assert.deepEqual(texts, ["Vertical", "Horizontal"]);
-      } finally {
-        view.dispose();
-      }
+    setLocale("en");
+    const view = renderCanvas();
+    try {
+      const texts = [...view.host.querySelectorAll<HTMLButtonElement>(".rm-direction button")].map((button) => button.textContent ?? "");
+      assert.deepEqual(texts, ["Vertical", "Horizontal"]);
+    } finally {
+      view.dispose();
     }
   } finally {
     setLocale(original);

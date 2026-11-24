@@ -13,7 +13,7 @@ import { ERROR_CATEGORIES } from "../domain.ts";
 import type { ErrorCategory, ErrorEntry, LearningPath, PathNode } from "../domain.ts";
 import { collectErrorWatchpoints } from "../framework.ts";
 import type { ErrorWatchpoint } from "../framework.ts";
-import { locale, t } from "../i18n.ts";
+import { t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import { button, el, shortDate } from "./dom.ts";
 import { ICONS, setIcon } from "./icons.ts";

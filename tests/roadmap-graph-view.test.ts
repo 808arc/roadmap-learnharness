@@ -1,5 +1,5 @@
 /** The one graph view: arrows follow prerequisites, nodes stack without a cap, cycles terminate,
- * optional nodes are dashed, module info is a label and a colour, and both languages carry the strings.
+ * optional nodes are dashed, module info is a label and a colour, and the English strings exist.
  * Layout geometry is tested here, the look in roadmap-graph-style.test.ts. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -152,7 +152,7 @@ test("the graph renders every child of a node, with one module label and no fram
   }
 });
 
-test("the interface strings exist in both languages, and the removed Tree strings are gone", () => {
+test("the interface strings exist in English, and the removed Tree strings are gone", () => {
   const keys: MessageKey[] = ["legend.arrow", "legend.moduleOrder", "legend.prerequisitesNote", "graph.dirUp", "graph.dirRight", "mark.optionalShort", "mark.alternativeShort"];
   try {
     for (const key of keys) {

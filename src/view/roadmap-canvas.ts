@@ -7,7 +7,7 @@
  */
 import type { LearningPath, PathModule, PathNode } from "../domain.ts";
 import { rootNodeId } from "../domain.ts";
-import { locale, t } from "../i18n.ts";
+import { t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import type { NodePrerequisites } from "../node-prerequisites.ts";
 import { ICONS, setIcon } from "./icons.ts";

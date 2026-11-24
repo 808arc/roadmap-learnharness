@@ -21,7 +21,7 @@ import type {
   ProgressionState,
   SourceAnchor,
 } from "../domain.ts";
-import { locale, t } from "../i18n.ts";
+import { t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import type { Mastery } from "../learner-map.ts";
 import { nodeConnections } from "../node-connections.ts";
@@ -85,13 +85,16 @@ const RESOURCE_ICON: Record<NodeResource["kind"], string> = {
   paper: ICONS.article,
 };
 
-/** "K&R, ch. 5 · §5.1 · pp. 93–117" in the active locale. */
+/** "K&R, ch. 5 · §5.1 · pp. 93–117". */
 export function formatAnchor(anchor: SourceAnchor): string {
   const parts = [anchor.reference];
   if (anchor.chapter) {
-    // The Architect sometimes writes "Ch. 8" itself; never print "ch. Ch. 8".
-    const labelled = /^(ch(apter)?|part|lecture|module|unit|week)\b\.?/i.test(anchor.chapter.trim());
-    parts.push(labelled ? anchor.chapter.trim() : `ch. ${anchor.chapter}`);
+    // The Architect sometimes writes "Ch. 8" itself; never print "ch. Ch. 8". With the "auto"
+    // content language it may write the label in the learner's language: a non-ASCII word
+    // followed by a number counts as a label too.
+    const chapter = anchor.chapter.trim();
+    const labelled = /^(ch(apter)?|part|lecture|module|unit|week)\b\.?/i.test(chapter) || /^[^\x00-\x7F]\p{L}*\.?\s*\d/u.test(chapter);
+    parts.push(labelled ? chapter : `ch. ${anchor.chapter}`);
   }
   if (anchor.section) parts.push(`§${anchor.section.replace(/^§/, "")}`);
   if (anchor.pages) parts.push(`pp. ${anchor.pages}`);

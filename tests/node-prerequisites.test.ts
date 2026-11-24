@@ -182,7 +182,7 @@ test("the Architect's draft keeps prerequisites that exist in the draft and drop
   );
 });
 
-test("the legend names prerequisites once any node sets them, in both languages, and module order until then", () => {
+test("the legend names prerequisites once any node sets them, and module order until then", () => {
   const { document } = parseHTML("<!doctype html><html><body><div id=\"host\"></div></body></html>");
   const host = document.getElementById("host") as HTMLElement;
   const controller = new AbortController();
