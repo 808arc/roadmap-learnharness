@@ -106,7 +106,7 @@ test("a learner whose topics match no roadmap exactly still gets the closest roa
   assert.deepEqual(ranking.chosen.map((match) => match.roadmap), ["frontend"]);
 });
 
-test("a roadmap with no exact match is never chosen, even when it has the top score", () => {
+test("while some roadmap matches exactly, a near-only roadmap is not chosen, even with the top score", () => {
   const ranking = rankRoadmaps(new Set(["alpha-one", "beta-two", "gamma-three"]), new Map([
     ["exact", ["alpha-one"]],
     ["near", ["alpha-five", "beta-six", "gamma-seven"]],
