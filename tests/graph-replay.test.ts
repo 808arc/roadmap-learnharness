@@ -140,3 +140,34 @@ test("EN and RU have every replay key", () => {
     }
   }
 });
+
+test("the root is revealed alone even when other nodes have no prerequisites", () => {
+  // a is the root; z starts its own branch (no prerequisites), so it shares depth 0 with a.
+  const extra = [...nodes, makeNode("z", "concept")];
+  const extraPrerequisites = [...prerequisites, { nodeId: "z", prerequisiteIds: [], source: "node" as const }];
+  const extraPath: LearningPath = { ...makePath(), modules: [{ id: "module-graph", title: "Graph", nodes: extra }] };
+  const layout = layoutGraph(extraPath, { direction: "left-to-right", showOptional: true, prerequisites: extraPrerequisites });
+  const { steps } = replayOf(layout, "a");
+  assert.deepEqual(steps[0]!.items.map((i) => i.node.node.id), ["a"]);
+  assert.deepEqual(steps[1]!.items.map((i) => i.node.node.id), ["z"]);
+});
+
+test("a re-render during the replay does not grow the revealed layer again", () => {
+  const f = mount();
+  f.press("forward");
+  f.press("forward");
+  assert.ok(f.host.querySelectorAll("button.rm-node.rm-grow").length > 0, "the new layer grows in");
+  f.canvas.render({ ...f.state, selectedNodeId: "b" });
+  assert.deepEqual(f.shown(), ["a", "b", "c"], "selection keeps the replay step");
+  assert.equal(f.host.querySelectorAll("button.rm-node.rm-grow").length, 0);
+  f.controller.abort();
+});
+
+test("another roadmap ends the replay", () => {
+  const f = mount();
+  f.press("forward");
+  assert.deepEqual(f.shown(), ["a"]);
+  f.canvas.render({ ...f.state, path: { ...path, id: "other-path" } });
+  assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e"]);
+  f.controller.abort();
+});

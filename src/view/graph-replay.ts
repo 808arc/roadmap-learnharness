@@ -1,7 +1,7 @@
 /** Graph replay (pure, DOM-free): the order in which a saved graph is revealed, from the root outward.
  *
- * A step is one dependency layer (nodes of one depth). Step 1 is the root layer; each later step adds the next
- * layer and the arrows that now have both ends on screen. The order only reads the layout; nothing is saved.
+ * Step 1 is the roadmap's root alone; each later step adds one dependency layer (nodes of one depth) and the
+ * arrows that now have both ends on screen. The order only reads the layout; nothing is saved.
  * Item order inside a layer is the growth order (column first, then row), as in graph-growth.ts.
  */
 import { GROW_STEP_MS, edgeKey } from "./graph-growth.ts";
@@ -32,7 +32,9 @@ export interface Replay {
   readonly steps: readonly ReplayStep[];
 }
 
-export function replayOf(layout: RoadmapLayout): Replay {
+/** `rootId` (the roadmap's one root, domain.ts rootNodeId) is revealed alone as step 1 when it is shown; other
+ * nodes without prerequisites follow it in the next step. */
+export function replayOf(layout: RoadmapLayout, rootId: string | null = null): Replay {
   const titles = new Map(layout.nodes.map((placed) => [placed.node.id, placed.node.title] as const));
   const prerequisites = new Map<string, string[]>();
   for (const edge of layout.edges) {
@@ -40,17 +42,17 @@ export function replayOf(layout: RoadmapLayout): Replay {
     list.push(titles.get(edge.from) ?? edge.from);
     prerequisites.set(edge.to, list);
   }
+  const item = (node: PlacedNode): ReplayItem => ({ node, after: prerequisites.get(node.node.id) ?? [] });
+  const root = layout.nodes.find((placed) => placed.node.id === rootId);
   const byDepth = new Map<number, PlacedNode[]>();
-  for (const placed of layout.nodes) byDepth.set(placed.depth, [...(byDepth.get(placed.depth) ?? []), placed]);
-  const steps = [...byDepth.keys()]
-    .sort((a, b) => a - b)
-    .map((depth) => ({
-      depth,
-      items: byDepth
-        .get(depth)!
-        .sort((a, b) => a.x - b.x || a.y - b.y)
-        .map((node) => ({ node, after: prerequisites.get(node.node.id) ?? [] })),
-    }));
+  for (const placed of layout.nodes) {
+    if (placed === root) continue;
+    byDepth.set(placed.depth, [...(byDepth.get(placed.depth) ?? []), placed]);
+  }
+  const steps: ReplayStep[] = root ? [{ depth: root.depth, items: [item(root)] }] : [];
+  for (const depth of [...byDepth.keys()].sort((a, b) => a - b)) {
+    steps.push({ depth, items: byDepth.get(depth)!.sort((a, b) => a.x - b.x || a.y - b.y).map(item) });
+  }
   return { steps };
 }
 
