@@ -515,6 +515,17 @@
   font-size: var(--rm-font-xs);
 }
 
+/* The "opt." tag shows only on hover, keyboard focus or selection; the dashed ring stays always. */
+.rm-node-tag-opt {
+  display: none;
+}
+
+.rm-node:hover .rm-node-tag-opt,
+.rm-node:focus-visible .rm-node-tag-opt,
+.rm-node.rm-sel .rm-node-tag-opt {
+  display: inline;
+}
+
 /* A node the learner's graph already covers: a small review tag after the title. */
 .rm-node-review {
   flex: none;

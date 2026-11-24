@@ -2,6 +2,7 @@
  * node's ring, arrows from prerequisite to dependent, and module info as a label and a colour (no frames). */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import type { NodePrerequisites } from "../src/node-prerequisites.ts";
@@ -82,6 +83,23 @@ test("optional nodes get the dashed class and an opt. tag; their arrows are dash
     assert.equal(view.host.querySelectorAll(".rm-edges line.rm-dashed").length, 2, "both arrows touching the optional node are dashed");
   } finally {
     view.dispose();
+  }
+});
+
+test("the opt. tag is hidden until hover, focus or selection; the dashed class stays on", () => {
+  const nodes = [makeNode("a", "concept"), makeNode("opt", "bridge", { optional: true })];
+  const view = renderGraph(nodes, { opt: ["a"] });
+  try {
+    const optional = button(view.host, "opt");
+    assert.ok(optional.classList.contains("rm-opt"), "the dashed outline does not depend on hover");
+    assert.ok(optional.querySelector(".rm-node-tag.rm-node-tag-opt"), "the opt. tag carries the hide-until-hover class");
+  } finally {
+    view.dispose();
+  }
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /^\.rm-node-tag-opt \{\s*display: none;/m, "the opt. tag is hidden by default");
+  for (const state of [":hover", ":focus-visible", ".rm-sel"]) {
+    assert.ok(css.includes(`.rm-node${state} .rm-node-tag-opt`), `the opt. tag shows on ${state}`);
   }
 });
 
