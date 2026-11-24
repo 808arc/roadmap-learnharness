@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import type { NodePrerequisites } from "../src/node-prerequisites.ts";
-import { tables } from "../src/i18n.ts";
+import { locale, setLocale, tables } from "../src/i18n.ts";
 import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
 import { DOT_D, DOT_X, NODE_H, NODE_W, drawnWidth, layoutGraph } from "../src/view/roadmap-layout.ts";
@@ -93,6 +93,26 @@ test("the toggle renders two buttons and marks the current direction pressed", (
     } finally {
       view.dispose();
     }
+  }
+});
+
+test("direction buttons follow the interface language: no Cyrillic in English, Cyrillic in Russian", () => {
+  const original = locale();
+  try {
+    for (const [language, expectCyrillic] of [["en", false], ["ru", true]] as const) {
+      setLocale(language);
+      const view = renderCanvas();
+      try {
+        const texts = [...view.host.querySelectorAll<HTMLButtonElement>(".rm-direction button")].map((button) => button.textContent ?? "");
+        assert.equal(texts.length, 2);
+        for (const text of texts) assert.equal(/[Ѐ-ӿ]/.test(text), expectCyrillic, `${language}: ${text}`);
+        if (language === "en") assert.deepEqual(texts, ["↑ to top", "→ to right"]);
+      } finally {
+        view.dispose();
+      }
+    }
+  } finally {
+    setLocale(original);
   }
 });
 
