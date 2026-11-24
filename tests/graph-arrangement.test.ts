@@ -130,11 +130,11 @@ test("arrows start at the prerequisite and end at the dependent, on the side of 
 const CROSSINGS_BEFORE: Record<GraphDirection, number> = { "bottom-to-top": 31, "left-to-right": 21 };
 
 
-test("the owner-shaped fixture has no more crossings than before, in both directions", () => {
+test("the owner-shaped fixture has fewer crossings than before, in both directions", () => {
   for (const direction of DIRECTIONS) {
     const layout = lay(ownerShape(), direction);
     assert.equal(layout.nodes.length, 40);
-    assert.ok(crossings(layout) <= CROSSINGS_BEFORE[direction], `${direction}: ${crossings(layout)} > ${CROSSINGS_BEFORE[direction]}`);
+    assert.ok(crossings(layout) < CROSSINGS_BEFORE[direction], `${direction}: ${crossings(layout)} >= ${CROSSINGS_BEFORE[direction]}`);
   }
 });
 
