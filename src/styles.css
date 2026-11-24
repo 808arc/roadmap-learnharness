@@ -20,8 +20,8 @@
   --rm-line-2: color-mix(in srgb, var(--foreground, #e6e6e6) 26%, var(--rm-bg));
   --rm-edge: color-mix(in srgb, var(--foreground, #e6e6e6) 40%, var(--rm-bg));
   --rm-text: var(--foreground, #e6e6e9);
-  --rm-muted: color-mix(in srgb, var(--rm-text) 72%, var(--rm-bg));
-  --rm-faint: color-mix(in srgb, var(--rm-muted) 85%, var(--rm-bg));
+  --rm-muted: var(--muted-foreground, #8e8e96);
+  --rm-faint: color-mix(in srgb, var(--muted-foreground, #8e8e96) 60%, var(--rm-bg));
   --rm-acc: #7c9cf5;
   --rm-acc-ink: #0f1424;
   --rm-acc-bg: color-mix(in srgb, var(--rm-acc) 15%, transparent);
@@ -41,15 +41,6 @@
   --rm-acc-ink: #ffffff;
   --rm-ok: #2f8f4e;
   --rm-warn: #b7791f;
-}
-
-.roadmap-view[data-mode="light"] .rm-canvas {
-  --rm-mod-0: #3a56b8;
-  --rm-mod-1: #99510f;
-  --rm-mod-2: #1c7052;
-  --rm-mod-3: #7746a0;
-  --rm-mod-4: #a8345c;
-  --rm-mod-5: #5f680d;
 }
 
 .rm-hub {
@@ -396,6 +387,19 @@
   --rm-mod-3: #b98ad6;
   --rm-mod-4: #d9708f;
   --rm-mod-5: #a3ad45;
+  /* Small text in the Graph (tags, legend, module names) leans toward the main text so it reads at 100% zoom. */
+  --rm-muted: color-mix(in srgb, var(--rm-text) 72%, var(--rm-bg));
+  --rm-faint: color-mix(in srgb, var(--rm-muted) 85%, var(--rm-bg));
+}
+
+/* Darker module hues so module names and titles keep their contrast on the light background. */
+.roadmap-view[data-mode="light"] .rm-canvas {
+  --rm-mod-0: #3a56b8;
+  --rm-mod-1: #99510f;
+  --rm-mod-2: #1c7052;
+  --rm-mod-3: #7746a0;
+  --rm-mod-4: #a8345c;
+  --rm-mod-5: #5f680d;
 }
 
 .rm-canvas .rm-mod-0 { --rm-mod: var(--rm-mod-0); }
