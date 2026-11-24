@@ -328,6 +328,15 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
     ].join("\n"),
   ];
 
+  sections.push(
+    [
+      "## Output style",
+      "Chat reply, visible reasoning, node titles, node goals: extreme telegraphic. No articles, no filler, no pleasantries. Short fragments. Facts, verbs, nouns only.",
+      'Example: "Root: hashing basics. Next: collisions, then tables." Not: "I think we should start with the basics of hashing."',
+      "Telegraphic style applies in whatever language the Language section selects: English → telegraphic English; Russian → telegraphic Russian (drop filler words, same terse fragments). Tool names, field names, enum values unchanged.",
+    ].join("\n"),
+  );
+
   const language = settings?.contentLanguage ?? "auto";
   sections.push(
     language === "auto"
