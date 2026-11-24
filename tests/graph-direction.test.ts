@@ -89,7 +89,7 @@ test("the toggle renders two buttons and marks the current direction pressed", (
     try {
       const buttons = [...view.host.querySelectorAll<HTMLButtonElement>(".rm-direction button")];
       assert.deepEqual(buttons.map((button) => button.dataset.direction), ["bottom-to-top", "left-to-right"]);
-      assert.deepEqual(buttons.map((button) => button.textContent), ["↑ to top", "→ to right"]);
+      assert.deepEqual(buttons.map((button) => button.textContent), ["Vertical", "Horizontal"]);
       for (const button of buttons) assert.equal(button.getAttribute("aria-pressed"), String(button.dataset.direction === pressed));
       buttons[1]!.click();
       assert.deepEqual(view.picked, ["left-to-right"]);
@@ -109,7 +109,7 @@ test("direction buttons follow the interface language: no Cyrillic in English, C
         const texts = [...view.host.querySelectorAll<HTMLButtonElement>(".rm-direction button")].map((button) => button.textContent ?? "");
         assert.equal(texts.length, 2);
         for (const text of texts) assert.equal(/[Ѐ-ӿ]/.test(text), expectCyrillic, `${language}: ${text}`);
-        if (language === "en") assert.deepEqual(texts, ["↑ to top", "→ to right"]);
+        if (language === "en") assert.deepEqual(texts, ["Vertical", "Horizontal"]);
       } finally {
         view.dispose();
       }
