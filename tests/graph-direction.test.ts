@@ -86,7 +86,7 @@ test("the toggle renders two buttons and marks the current direction pressed", (
     try {
       const buttons = [...view.host.querySelectorAll<HTMLButtonElement>(".rm-direction button")];
       assert.deepEqual(buttons.map((button) => button.dataset.direction), ["bottom-to-top", "left-to-right"]);
-      assert.deepEqual(buttons.map((button) => button.textContent), ["↑ bottom to top", "→ left to right"]);
+      assert.deepEqual(buttons.map((button) => button.textContent), ["↑ to top", "→ to right"]);
       for (const button of buttons) assert.equal(button.getAttribute("aria-pressed"), String(button.dataset.direction === pressed));
       buttons[1]!.click();
       assert.deepEqual(view.picked, ["left-to-right"]);
