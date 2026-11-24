@@ -408,6 +408,8 @@ export function createRoadmapCanvas(
       }
     }
     replayData = replayOf(full, rootNodeId(current.path), replayStep !== null ? replayBase : new Set());
+    // Nodes a save adds while a replay is on screen join that replay; they must not replay again on the next click.
+    if (replayStep !== null) markReplayed(current.path.id, full.nodes.map((placed) => placed.node.id));
     if (replayStep !== null) replayStep = Math.min(replayStep, Math.max(1, replayData.steps.length));
     // During a replay only the revealed layers are drawn; the layer just revealed grows in.
     const replaying = replayStep !== null;

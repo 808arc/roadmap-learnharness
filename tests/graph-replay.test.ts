@@ -237,6 +237,29 @@ test("the same roadmap is not replayed a second time in the session", () => {
   }
 });
 
+test("nodes saved during a paused replay join it, and a click after the end does not replay them again", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const f = mount(true);
+    f.press("play"); // pause at the root
+    const added = [...nodes, makeNode("f", "concept")];
+    const more: NodePrerequisites[] = [...prerequisites, { nodeId: "f", prerequisiteIds: ["e"], source: "node" }];
+    const saved: CanvasState = { ...f.state, path: { ...path, modules: [{ id: "module-graph", title: "Graph", nodes: added }] }, prerequisites: more };
+    f.canvas.render(saved);
+    assert.deepEqual(f.shown(), ["a"], "the paused replay keeps its step");
+    for (let i = 0; i < 5; i++) f.press("forward");
+    const back = () => (f.host.querySelector('[data-replay="back"]') as HTMLButtonElement).disabled;
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e", "f"], "the saved node is part of this replay");
+    assert.equal(back(), false, "still on the last step of this replay, not a new one-step replay of f");
+    f.canvas.render({ ...saved, selectedNodeId: "b" });
+    assert.deepEqual(f.shown(), ["a", "b", "c", "d", "e", "f"]);
+    assert.equal(back(), false, "a click does not start another replay");
+    f.controller.abort();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test("a save with new nodes replays only the new nodes", () => {
   mock.timers.enable({ apis: ["setTimeout"] });
   try {

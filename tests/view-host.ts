@@ -33,6 +33,10 @@ import type { Mastery } from "../src/learner-map.ts";
 import { buildChildSessionBrief } from "../src/framework.ts";
 import { resolvePivotSuggestion, updateErrorEntry } from "../src/session-links.ts";
 import type { PathSummary } from "../src/view/path-hub.ts";
+import { setAutoReplay } from "../src/view/graph-replay.ts";
+
+// Hub tests click nodes on the plain graph; the automatic replay (#61) is tested in graph-replay.test.ts.
+setAutoReplay(false);
 
 type AnyProps = Record<string, any>;
 
