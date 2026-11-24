@@ -1278,6 +1278,8 @@ function buildUpstreamDefinition(
     listings: upstream.listings ?? new Map(),
     topics: upstream.topics ?? new Map(),
   };
+  // Read per build: the learner can switch roadmap.sh off in settings; absent means allowed.
+  const roadmapSh = options.store.settings().roadmapShSource !== false;
   const allowed = (): CitableResources => citableResources(readUrls, researchUrls, options.store);
   // Books and web come last and only enrich: they are offered after the graph, topic and path tools.
   const enrichmentTools = (options.researchTools ?? []).map((tool) =>
@@ -1290,11 +1292,12 @@ function buildUpstreamDefinition(
       settings: options.store.settings(),
       researchTools: (options.researchTools ?? []).map((tool) => tool.name),
       upstream: true,
+      roadmapSh,
     }),
     maxTurns: ARCHITECT_MAX_TURNS,
     tools: [
       readLearnerGraphTool(ctx, upstream.readGraph),
-      ...upstreamReadTools(ctx, upstreamReads, readUrls, options.log),
+      ...(roadmapSh ? upstreamReadTools(ctx, upstreamReads, readUrls, options.log) : []),
       getLearningPathTool(ctx, options),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options), allowed),
       withUpstreamLinkCheck(saveLearningPathTool(ctx, options, true), allowed),

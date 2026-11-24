@@ -358,6 +358,8 @@ export interface PluginSettings {
   readonly research?: ResearchSettings;
   /** Prober and teacher may offer to build a roadmap from what they found out. Absent means on. */
   readonly proposeRoadmaps?: boolean;
+  /** Allow the Architect to start a new roadmap from roadmap.sh topics; absent reads as allowed. */
+  readonly roadmapShSource?: boolean;
 }
 
 export interface ValidationIssue {
@@ -938,8 +940,10 @@ function readPluginSettingsValue(value: unknown): PluginSettings {
       : readEnum(record.contentLanguage, LANGUAGE_PREFERENCES, `${path}.contentLanguage`);
   const research = record.research === undefined ? undefined : readResearchSettings(record.research, `${path}.research`);
   const proposeRoadmaps = record.proposeRoadmaps === undefined ? undefined : readBoolean(record.proposeRoadmaps, `${path}.proposeRoadmaps`);
+  const roadmapShSource = record.roadmapShSource === undefined ? undefined : readBoolean(record.roadmapShSource, `${path}.roadmapShSource`);
   return {
     artifactDefaults,
+    ...(roadmapShSource === undefined ? {} : { roadmapShSource }),
     ...(proposeRoadmaps === undefined ? {} : { proposeRoadmaps }),
     ...(research === undefined ? {} : { research }),
     ...(architect === undefined ? {} : { architect }),

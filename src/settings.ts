@@ -293,6 +293,14 @@ export function mountSettingsPage(
         onChange: (value: boolean) => void saveSettings({ ...settings, proposeRoadmaps: value }),
       },
       {
+        key: "roadmap-sh-source",
+        type: "toggle" as const,
+        label: t("s.roadmapSh"),
+        description: t("s.roadmapShDesc"),
+        value: settings.roadmapShSource !== false,
+        onChange: (value: boolean) => void saveSettings({ ...settings, roadmapShSource: value }),
+      },
+      {
         key: "display-optional",
         type: "toggle" as const,
         label: t("s.showOptional"),
