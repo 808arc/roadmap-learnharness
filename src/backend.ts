@@ -440,8 +440,9 @@ export function activate(ctx: PluginBackendContext): void {
         : null,
     });
   };
-  /** Changes when the set of research tools changes, so the Architect is re-registered. */
-  const researchSignature = (): string => researchTools().map((tool) => tool.name).join(",");
+  /** Changes when the set of research tools or the roadmap.sh source setting changes, so the Architect is re-registered. */
+  const researchSignature = (): string =>
+    `${researchTools().map((tool) => tool.name).join(",")}|roadmapSh=${store.settings().roadmapShSource !== false}`;
   let registeredResearch = "";
 
   const emit = (topic: string, data: unknown): void => {
@@ -767,7 +768,7 @@ export function activate(ctx: PluginBackendContext): void {
     }
     // Following the host slot: the next conversation re-resolves the model.
     pendingModel = null;
-    // Research channels changed: rebuild the Architect's tools now (or after the running turn).
+    // Research channels or the roadmap.sh source changed: rebuild the Architect's tools now (or after the running turn).
     if (architect && registeredResearch !== researchSignature()) {
       const current = architect.definition.model as ArchitectModelConfig;
       const deferred = applySettingsModel({ provider: current.provider, id: current.id, ...(current.thinkingLevel ? { thinkingLevel: current.thinkingLevel } : {}) });
