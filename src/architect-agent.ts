@@ -564,7 +564,7 @@ async function saveDraft(
     candidate.updatedAt = now;
     candidate.architectChatId = chatId;
     // Validate as drafted (messages name the model's ids), then swap draft-local ids for server ids.
-    parsed = parseLearningPath(replaceDraftIds(parseLearningPath(candidate), existing));
+    parsed = withMandatoryRoot(parseLearningPath(replaceDraftIds(parseLearningPath(candidate), existing)));
     for (const source of uploadedSources(parsed)) {
       const check = checkStoredSource(options.store, source.sourceId);
       if (check.status === "refused") return errorResult(check.message);
@@ -648,6 +648,22 @@ export function checkStoredSource(store: LearningPathStore, sourceId: string): S
     return { status: "refused", message: `Source file cannot be read: ${filename}.` };
   }
   return { status: "ok" };
+}
+
+/**
+ * Every roadmap has one root: its first node, which starts the path and depends on nothing. Other
+ * nodes that would start a branch ([]) hang under it instead, so the root cannot be removed or
+ * skipped. Paths without explicit prerequisites keep module order, where the first node is the root.
+ */
+export function withMandatoryRoot(path: LearningPath): LearningPath {
+  const nodes = path.modules.flatMap((module) => module.nodes);
+  const root = nodes[0];
+  if (!root || !nodes.some((node) => node.prerequisites !== undefined)) return path;
+  const fix = (node: (typeof nodes)[number]): (typeof nodes)[number] => {
+    if (node.id === root.id) return node.prerequisites?.length === 0 ? node : { ...node, prerequisites: [] };
+    return node.prerequisites?.length === 0 ? { ...node, prerequisites: [root.id] } : node;
+  };
+  return { ...path, modules: path.modules.map((module) => ({ ...module, nodes: module.nodes.map(fix) })) };
 }
 
 function countNodes(path: LearningPath): number {

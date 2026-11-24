@@ -5,7 +5,8 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GRAPH_BRIEF_MAX_CHARS, quoteGraphBrief } from "../src/architect-agent.ts";
+import { GRAPH_BRIEF_MAX_CHARS, quoteGraphBrief, withMandatoryRoot } from "../src/architect-agent.ts";
+import type { LearningPath } from "../src/domain.ts";
 import type { GraphBrief } from "../src/graph-brief.ts";
 import { rawPath } from "./fixtures.ts";
 import { createHost } from "./host.ts";
@@ -181,4 +182,13 @@ test("the quoted brief is capped", () => {
   const quoted = quoteGraphBrief(brief);
   assert.ok(quoted.length <= GRAPH_BRIEF_MAX_CHARS);
   assert.ok(JSON.parse(quoted).topics.length > 0, "the cap keeps as many topics as fit");
+});
+
+test("withMandatoryRoot makes the first node the one root and links other branch starts under it", () => {
+  const node = (id: string, prerequisites?: string[]) => ({ id, ...(prerequisites ? { prerequisites } : {}) });
+  const path = { modules: [{ nodes: [node("a", ["b"]), node("b", []), node("c", ["b"])] }] } as unknown as LearningPath;
+  const fixed = withMandatoryRoot(path).modules[0]!.nodes as unknown as { id: string; prerequisites: string[] }[];
+  assert.deepEqual(fixed.map((n) => n.prerequisites), [[], ["a"], ["b"]]);
+  const legacy = { modules: [{ nodes: [node("a"), node("b")] }] } as unknown as LearningPath;
+  assert.equal(withMandatoryRoot(legacy), legacy);
 });
