@@ -255,10 +255,10 @@ test("Architect chat sends, shows busy state and adopts notification snapshots a
     await fixture.flush();
     assert.equal(fixture.calls.filter((call) => call.name === "architect.create").length, 0,
       "opening the composer must leave time to select a model before creating a conversation");
-    assert.match(fixture.find("mountComposer").props.placeholder, /goal|цель/i);
+    assert.match(fixture.find("mountComposer").props.placeholder, /goal/i);
     fixture.emit("paths-changed", { id: path.id });
     await fixture.flush();
-    assert.match(fixture.find("mountComposer").props.placeholder, /goal|цель/i,
+    assert.match(fixture.find("mountComposer").props.placeholder, /goal/i,
       "a path refresh must not replace the new draft with the old chat");
     assert.ok(toolbar(fixture, "Refine").classList.contains("rm-active"), "New roadmap opens the Architect tab");
     assert.equal(fixture.root.querySelector<HTMLElement>(".rm-panel-architect")!.hidden, false);

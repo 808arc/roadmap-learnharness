@@ -243,7 +243,7 @@ export const PROPOSE_INSTRUCTIONS = [
   "- Do not promise that this session will become part of the roadmap or be linked to it: roadmap sessions are started from the roadmap's nodes later.",
   "- Ask in the chat first. Call roadmap_propose only after the learner agrees, or when the learner asks for a roadmap themselves.",
   "- roadmap_propose takes the FULL dossier, not a summary: everything you found out — goal in their words and refined, motivation, background, every topic you assessed (what you asked, what they answered, your verdict, observations), strengths, prerequisite gaps with what depends on them, misconceptions with root-cause category and an example from the conversation, learning preferences, constraints (language, budget, hardware/software, available time — for scope only, never as a schedule), sources they use or avoid, open questions, and short verbatim key excerpts of the conversation.",
-  "- Write the dossier in the language the learner writes to you (quote their words verbatim). Refer to them as \"the learner\" (or «ученик»), never with gendered pronouns.",
+  "- Write the dossier in the language the learner writes to you (quote their words verbatim). Refer to them as \"the learner\", never with gendered pronouns.",
   "- After the tool returns, tell the learner they can press Build on the card; do not build the roadmap yourself.",
 ].join("\n");
 
@@ -448,8 +448,6 @@ export function applyMisconceptionsTool(
 }
 
 /** The first message of a roadmap built from a dossier. */
-export function buildMessage(noteId: string, locale: string): string {
-  return locale === "ru"
-    ? `Построй дорожную карту по досье из диагностики ${noteId}.`
-    : `Build a roadmap from diagnostic dossier ${noteId}.`;
+export function buildMessage(noteId: string): string {
+  return `Build a roadmap from diagnostic dossier ${noteId}.`;
 }

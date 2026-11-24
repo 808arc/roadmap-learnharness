@@ -111,7 +111,7 @@ test("refinement mode summarizes the existing path and keeps ids stable", () => 
 
 test("#55: the Architect prompt asks for telegraphic output and keeps the Language section", () => {
   for (const upstream of [false, true]) {
-    for (const contentLanguage of ["auto", "en", "ru"] as const) {
+    for (const contentLanguage of ["auto", "en"] as const) {
       const prompt = buildArchitectSystemPrompt({ upstream, settings: { artifactDefaults: {}, contentLanguage } });
       assert.match(prompt, /## Output style\n/);
       assert.match(prompt, /extreme telegraphic/);

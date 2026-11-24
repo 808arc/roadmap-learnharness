@@ -29,7 +29,7 @@ const DOSSIER = {
     { category: "discrimination_error", summary: "Treats matrix product as element-wise", example: "A*B for a 2x3 and 3x2" },
     { category: "prerequisite_gap", summary: "No notion of the chain rule" },
   ],
-  constraints: "Russian or English, free only, 1 hour a day",
+  constraints: "English only, free only, 1 hour a day",
   sources: [{ title: "3Blue1Brown Essence of LA", stance: "uses" }, "Strang"],
   openQuestions: ["Calculus level beyond derivatives?"],
   transcriptExcerpt: "Learner: I do A*B and get an error…",
@@ -112,7 +112,7 @@ test("the Architect gets the dossier rules and moves misconceptions into the Err
   assert.match(prompt, /Misconceptions: contrast node each/);
   // Issue #19: the Architect is not offered the misconception-apply tool, so the prompt never names it.
   assert.doesNotMatch(prompt, /apply_dossier_misconceptions/);
-  assert.match(buildMessage("abc", "ru"), /досье из диагностики abc/);
+  assert.match(buildMessage("abc"), /Build a roadmap from diagnostic dossier abc/);
 
   const directory = temp();
   const store = openLearningPathStore(directory);

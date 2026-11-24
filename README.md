@@ -10,8 +10,7 @@ and mistakes back to the map.
 ![Roadmap with the node panel](docs/roadmap.png)
 
 Roadmap is a LearnHarness Community plugin (`apiVersion: 1`, id `roadmap-learnharness`,
-LearnHarness 0.6.0 or newer). The interface is available in English and
-Russian (Settings → Roadmap → Interface language; *Auto* follows the system).
+LearnHarness 0.6.0 or newer). The interface is in English.
 
 > Roadmap started as a fork of [Learning Paths](https://github.com/kerr-mwv/learning-path-plugin)
 > by **kerr-mwv** (AGPL-3.0). The pedagogical framework, the Architect, the error

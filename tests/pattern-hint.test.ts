@@ -1,5 +1,5 @@
 /** Question-pattern hints (issue #35): the node-type mapping, the setting that hides the line,
- * validation of old settings data, and EN/RU coverage of every new string. */
+ * validation of old settings data, and English coverage of every new string. */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_DISPLAY, NODE_TYPES, validatePluginSettings } from "../src/domain.ts";
@@ -111,7 +111,7 @@ test("the display setting defaults on, and old settings data without it still va
   assert.equal(bad.ok, false, "a non-boolean value is rejected");
 });
 
-test("every new pattern-hint and setting string exists in both EN and RU", () => {
+test("every new pattern-hint and setting string exists in English", () => {
   const keys = new Set<MessageKey>();
   for (const type of NODE_TYPES) for (const kind of KINDS) {
     const key = patternHintKey(type, kind);
@@ -121,7 +121,5 @@ test("every new pattern-hint and setting string exists in both EN and RU", () =>
   keys.add("s.patternHintsDesc");
   for (const key of keys) {
     assert.ok(tables.en[key], `en: ${key}`);
-    assert.ok(tables.ru[key], `ru: ${key}`);
-    assert.notEqual(tables.ru[key], tables.en[key], `ru is translated: ${key}`);
   }
 });

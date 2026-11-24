@@ -25,12 +25,9 @@ test("a malformed review mark is rejected", () => {
   }
 });
 
-test("the short-review label exists in English and Russian", (t2) => {
+test("the short-review label exists in English", (t2) => {
   t2.after(() => setLocale("en"));
   setLocale("en");
   assert.equal(t("mark.shortReview"), "short review");
   assert.equal(t("mark.shortReviewShort"), "review");
-  setLocale("ru");
-  assert.equal(t("mark.shortReview"), "короткое повторение");
-  assert.equal(t("mark.shortReviewShort"), "повтор.");
 });

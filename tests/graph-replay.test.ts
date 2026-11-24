@@ -129,18 +129,15 @@ test("the caption names the node and the prerequisite it came from", () => {
   assert.match(f.caption(), /Node b \(after Node a\)/);
   f.press("forward");
   assert.match(f.caption(), /Node d \(after Node b, Node c\)/);
-  setLocale("ru");
-  f.press("forward");
-  assert.match(f.caption(), /Node e \(после Node d\)/);
   setLocale("en");
+  f.press("forward");
+  assert.match(f.caption(), /Node e \(after Node d\)/);
   f.controller.abort();
 });
 
-test("EN and RU have every replay key", () => {
+test("English has every replay key", () => {
   for (const key of ["play", "pause", "back", "forward", "exit", "speed", "slow", "normal", "fast", "rootStep", "step", "item"]) {
-    for (const locale of ["en", "ru"] as const) {
-      assert.ok((tables[locale] as Record<string, string>)[`replay.${key}`], `${locale} replay.${key}`);
-    }
+    assert.ok((tables.en as Record<string, string>)[`replay.${key}`], `en replay.${key}`);
   }
 });
 

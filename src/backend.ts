@@ -1010,7 +1010,7 @@ export function activate(ctx: PluginBackendContext): void {
       nodeTitle: node.title,
       kind,
       // The view sends its interface language so the chat title matches the UI.
-      title: `${value.locale === "ru" ? (kind === "teaching" ? "Урок" : "Практика") : kind === "teaching" ? "Lesson" : "Practice"}: ${node.title}`,
+      title: `${kind === "teaching" ? "Lesson" : "Practice"}: ${node.title}`,
       prompt: brief.text,
       watchpoints: brief.watchpoints.length,
     };
@@ -1037,7 +1037,7 @@ export function activate(ctx: PluginBackendContext): void {
     const value = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
     const pending = pendingBuild && Date.now() - pendingBuild.at < 10 * 60_000 ? pendingBuild : null;
     pendingBuild = null;
-    return pending ? { noteId: pending.noteId, message: buildMessage(pending.noteId, value.locale === "ru" ? "ru" : "en") } : { noteId: null };
+    return pending ? { noteId: pending.noteId, message: buildMessage(pending.noteId) } : { noteId: null };
   });
 
   // ── Research channels ────────────────────────────────────────────────────
@@ -1090,8 +1090,7 @@ export function activate(ctx: PluginBackendContext): void {
     const value = object(input, "research.prepareSession");
     const topic = readText(value.topic, "topic", { max: 300, trim: true });
     const details = value.details === undefined ? "" : readText(value.details, "details", { max: 4000, trim: true });
-    const ru = value.locale === "ru";
-    return { title: `${ru ? "Исследование" : "Research"}: ${topic}`, prompt: researchBrief(topic, details, ru ? "ru" : "en") };
+    return { title: `Research: ${topic}`, prompt: researchBrief(topic, details) };
   });
 
   handle("research.linkSession", (input) => {

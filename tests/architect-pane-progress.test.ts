@@ -1,4 +1,4 @@
-/** Architect pane build strip: six steps render, statuses follow tool events, and EN/RU keys exist. */
+/** Architect pane build strip: six steps render, statuses follow tool events, and English keys exist. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createArchitectPane } from "../src/view/architect-pane.ts";
@@ -109,10 +109,9 @@ test("the build strip shows six steps and follows tool events", () => {
   }
 });
 
-test("every build strip label exists in EN and RU", () => {
+test("every build strip label exists in English", () => {
   const keys = [...STEP_KEYS.map((step) => `archProgress.${step}`), "archProgress.label", "archProgress.count"];
   for (const key of keys) {
     assert.ok(tables.en[key as keyof typeof tables.en], `EN ${key}`);
-    assert.ok(tables.ru[key as keyof typeof tables.ru], `RU ${key}`);
   }
 });

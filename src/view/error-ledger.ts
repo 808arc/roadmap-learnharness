@@ -57,7 +57,7 @@ export function createErrorLedger(
   container.append(root);
   let controller = new AbortController();
   let disposed = false;
-  const localeTag = (): string => (locale() === "ru" ? "ru-RU" : "en-US");
+  const localeTag = (): string => "en-US";
 
   const clear = (): void => {
     controller.abort();

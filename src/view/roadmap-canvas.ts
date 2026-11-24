@@ -59,7 +59,7 @@ export function moduleSource(module: PathModule): string | null {
   if (!anchor) return null;
   const short = anchor.reference.split(/[,:(—–-]/)[0]!.trim();
   if (!anchor.chapter) return short;
-  return `${short} ${locale() === "ru" ? "гл." : "ch."} ${anchor.chapter}`;
+  return `${short} ch. ${anchor.chapter}`;
 }
 
 /** How many module colours the canvas cycles through (rm-mod-0 .. rm-mod-5 in the stylesheet). */

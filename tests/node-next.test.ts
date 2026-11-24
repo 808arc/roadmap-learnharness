@@ -110,16 +110,12 @@ test("a group of alternatives counts once, under its first member", () => {
   assert.deepEqual(ids(rank(nodes)), ["b", "gcc"]);
 });
 
-test("every reason key exists in both English and Russian", () => {
+test("every reason key exists in English", () => {
   try {
     for (const key of NEXT_REASON_KEYS) {
-      setLocale("ru");
-      const russian = t(key, { n: 1 });
       setLocale("en");
       const english = t(key, { n: 1 });
-      assert.notEqual(russian, key);
       assert.notEqual(english, key);
-      assert.notEqual(russian, english, `${key} has no Russian text`);
     }
   } finally {
     setLocale("en");

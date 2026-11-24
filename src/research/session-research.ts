@@ -55,13 +55,10 @@ export function createResearchChats(dataDirectory: string): ResearchChats {
   };
 }
 
-export function researchBrief(topic: string, details: string, locale: string): string {
-  const ru = locale === "ru";
+export function researchBrief(topic: string, details: string): string {
   return [
-    ru
-      ? `Это исследовательская сессия для дорожной карты Roadmap. Тема: ${topic}.`
-      : `This is a research session for a Roadmap learning path. Topic: ${topic}.`,
-    details ? (ru ? `Цель и контекст ученика: ${details}` : `Learner's goal and context: ${details}`) : "",
+    `This is a research session for a Roadmap learning path. Topic: ${topic}.`,
+    details ? `Learner's goal and context: ${details}` : "",
     "",
     "Research brief (do this yourself, do not ask the learner to do it):",
     "1. Dispatch several web research jobs from different angles: the field map and prerequisites; the most recommended books and courses " +

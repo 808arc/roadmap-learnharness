@@ -93,16 +93,12 @@ test("the brief for a node without a repo is unchanged by the new field", () => 
   assert.doesNotMatch(brief.text, /Code repository/);
 });
 
-test("the node panel key exists in both EN and RU, with text in each", () => {
+test("the node panel key exists in English", () => {
   const key: MessageKey = "insp.codeRepo";
   assert.equal(typeof tables.en[key], "string");
-  assert.equal(typeof tables.ru[key], "string");
   assert.notEqual(tables.en[key].trim(), "");
-  assert.notEqual(tables.ru[key].trim(), "");
 
   try {
-    setLocale("ru");
-    assert.equal(t(key), "Репозиторий кода");
     setLocale("en");
     assert.equal(t(key), "Code repository");
   } finally {

@@ -345,7 +345,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
       "## Output style",
       "Chat reply, visible reasoning, node titles, node goals: extreme telegraphic. No articles, no filler, no pleasantries. Short fragments. Facts, verbs, nouns only.",
       'Example: "Root: hashing basics. Next: collisions, then tables." Not: "I think we should start with the basics of hashing."',
-      "Telegraphic style applies in whatever language the Language section selects: English → telegraphic English; Russian → telegraphic Russian (drop filler words, same terse fragments). Tool names, field names, enum values unchanged. Book/course/resource titles stay as published; existing node titles stay stable in refinement.",
+      "Telegraphic style applies in whatever language the Language section selects: English → telegraphic English; other languages likewise (drop filler words, same terse fragments). Tool names, field names, enum values unchanged. Book/course/resource titles stay as published; existing node titles stay stable in refinement.",
     ].join("\n"),
   );
 
@@ -353,7 +353,7 @@ export function buildArchitectSystemPrompt(options: ArchitectPromptOptions = {})
   sections.push(
     language === "auto"
       ? "## Language\nWrite every learner-facing field (titles, goals, outcomes, pre-reading, resource titles you describe) in the language the learner writes to you. Keep book and course titles as published."
-      : `## Language\nWrite every learner-facing field (titles, goals, outcomes, pre-reading) in ${language === "ru" ? "Russian" : "English"}, whatever language the learner uses. Keep book and course titles as published.`,
+      : `## Language\nWrite every learner-facing field (titles, goals, outcomes, pre-reading) in English, whatever language the learner uses. Keep book and course titles as published.`,
   );
   if (existingPath) sections.push(refinementLines(existingPath));
   return sections.filter(Boolean).join("\n\n");

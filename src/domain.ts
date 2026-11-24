@@ -143,7 +143,7 @@ export interface NodeResource {
   readonly checked?: boolean;
 }
 
-export const LANGUAGE_PREFERENCES = ["auto", "ru", "en"] as const;
+export const LANGUAGE_PREFERENCES = ["auto", "en"] as const;
 export type LanguagePreference = (typeof LANGUAGE_PREFERENCES)[number];
 
 export const GRAPH_DIRECTIONS = ["bottom-to-top", "left-to-right"] as const;
@@ -447,6 +447,11 @@ function readBoolean(value: unknown, path: string): boolean {
 function readInteger(value: unknown, path: string, { min = 0 }: { min?: number } = {}): number {
   if (!Number.isSafeInteger(value) || (value as number) < min) fail(path, `must be an integer >= ${min}`);
   return value as number;
+}
+
+/** A saved language the plugin no longer offers (e.g. the removed "ru") falls back to "auto". */
+function readLanguage(value: unknown, path: string): LanguagePreference {
+  return value === "ru" ? "auto" : readEnum(value, LANGUAGE_PREFERENCES, path);
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[], path: string): T {
@@ -937,7 +942,7 @@ function readPluginSettingsValue(value: unknown): PluginSettings {
   const contentLanguage =
     record.contentLanguage === undefined
       ? undefined
-      : readEnum(record.contentLanguage, LANGUAGE_PREFERENCES, `${path}.contentLanguage`);
+      : readLanguage(record.contentLanguage, `${path}.contentLanguage`);
   const research = record.research === undefined ? undefined : readResearchSettings(record.research, `${path}.research`);
   const proposeRoadmaps = record.proposeRoadmaps === undefined ? undefined : readBoolean(record.proposeRoadmaps, `${path}.proposeRoadmaps`);
   const roadmapShSource = record.roadmapShSource === undefined ? undefined : readBoolean(record.roadmapShSource, `${path}.roadmapShSource`);
@@ -955,7 +960,7 @@ function readPluginSettingsValue(value: unknown): PluginSettings {
 function readDisplaySettings(value: unknown, path: string): DisplaySettings {
   const record = readObject(value, path);
   return {
-    language: record.language === undefined ? DEFAULT_DISPLAY.language : readEnum(record.language, LANGUAGE_PREFERENCES, `${path}.language`),
+    language: record.language === undefined ? DEFAULT_DISPLAY.language : readLanguage(record.language, `${path}.language`),
     showOptional: record.showOptional === undefined ? DEFAULT_DISPLAY.showOptional : readBoolean(record.showOptional, `${path}.showOptional`),
     graphDirection: (GRAPH_DIRECTIONS as readonly unknown[]).includes(record.graphDirection)
       ? (record.graphDirection as GraphDirectionSetting)

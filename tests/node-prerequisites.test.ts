@@ -204,8 +204,6 @@ test("the legend names prerequisites once any node sets them, in both languages,
     setLocale("en");
     assert.equal(legendNote([makeNode("a", "concept")]), t("legend.moduleOrder"));
     assert.equal(legendNote([makeNode("a", "concept", { prerequisites: [] })]), t("legend.prerequisitesNote"));
-    setLocale("ru");
-    assert.equal(legendNote([makeNode("a", "concept", { prerequisites: [] })]), t("legend.prerequisitesNote"));
     assert.notEqual(t("legend.prerequisitesNote"), "legend.prerequisitesNote");
   } finally {
     setLocale("en");

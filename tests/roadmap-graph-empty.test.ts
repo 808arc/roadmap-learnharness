@@ -105,12 +105,10 @@ test("the graph count is the brief's topic count", () => {
   assert.equal(readGraphTopicCount({ graph: () => graph }), 2);
 });
 
-test("every graph-empty string exists in both English and Russian", () => {
+test("every graph-empty string exists in English", () => {
   const source = fs.readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8");
   const enBlock = source.slice(source.indexOf("const en = {"), source.indexOf("export type MessageKey"));
-  const ruBlock = source.slice(source.indexOf("const ru:"), source.indexOf("const tables"));
   const keys = (block: string) => [...block.matchAll(/^\s+"(graphEmpty\.[\w.]+)":\s*"[^"]+"/gm)].map((match) => match[1]);
   const enKeys = keys(enBlock);
   assert.deepEqual(enKeys, ["graphEmpty.build", "graphEmpty.hint", "graphEmpty.prompt"]);
-  assert.deepEqual(keys(ruBlock), enKeys);
 });

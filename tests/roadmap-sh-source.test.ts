@@ -57,10 +57,9 @@ test("on explicitly keeps the tools; the value survives parse and validate", (t)
   assert.equal(validatePluginSettings({ artifactDefaults: {}, roadmapShSource: "no" }).ok, false);
 });
 
-test("the settings row exists, is on by default, and has EN and RU strings", async () => {
+test("the settings row exists, is on by default, and has an English string", async () => {
   for (const key of ["s.roadmapSh", "s.roadmapShDesc"] as const) {
     assert.ok(tables.en[key], `en ${key}`);
-    assert.ok(tables.ru[key] && tables.ru[key] !== tables.en[key], `ru ${key}`);
   }
   const fixture = createViewFixture({});
   try {

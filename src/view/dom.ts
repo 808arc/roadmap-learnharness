@@ -41,7 +41,7 @@ export function button(
   return node;
 }
 
-/** Date like "12 ноября" / "Nov 12" in the active locale. */
+/** Date like "Nov 12". */
 export function shortDate(value: string | number, localeTag: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";

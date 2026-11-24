@@ -174,9 +174,10 @@ test("node marks, outcomes and resources validate, and bad links are refused", (
 
 test("display settings default sensibly and reject unknown values", () => {
   assert.deepEqual(parsePluginSettings({ artifactDefaults: {} }), { artifactDefaults: {} });
-  const parsed = parsePluginSettings({ artifactDefaults: {}, display: { language: "ru" }, contentLanguage: "en" });
-  assert.deepEqual(parsed.display, { language: "ru", showOptional: true, graphDirection: "bottom-to-top", patternHints: true });
-  assert.equal(parsed.contentLanguage, "en");
+  const parsed = parsePluginSettings({ artifactDefaults: {}, display: { language: "ru" }, contentLanguage: "ru" });
+  // A saved "ru" from before Russian was removed falls back to "auto".
+  assert.deepEqual(parsed.display, { language: "auto", showOptional: true, graphDirection: "bottom-to-top", patternHints: true });
+  assert.equal(parsed.contentLanguage, "auto");
   assert.throws(() => parsePluginSettings({ artifactDefaults: {}, display: { language: "klingon" } }));
 });
 
@@ -255,17 +256,14 @@ test("session metrics sum focused time between learner actions and skip breaks",
   assert.deepEqual(sessionMetrics([]), { startedAt: null, focusedMs: 0, answered: 0, correct: 0 });
 });
 
-test("every interface string exists in both languages and the locale follows the setting", () => {
-  assert.equal(resolveLocale("ru", "en-US"), "ru");
-  assert.equal(resolveLocale("auto", "ru-RU"), "ru");
+test("every interface string exists in English and the locale is always English", () => {
+  assert.equal(resolveLocale("auto", "ru-RU"), "en");
   assert.equal(resolveLocale("auto", "de-DE"), "en");
   const source = fs.readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8");
-  const ruBlock = source.slice(source.indexOf("const ru:"), source.indexOf("const tables"));
   const enBlock = source.slice(source.indexOf("const en = {"), source.indexOf("export type MessageKey"));
   const keys = (block: string) => [...block.matchAll(/^\s+"([\w.]+)":/gm)].map((match) => match[1]);
-  assert.deepEqual(keys(ruBlock).sort(), keys(enBlock).sort());
-  setLocale("ru");
-  assert.equal(t("foot.summary" as MessageKey, { done: 7, total: 14, progress: 2 }), "пройдено 7 из 14 · в работе 2");
+  assert.ok(keys(enBlock).length > 0);
+  assert.doesNotMatch(source, /[\u0400-\u04FF]/, "no Cyrillic in the interface strings");
   setLocale("en");
   assert.equal(t("foot.summary" as MessageKey, { done: 7, total: 14, progress: 2 }), "consolidated 7 of 14 · in progress 2");
 });

@@ -87,15 +87,14 @@ const RESOURCE_ICON: Record<NodeResource["kind"], string> = {
 
 /** "K&R, ch. 5 · §5.1 · pp. 93–117" in the active locale. */
 export function formatAnchor(anchor: SourceAnchor): string {
-  const ru = locale() === "ru";
   const parts = [anchor.reference];
   if (anchor.chapter) {
-    // The Architect sometimes writes "Ch. 8" or "Глава 8" itself; never print "ch. Ch. 8".
-    const labelled = /^(ch(apter)?|гл(ава)?|part|часть|lecture|лекция|module|модуль|unit|week)\b\.?/i.test(anchor.chapter.trim());
-    parts.push(labelled ? anchor.chapter.trim() : `${ru ? "гл." : "ch."} ${anchor.chapter}`);
+    // The Architect sometimes writes "Ch. 8" itself; never print "ch. Ch. 8".
+    const labelled = /^(ch(apter)?|part|lecture|module|unit|week)\b\.?/i.test(anchor.chapter.trim());
+    parts.push(labelled ? anchor.chapter.trim() : `ch. ${anchor.chapter}`);
   }
   if (anchor.section) parts.push(`§${anchor.section.replace(/^§/, "")}`);
-  if (anchor.pages) parts.push(`${ru ? "стр." : "pp."} ${anchor.pages}`);
+  if (anchor.pages) parts.push(`pp. ${anchor.pages}`);
   return parts.join(" · ");
 }
 
@@ -153,7 +152,7 @@ export function createNodeInspector(
   let controller = new AbortController();
   let disposed = false;
   const scoped = (): AbortSignal => AbortSignal.any([signal, controller.signal]);
-  const localeTag = (): string => (locale() === "ru" ? "ru-RU" : "en-US");
+  const localeTag = (): string => "en-US";
 
   const clear = (): void => {
     for (const handle of handles.reverse()) handle.dispose();

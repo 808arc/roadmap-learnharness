@@ -158,15 +158,11 @@ test("the interface strings exist in both languages, and the removed Tree string
     for (const key of keys) {
       setLocale("en");
       const english = t(key);
-      setLocale("ru");
-      const russian = t(key);
       assert.ok(english.length > 0 && english !== key, `${key} has English`);
-      assert.ok(russian.length > 0 && russian !== key, `${key} has Russian`);
     }
-    setLocale("ru");
-    assert.equal(locale(), "ru");
+    assert.equal(locale(), "en");
     for (const removed of ["view.tree", "view.graph", "tree.textOnly", "tree.expand", "tree.collapse", "s.defaultView", "s.defaultViewHelp", "graph.knowledgeEmpty"]) {
-      assert.ok(!(removed in tables.en) && !(removed in tables.ru), `${removed} is removed`);
+      assert.ok(!(removed in tables.en), `${removed} is removed`);
     }
   } finally {
     setLocale("en");
