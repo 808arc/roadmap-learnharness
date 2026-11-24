@@ -252,6 +252,51 @@ test("abort before the start resolves empty without running anything", async () 
   assert.equal(ctl.calls.length, 0);
 });
 
+test("an abort raised by the retry observer stops the next attempt", async () => {
+  const abort = new AbortController();
+  const events: string[] = [];
+  let calls = 0;
+  const boom = new Error("boom");
+  const { results, failed } = await runScheduler({
+    nodes: [node("a"), node("b")],
+    concurrency: 1,
+    retries: 3,
+    signal: abort.signal,
+    run: async () => {
+      calls += 1;
+      throw boom;
+    },
+    onEvent: (e: SchedulerEvent<string>) => {
+      events.push(`${e.id}:${e.type}:${e.attempt}`);
+      if (e.type === "retry") abort.abort();
+    },
+  });
+  assert.equal(calls, 1, "no attempt starts after the abort");
+  assert.deepEqual(events, ["a:start:1", "a:retry:1", "a:failed:1"]);
+  assert.equal(failed.get("a"), boom);
+  assert.equal(results.size, 0);
+});
+
+test("the abort listener is removed once the run resolves", async () => {
+  const abort = new AbortController();
+  const live = new Set<unknown>();
+  const target = abort.signal;
+  const add = target.addEventListener.bind(target);
+  const remove = target.removeEventListener.bind(target);
+  target.addEventListener = ((type: string, listener: unknown, opts?: unknown) => {
+    live.add(listener);
+    add(type, listener as EventListener, opts as AddEventListenerOptions);
+  }) as typeof target.addEventListener;
+  target.removeEventListener = ((type: string, listener: unknown, opts?: unknown) => {
+    live.delete(listener);
+    remove(type, listener as EventListener, opts as EventListenerOptions);
+  }) as typeof target.removeEventListener;
+  for (let i = 0; i < 3; i += 1) {
+    await runScheduler({ nodes: [node("a")], concurrency: 1, retries: 0, signal: target, run: async () => "A" });
+  }
+  assert.equal(live.size, 0);
+});
+
 test("invalid options throw RangeError", () => {
   const run = async (): Promise<string> => "x";
   for (const concurrency of [0, -1, 1.5, Number.NaN]) {

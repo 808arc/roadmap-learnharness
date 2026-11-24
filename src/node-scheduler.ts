@@ -148,12 +148,14 @@ export function runScheduler<R>(options: SchedulerOptions<R>): Promise<Scheduler
           emit({ type: "done", id: node.id, attempt, result });
           return;
         } catch (error) {
-          if (attempt > retries || runSignal.aborted) {
-            failed.set(node.id, error);
-            emit({ type: "failed", id: node.id, attempt, error });
-            return;
+          if (attempt <= retries && !runSignal.aborted) {
+            emit({ type: "retry", id: node.id, attempt, error });
+            // The observer may have aborted; an abort stops new attempts too.
+            if (!runSignal.aborted) continue;
           }
-          emit({ type: "retry", id: node.id, attempt, error });
+          failed.set(node.id, error);
+          emit({ type: "failed", id: node.id, attempt, error });
+          return;
         }
       }
     };
@@ -170,6 +172,8 @@ export function runScheduler<R>(options: SchedulerOptions<R>): Promise<Scheduler
       }
       if (inFlight === 0 && (runSignal.aborted || next >= queue.length)) {
         finished = true;
+        // A long-lived signal must not keep this run (and its result maps) alive.
+        signal?.removeEventListener("abort", pump);
         resolve({ results, failed });
       }
     };
