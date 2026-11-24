@@ -395,7 +395,8 @@ export function activate(ctx: PluginBackendContext): void {
       // A provider failure that lands while the learner stops is still logged as one.
       if (stoppedByUser && (cause === "aborted" || cause === "unknown")) cause = "user_stop";
     }
-    open.step.end({ ...usageSince(snapshot.messages, open.from), status: snapshot.status, ok: finished, cause });
+    const rounds = snapshot.messages.slice(open.from).filter((message) => (message as { role?: unknown }).role === "assistant").length;
+    open.step.end({ ...usageSince(snapshot.messages, open.from), rounds, status: snapshot.status, ok: finished, cause });
   };
   const createRequests = new Map<string, string>();
   let architect: ArchitectRegistration | null = null;
