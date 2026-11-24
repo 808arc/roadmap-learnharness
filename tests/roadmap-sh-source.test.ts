@@ -4,8 +4,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { buildArchitectDefinition } from "../src/architect-agent.ts";
+import { ARCHITECT_DEFINITION_ID, buildArchitectDefinition } from "../src/architect-agent.ts";
+import { createHost } from "./host.ts";
 import { parsePluginSettings, validatePluginSettings } from "../src/domain.ts";
+import { buildArchitectSystemPrompt } from "../src/framework.ts";
 import { tables } from "../src/i18n.ts";
 import { openLearningPathStore } from "../src/store.ts";
 import type { ArchitectModelConfig } from "../src/store.ts";
@@ -73,5 +75,30 @@ test("the settings row exists, is on by default, and has EN and RU strings", asy
     assert.equal(fixture.settings.roadmapShSource, false);
   } finally {
     fixture.restore();
+  }
+});
+
+test("saving the setting re-registers the Architect, so the change applies without a restart", async (t) => {
+  const h = createHost();
+  t.after(() => h.close());
+  await h.call("architect.create");
+  const names = (): string[] => (h.definitions.get(ARCHITECT_DEFINITION_ID)?.tools ?? []).map((tool) => tool.name);
+  assert.ok(names().includes("rank_roadmaps"));
+  await h.call("settings.save", { artifactDefaults: {}, roadmapShSource: false });
+  for (const name of UPSTREAM) assert.ok(!names().includes(name), name);
+  assert.doesNotMatch(h.definitions.get(ARCHITECT_DEFINITION_ID)?.instructions ?? "", /list_roadmap_topics/);
+  await h.call("settings.save", { artifactDefaults: {}, roadmapShSource: true });
+  assert.ok(names().includes("rank_roadmaps"));
+});
+
+test("on, the prompt is exactly the prompt without the option, in every mode and tool set", () => {
+  const toolSets = [[], ["web_search", "read_page"], ["list_research_notes", "read_research_note"], ["find_books", "web_search", "deep_research"]];
+  for (const upstream of [true, false]) {
+    for (const researchTools of toolSets) {
+      assert.equal(
+        buildArchitectSystemPrompt({ upstream, researchTools, roadmapSh: true }),
+        buildArchitectSystemPrompt({ upstream, researchTools }),
+      );
+    }
   }
 });
