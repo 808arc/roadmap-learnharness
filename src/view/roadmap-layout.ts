@@ -270,7 +270,7 @@ export type GraphDirection = "bottom-to-top" | "left-to-right";
 
 /** Vertical gap between two rows of nodes, and horizontal gap between nodes of one row, in bottom-to-top graphs. */
 const ROW_GAP = 28;
-const NODE_GAP = 40;
+const NODE_GAP = 24;
 /** Left to right: free space kept between two nodes of one column. */
 const COL_NODE_GAP = NODE_ROW - NODE_H;
 /** Bottom to top: the fewest nodes a row holds before its depth wraps into another row (more for larger roadmaps). */

@@ -87,3 +87,19 @@ test("the layout is compact: its area is at most twice the area of the nodes' bo
     assert.ok(net <= 2 * box, `${direction}: area ${net} vs box ${box}`);
   }
 });
+
+test("levels and siblings sit close: no wider pitch than the packed spacing", () => {
+  for (const direction of DIRECTIONS) {
+    const layout = lay(tree(), direction);
+    const levels = [...new Set(layout.nodes.map((n) => along(n, direction)))].sort((a, b) => a - b);
+    // Bottom to top: a row pitch of a node height plus a short gap; left to right: a column pitch of a node width plus a short gap.
+    const most = direction === "bottom-to-top" ? NODE_H + 32 : NODE_W + 48;
+    for (let i = 1; i < levels.length; i += 1) assert.ok(levels[i]! - levels[i - 1]! <= most, `${direction}: levels ${levels[i]! - levels[i - 1]!} apart`);
+  }
+  // Bottom to top: the nodes of one row sit side by side with at most a short gap between them.
+  const up = lay(tree(), "bottom-to-top").nodes;
+  for (const row of new Set(up.map((n) => n.y))) {
+    const xs = up.filter((n) => n.y === row).map((n) => n.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i += 1) assert.ok(xs[i]! - xs[i - 1]! <= NODE_W + 32, `row at ${row}: siblings ${xs[i]! - xs[i - 1]!} apart`);
+  }
+});
