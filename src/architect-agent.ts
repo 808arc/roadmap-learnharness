@@ -1027,6 +1027,8 @@ function tracedUpstream<T extends UpstreamOptions>(
         log.event("topic reads", {
           roadmap,
           count,
+          done: tally.outcomes.get("accepted") ?? 0,
+          total: count,
           reads: tally.reads,
           sources: formatCounts(tally.sources),
           outcomes: formatCounts(tally.outcomes),
@@ -1118,6 +1120,8 @@ export function upstreamReadTools(
             requestTopics: requestKeys.size,
             rankedBy: requestKeys.size > 0 ? "request" : "graph",
             roadmaps: names.length,
+            done: names.length - failed,
+            total: names.length,
             withTopics: [...roadmaps.values()].filter((slugs) => slugs.length > 0).length,
             failed,
             candidates: ranking.candidates.length,
@@ -1195,7 +1199,7 @@ export function upstreamReadTools(
               for (const resource of topic.resources) addCitable(readUrls, resource.url, citableTitles(resource.label));
             }
           }
-          step?.end({ count: slugs.length, bytes: Buffer.byteLength(text, "utf8"), source: listSource(slugs.length, local.size) });
+          step?.end({ count: slugs.length, done: local.size, total: slugs.length, bytes: Buffer.byteLength(text, "utf8"), source: listSource(slugs.length, local.size) });
           return textResult(result, text);
         } catch (error) {
           step?.fail(error);

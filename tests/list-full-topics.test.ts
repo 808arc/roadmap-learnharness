@@ -373,7 +373,7 @@ test("privacy: learner text is in no request, git argument or log line, and the 
   }
   assert.equal(text.includes("books.example.test"), false, "no resource url in the log");
 
-  const allowed = ["ts", "event", "step", "roadmap", "count", "bytes", "source", "outcome", "ok", "durationMs", "commit", "reason"];
+  const allowed = ["ts", "event", "step", "roadmap", "count", "bytes", "source", "outcome", "ok", "durationMs", "done", "total", "rounds", "commit", "reason"];
   const listSteps = logRecords(file).filter((record) => record.step === "topic list");
   assert.ok(listSteps.length >= 2, "the list step is logged as start and end");
   for (const record of listSteps) {

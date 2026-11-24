@@ -239,6 +239,11 @@ test("topic reads log one summary per roadmap per call with source and outcome c
   assert.equal(afterList[0]?.roadmap, "synthetic-roadmap");
   assert.equal(afterList[0]?.count, 2, "count is the number of topics in the call");
   assert.equal(afterList[0]?.reads, 2);
+  assert.equal(afterList[0]?.done, 2, "done is the accepted reads");
+  assert.equal(afterList[0]?.total, 2, "total is the topics in the call");
+  const listEnd = logRecords(file).find((record) => record.event === "step.end" && record.step === "topic list");
+  assert.equal(listEnd?.done, 2);
+  assert.equal(listEnd?.total, 2);
   assert.equal(afterList[0]?.sources, "local=2");
   assert.equal(afterList[0]?.outcomes, "accepted=2");
   assert.equal(afterList[0]?.ok, true);
@@ -255,7 +260,7 @@ test("topic reads log one summary per roadmap per call with source and outcome c
   }
   for (const record of logRecords(file)) {
     for (const key of Object.keys(record)) {
-      assert.ok(["ts", "event", "step", "roadmap", "count", "bytes", "source", "outcome", "ok", "durationMs", "commit", "reason", "reads", "sources", "outcomes"].includes(key), `field ${key} is metadata`);
+      assert.ok(["ts", "event", "step", "roadmap", "count", "bytes", "source", "outcome", "ok", "durationMs", "done", "total", "rounds", "commit", "reason", "reads", "sources", "outcomes"].includes(key), `field ${key} is metadata`);
     }
   }
 });

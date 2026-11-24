@@ -55,6 +55,7 @@ test("an aborted generation logs cause aborted", async (t) => {
   }));
   assert.equal(end.ok, false);
   assert.equal(end.cause, "aborted");
+  assert.equal(end.rounds, 0, "rounds counts the assistant messages of the run");
 });
 
 test("a learner stop through architect.abort logs cause user_stop", async (t) => {
