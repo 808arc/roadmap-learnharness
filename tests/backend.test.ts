@@ -607,6 +607,12 @@ test("paths.updateNode records progression and per-node artifacts without rewrit
     h.call("paths.updateNode", { pathId: "path-missing", nodeId: "n-concept", progression: "in_progress" }),
     /Unknown path/,
   );
+  await assert.rejects(
+    h.call("paths.updateNode", { pathId: "path-linear-algebra", nodeId: "n-holistic", progression: "skipped" }),
+    /root node .* cannot be skipped/,
+  );
+  const skipped = await h.call<{ path: any }>("paths.updateNode", { pathId: "path-linear-algebra", nodeId: "n-concept", progression: "skipped" });
+  assert.equal(skipped.path.modules[0].nodes[1].progression, "skipped", "any other node can still be skipped");
 });
 
 test("the Architect saves roadmap marks, outcomes and resources, and refinement keeps them", async (t) => {
@@ -616,6 +622,8 @@ test("the Architect saves roadmap marks, outcomes and resources, and refinement 
     title: "C for microcontrollers", goal: "Write and read C programs for microcontrollers",
     sourceSpine: { mode: "canonical", references: [{ title: "K&R", kind: "textbook" }] },
     modules: [{ title: "Basics", nodes: [
+      { type: "concept", title: "Toolchain", goal: "Name the steps from source to binary",
+        sourceAnchor: { reference: "K&R", chapter: "1" } },
       { type: "skill", title: "Compiler: GCC", goal: "Build with GCC", alternativeGroup: "compiler",
         sourceAnchor: { reference: "K&R", chapter: "1" } },
       { type: "skill", title: "Compiler: Clang", goal: "Build with Clang", alternativeGroup: "compiler",
@@ -633,7 +641,7 @@ test("the Architect saves roadmap marks, outcomes and resources, and refinement 
   const saved = await h.runTool<ToolResult>("save_learning_path", draft);
   assert.equal(saved.isError, undefined);
   const path = (await h.call<{ path: any }>("paths.get", { id: saved.details.pathId })).path;
-  const [gcc, clang, pointers, valgrind] = path.modules[0].nodes;
+  const [, gcc, clang, pointers, valgrind] = path.modules[0].nodes;
   assert.equal(gcc.alternativeGroup, "compiler");
   assert.equal(clang.alternativeGroup, "compiler");
   assert.deepEqual(pointers.outcomes, ["Explain what a pointer stores", "Read int *p"]);
@@ -643,7 +651,7 @@ test("the Architect saves roadmap marks, outcomes and resources, and refinement 
   const link = { title: "cppreference: pointers", kind: "article", url: "https://en.cppreference.com/w/c/language/pointer", free: true };
   const uncited = {
     ...draft,
-    modules: [{ ...draft.modules[0], nodes: draft.modules[0]!.nodes.map((node, index) => (index === 2 ? { ...node, resources: [link] } : node)) }],
+    modules: [{ ...draft.modules[0], nodes: draft.modules[0]!.nodes.map((node, index) => (index === 3 ? { ...node, resources: [link] } : node)) }],
   };
   const refusedLink = await h.runTool<ToolResult>("save_learning_path", uncited);
   assert.equal(refusedLink.isError, true);
@@ -663,9 +671,9 @@ test("the Architect saves roadmap marks, outcomes and resources, and refinement 
   });
   assert.equal(refined.isError, undefined);
   const after = (await h.call<{ path: any }>("paths.get", { id: path.id })).path.modules[0].nodes;
-  assert.equal(after[2].title, "Pointers!");
-  assert.deepEqual(after[2].outcomes, pointers.outcomes);
-  assert.equal(after[3].optional, true);
+  assert.equal(after[3].title, "Pointers!");
+  assert.deepEqual(after[3].outcomes, pointers.outcomes);
+  assert.equal(after[4].optional, true);
 });
 
 test("paths.list names a roadmap file the store refused, so the hub can show it", async (t) => {

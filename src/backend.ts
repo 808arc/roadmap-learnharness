@@ -73,6 +73,7 @@ import {
   CHILD_SESSION_KINDS,
   PROGRESSION_STATES,
   parsePluginSettings,
+  rootNodeId,
 } from "./domain.ts";
 import type {
   ArchitectPreferences,
@@ -801,6 +802,9 @@ export function activate(ctx: PluginBackendContext): void {
 
     const path = store.path(pathId);
     if (!path) throw new Error(`Unknown path: ${pathId}`);
+    if (progression === "skipped" && nodeId === rootNodeId(path)) {
+      throw new Error("The root node starts the roadmap and cannot be skipped.");
+    }
 
     let artifactConfig: ArtifactConfig | null | undefined;
     if (hasArtifact) {

@@ -889,6 +889,12 @@ function findPrerequisiteCycle(nodes: ReadonlyMap<string, PathNode>): string[] |
   return null;
 }
 
+/** The roadmap's one root (issue #58): its first node, which can never be removed or skipped. */
+export function rootNodeId(path: LearningPath): string | null {
+  for (const module of path.modules) if (module.nodes[0]) return module.nodes[0].id;
+  return null;
+}
+
 /** Validate a learning path without throwing; invalid input yields precise issues. */
 export function validateLearningPath(value: unknown): ValidationResult<LearningPath> {
   try {

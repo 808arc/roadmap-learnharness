@@ -268,7 +268,7 @@ test("a draft with the brief: matched nodes are optional, none is consolidated, 
   const path = await draftThroughBrief(h, draft, true);
   const stored = new Map<string, any>(nodesOf(path).map((node) => [node.id, node]));
 
-  assert.equal(stored.get(holisticId).optional, true, "a node matched by name is optional review");
+  assert.notEqual(stored.get(holisticId).optional, true, "a node matched by name is review, but the root stays required (#58)");
   assert.equal(stored.get(holisticId).progression, "unstarted", "and not consolidated");
   assert.equal(stored.get(conceptId).optional, true, "a node matched by alias is optional review");
   assert.equal(stored.get(conceptId).progression, "unstarted");
@@ -277,7 +277,7 @@ test("a draft with the brief: matched nodes are optional, none is consolidated, 
   assert.equal(stored.get(checkpointId).progression, "consolidated", "an unmatched node keeps the model's progression");
 
   const optional = nodesOf(path).filter((node) => node.optional === true);
-  assert.equal(optional.length, 2);
+  assert.equal(optional.length, 1);
   assert.ok(optional.every((node) => node.progression !== "consolidated"), "nothing optional is consolidated");
 });
 

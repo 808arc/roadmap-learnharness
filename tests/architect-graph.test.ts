@@ -5,7 +5,8 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GRAPH_BRIEF_MAX_CHARS, quoteGraphBrief } from "../src/architect-agent.ts";
+import { GRAPH_BRIEF_MAX_CHARS, quoteGraphBrief, withMandatoryRoot } from "../src/architect-agent.ts";
+import type { LearningPath } from "../src/domain.ts";
 import type { GraphBrief } from "../src/graph-brief.ts";
 import { rawPath } from "./fixtures.ts";
 import { createHost } from "./host.ts";
@@ -55,7 +56,7 @@ const nodesOf = (path: any): any[] => path.modules.flatMap((module: any) => modu
 
 test("a draft sent with a graph brief keeps matching nodes as optional review, never consolidated", async (t) => {
   const draft = rawPath();
-  const matchedNode = draft.modules[0].nodes[0]; // the model marks this one consolidated
+  const matchedNode = draft.modules[0].nodes[1]; // the model marks this one consolidated (not the root, which stays required)
   const aliasedNode = draft.modules[1].nodes[0];
   const untouchedNode = draft.modules[1].nodes[1];
   const h = host(t, {
@@ -181,4 +182,28 @@ test("the quoted brief is capped", () => {
   const quoted = quoteGraphBrief(brief);
   assert.ok(quoted.length <= GRAPH_BRIEF_MAX_CHARS);
   assert.ok(JSON.parse(quoted).topics.length > 0, "the cap keeps as many topics as fit");
+});
+
+test("withMandatoryRoot makes the first node the one root and links other branch starts under it", () => {
+  type Node = { id: string; title: string; prerequisites?: string[]; optional?: boolean; alternativeGroup?: string };
+  const node = (id: string, prerequisites?: string[], extra: Partial<Node> = {}): Node =>
+    ({ id, title: id.toUpperCase(), ...(prerequisites ? { prerequisites } : {}), ...extra });
+  const asPath = (...nodes: Node[]) => ({ modules: [{ nodes }] }) as unknown as LearningPath;
+  const nodesOf = (path: LearningPath) => path.modules[0]!.nodes as unknown as Node[];
+
+  const fixed = nodesOf(withMandatoryRoot(asPath(node("a", [], { optional: true, alternativeGroup: "g" }), node("b", []), node("c", ["b"]))));
+  assert.deepEqual(fixed.map((n) => n.prerequisites), [[], ["a"], ["b"]], "other branch starts hang under the root");
+  assert.equal(fixed[0]!.optional, undefined, "the root is never optional");
+  assert.equal(fixed[0]!.alternativeGroup, undefined, "the root is never an alternative");
+
+  assert.throws(() => withMandatoryRoot(asPath(node("a", ["b"]), node("b", []))), /"A" is the roadmap's root: its prerequisites must be \[\]/,
+    "a first node that needs another is refused, not silently reversed");
+
+  const stored = asPath(node("a", []), node("b", ["a"]));
+  assert.throws(() => withMandatoryRoot(asPath(node("b", [])), stored), /root node "A" \(a\) must stay the first node/, "the Architect cannot drop the root");
+  assert.throws(() => withMandatoryRoot(asPath(node("b", []), node("a", [])), stored), /must stay the first node/, "nor move it down");
+  assert.deepEqual(nodesOf(withMandatoryRoot(asPath(node("a", []), node("b", ["a"]), node("c", [])), stored)).map((n) => n.prerequisites), [[], ["a"], ["a"]]);
+
+  const legacy = nodesOf(withMandatoryRoot(asPath(node("a"), node("b"))));
+  assert.deepEqual(legacy.map((n) => n.prerequisites), [undefined, undefined], "module-order paths stay as they are");
 });
