@@ -75,16 +75,35 @@ test("roadmap names come from the git copy after its fetch has finished, with no
   assert.equal(calls, 0);
 });
 
-test("with no exact match, no roadmap is chosen, though near matches still rank them as candidates", () => {
+test("with no exact match, the closest roadmap by near matches is chosen", () => {
   const ranking = rankRoadmaps(new Set(["binary-search", "time-complexity", "heat-wall"]), new Map([
     ["unrelated", ["css-basics", "html-forms"]],
     ["algorithms", ["sorting-algorithms", "time-complexity-analysis", "search-trees"]],
     ["systems", ["distributed-systems", "scheduling"]],
   ]));
-  assert.deepEqual(ranking.chosen, []);
+  assert.deepEqual(ranking.chosen.map((match) => match.roadmap), ["algorithms"]);
   assert.deepEqual(ranking.candidates.map((match) => match.roadmap), ["algorithms"]);
-  assert.equal(ranking.candidates[0]?.matched, 0);
-  assert.equal(ranking.candidates[0]?.near, 2);
+  assert.equal(ranking.chosen[0]?.matched, 0);
+  assert.equal(ranking.chosen[0]?.near, 2);
+});
+
+test("with no exact match, a second near roadmap is chosen only at half the best score", () => {
+  const ranking = rankRoadmaps(new Set(["react-hooks", "node-streams", "css-grid"]), new Map([
+    ["frontend", ["react-state", "css-layout"]],
+    ["backend", ["node-cluster"]],
+    ["weak", ["grid-paper"]],
+    ["zero", ["python-basics"]],
+  ]));
+  assert.deepEqual(ranking.chosen.map((match) => match.roadmap), ["frontend", "backend"]);
+  assert.ok(!ranking.candidates.some((match) => match.roadmap === "zero"));
+});
+
+test("a learner whose topics match no roadmap exactly still gets the closest roadmap", () => {
+  const ranking = rankRoadmaps(new Set(["react-hooks", "react-routing"]), new Map([
+    ["frontend", ["react-state", "html-basics"]],
+    ["devops", ["docker-compose"]],
+  ]));
+  assert.deepEqual(ranking.chosen.map((match) => match.roadmap), ["frontend"]);
 });
 
 test("a roadmap with no exact match is never chosen, even when it has the top score", () => {

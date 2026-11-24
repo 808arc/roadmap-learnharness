@@ -3,8 +3,10 @@
  * Pure: the caller passes the graph's topic keys (topicKey form, hyphenated) and each roadmap's topic slugs.
  * A graph topic that equals a roadmap topic is an exact match. A graph topic that shares a meaningful word with
  * one of a roadmap's topics is a near match, counted at a lower weight. Near matches add to a roadmap's score and
- * its place in the order, but a roadmap is chosen only when at least one of its topics matches exactly. The best
- * such roadmap is chosen; a second is chosen when it scores at least half as much as the first.
+ * its place in the order. When some roadmap matches exactly, only exact-matching roadmaps are chosen. When none does,
+ * the closest roadmaps by score (near matches included) are chosen instead, so the caller never has to ask. The best
+ * is chosen; a second is chosen when it scores at least half as much as the first. A roadmap with a zero score is
+ * never chosen.
  */
 
 export interface RoadmapMatch {
@@ -19,8 +21,8 @@ export interface RoadmapMatch {
 
 export interface RoadmapRanking {
   /**
-   * Best first, at most two: the chosen roadmaps. Each has at least one exact match (`matched >= 1`). Empty when no
-   * roadmap has an exact match, even if some roadmaps share words with the graph (see `candidates`).
+   * Best first, at most two: the chosen roadmaps. Exact matches only when any roadmap has one; otherwise the closest
+   * by near matches. Empty only when no roadmap scores at all.
    */
   readonly chosen: readonly RoadmapMatch[];
   /** Every roadmap with a score (exact or near matches), best first. Not limited to the chosen ones. */
@@ -63,10 +65,11 @@ export function rankRoadmaps(
     (a, b) => b.score - a.score || a.match.total - b.match.total || a.match.roadmap.localeCompare(b.match.roadmap),
   );
   const ordered = candidates.map((entry) => entry.match);
-  // Only a roadmap with an exact topic match can be chosen; near matches alone never are.
+  // Exact matches take priority; with none, the closest by score (near matches) is chosen. Candidates all score > 0.
   const exact = candidates.filter((entry) => entry.match.matched >= 1);
-  const best = exact[0];
-  const second = exact[1];
+  const pool = exact.length > 0 ? exact : candidates;
+  const best = pool[0];
+  const second = pool[1];
   const chosen: RoadmapMatch[] = [];
   if (best) chosen.push(best.match);
   if (best && second && second.score >= best.score * SECOND_ROADMAP_RATIO) chosen.push(second.match);

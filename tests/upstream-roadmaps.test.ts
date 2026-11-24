@@ -858,7 +858,7 @@ test("rank_roadmaps on an empty graph asks the learner in chat and makes no GitH
   assert.equal(calls.length, 0, "no GitHub request");
 });
 
-test("rank_roadmaps with only near matches returns no chosen roadmap and a note naming the closest candidates", async () => {
+test("rank_roadmaps with only near matches chooses the closest roadmap, with no ask note", async () => {
   const { fetch, calls } = fakeFetch({});
   const local: LocalRoadmapSource = {
     ready: Promise.resolve(true),
@@ -870,12 +870,13 @@ test("rank_roadmaps with only near matches returns no chosen roadmap and a note 
   const result = await runRank({ fetch, commit: COMMIT, local, readGraph: () => graphBrief(["Synthetic Extra Topic"]) }, log);
   assert.equal(calls.length, 0, "no GitHub request");
   assert.equal(result.isError, undefined);
-  const body = JSON.parse(result.content[0]?.text ?? "{}") as { chosen: unknown[]; candidates: { roadmap: string }[]; note: string };
-  assert.deepEqual(body.chosen, []);
+  const body = JSON.parse(result.content[0]?.text ?? "{}") as { chosen: { roadmap: string; matched: number }[]; candidates: { roadmap: string }[]; note?: string };
+  assert.deepEqual(body.chosen.map((match) => match.roadmap), ["synthetic-roadmap"]);
+  assert.equal(body.chosen[0]?.matched, 0);
   assert.deepEqual(body.candidates.map((match) => match.roadmap), ["synthetic-roadmap"]);
-  assert.match(body.note, /No roadmap matches any topic exactly/);
-  assert.match(body.note, /synthetic-roadmap/);
-  assert.equal(steps[0]?.ends[0]?.reason, "no_exact_match");
+  assert.equal(body.note, undefined);
+  assert.equal(steps[0]?.ends[0]?.reason, "closest_match");
+  assert.equal(steps[0]?.ends[0]?.chosen, 1);
 });
 
 test("rank_roadmaps waits for the git copy to be ready, then reads roadmaps and topics from it with no GitHub request", async () => {

@@ -1039,9 +1039,9 @@ export function upstreamReadTools(
       description:
         "Rank developer-roadmap roadmaps by coverage of learner-asked `topics`, else learner's Knowledge Graph topics: " +
         "exact match counts fully, shared word counts less. Reads every roadmap from git data first. " +
-        "Chosen only if ≥1 exact match. Returns chosen (max two: best exact match + second scoring ≥ half) and " +
-        "candidates (every roadmap, scored). chosen empty → result carries note: ask learner which closest roadmap " +
-        "fits; build nothing until answered. Call before list_roadmap_topics.",
+        "Roadmaps are chosen by the best topic overlap: exact matches first, else the closest by shared words; the " +
+        "learner is not asked. Returns chosen (max two: best + second scoring ≥ half) and candidates (every " +
+        "roadmap with overlap, scored). Call before list_roadmap_topics.",
       parameters: objectSchema({
         topics: {
           type: "array",
@@ -1079,26 +1079,6 @@ export function upstreamReadTools(
             roadmaps.set(name, refs.map((topic) => topic.slug));
           });
           const ranking = rankRoadmaps(keys, roadmaps);
-          if (ranking.chosen.length === 0) {
-            const closest = ranking.candidates.slice(0, 3).map((match) => match.roadmap);
-            const named = closest.length > 0
-              ? closest.join(", ")
-              : "say that no roadmap covers it and ask what they want to learn";
-            const note =
-              "No roadmap matches any topic exactly. Ask the learner one question in chat: which of these closest " +
-              `roadmaps fits their goal — ${named} — and build nothing until they answer.`;
-            step?.end({
-              graphTopics: brief?.topics.length ?? 0,
-              graphKeys: keys.size,
-              roadmaps: names.length,
-              withTopics: [...roadmaps.values()].filter((slugs) => slugs.length > 0).length,
-              failed,
-              candidates: ranking.candidates.length,
-              chosen: 0,
-              reason: "no_exact_match",
-            });
-            return textResult({ ...ranking, note }, JSON.stringify({ ...ranking, note }));
-          }
           step?.end({
             graphTopics: brief?.topics.length ?? 0,
             graphKeys: graphKeys.size,
@@ -1111,6 +1091,9 @@ export function upstreamReadTools(
             chosen: ranking.chosen.length,
             matched: ranking.chosen.map((match) => match.matched).join(","),
             near: ranking.chosen.map((match) => match.near).join(","),
+            ...(ranking.chosen.length > 0 && ranking.chosen.every((match) => match.matched === 0)
+              ? { reason: "closest_match" }
+              : {}),
           });
           return textResult(ranking, JSON.stringify(ranking));
         } catch (error) {
