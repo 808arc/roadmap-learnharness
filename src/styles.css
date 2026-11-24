@@ -387,6 +387,19 @@
   --rm-mod-3: #b98ad6;
   --rm-mod-4: #d9708f;
   --rm-mod-5: #a3ad45;
+  /* Small text in the Graph (tags, legend, module names) leans toward the main text so it reads at 100% zoom. */
+  --rm-muted: color-mix(in srgb, var(--rm-text) 72%, var(--rm-bg));
+  --rm-faint: color-mix(in srgb, var(--rm-muted) 85%, var(--rm-bg));
+}
+
+/* Darker module hues so module names and titles keep their contrast on the light background. */
+.roadmap-view[data-mode="light"] .rm-canvas {
+  --rm-mod-0: #3a56b8;
+  --rm-mod-1: #99510f;
+  --rm-mod-2: #1c7052;
+  --rm-mod-3: #7746a0;
+  --rm-mod-4: #a8345c;
+  --rm-mod-5: #5f680d;
 }
 
 .rm-canvas .rm-mod-0 { --rm-mod: var(--rm-mod-0); }
