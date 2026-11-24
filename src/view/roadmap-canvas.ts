@@ -246,7 +246,10 @@ export function createRoadmapCanvas(
     if (node.type === "checkpoint") setIcon(marker, ICONS.flag);
     button.append(marker, el(document, "span", "rm-node-title", node.title));
     const tag = node.alternativeGroup ? t("mark.alternativeShort") : node.optional ? t("mark.optionalShort") : null;
-    if (tag) button.append(el(document, "span", "rm-node-tag", tag));
+    if (tag) {
+      const hideUntilHover = !node.alternativeGroup && node.optional;
+      button.append(el(document, "span", hideUntilHover ? "rm-node-tag rm-node-tag-opt" : "rm-node-tag", tag));
+    }
     if (node.reviewMark) button.append(el(document, "span", "rm-node-review", t("mark.shortReviewShort")));
     const errors = unresolved(node);
     if (errors > 0) {
