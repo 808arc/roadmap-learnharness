@@ -692,3 +692,25 @@ test("paths.list names a roadmap file the store refused, so the hub can show it"
   assert.deepEqual(result.paths, []);
   assert.deepEqual(result.refused, [{ filename, code: "corrupt" }]);
 });
+
+test("activation never copies data from another plugin's folder", (t) => {
+  const plugins = temporaryDirectory(t);
+  const own = path.join(plugins, "roadmap-learnharness", "data");
+  const siblings = [path.join(plugins, "learning-path", "data"), path.join(plugins, "roadmap", "data")];
+  for (const folder of siblings) {
+    fs.mkdirSync(path.join(folder, "sources"), { recursive: true });
+    fs.mkdirSync(path.join(folder, "agents", "conv-1"), { recursive: true });
+    fs.writeFileSync(path.join(folder, "learning-paths.json"), '{"schemaVersion":1,"revision":1,"paths":[]}');
+    fs.writeFileSync(path.join(folder, "architect.json"), "{}");
+    fs.writeFileSync(path.join(folder, "settings.json"), "{}");
+  }
+  const siblingEntries = (): string[] =>
+    siblings.flatMap((folder) => fs.readdirSync(folder, { recursive: true }).map(String)).sort();
+  const before = siblingEntries();
+
+  host(t, own);
+  for (const name of ["learning-paths.json", "architect.json", "sources", "agents", "imported-from-learning-path.json", "imported-from-roadmap.json"]) {
+    assert.equal(fs.existsSync(path.join(own, name)), false, `${name} was not copied into Roadmap`);
+  }
+  assert.deepEqual(siblingEntries(), before, "the other plugins' folders are unchanged");
+});
