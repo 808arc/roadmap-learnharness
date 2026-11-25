@@ -6,15 +6,10 @@
  * clicks are reported through callbacks. All listeners belong to the signal.
  */
 import type { LearningPath, PathModule, PathNode } from "../domain.ts";
-import { rootNodeId } from "../domain.ts";
 import { t } from "../i18n.ts";
 import type { MessageKey } from "../i18n.ts";
 import type { NodePrerequisites } from "../node-prerequisites.ts";
 import { ICONS, setIcon } from "./icons.ts";
-import { EMPTY_SNAPSHOT, edgeKey, growthPlan, snapshotOf } from "./graph-growth.ts";
-import type { GraphSnapshot, GrowthPlan } from "./graph-growth.ts";
-import { REPLAY_SPEEDS, autoReplayOn, REPLAY_STEP_MS, layoutAt, markReplayed, replayOf, replayedOf } from "./graph-replay.ts";
-import type { Replay, ReplaySpeed } from "./graph-replay.ts";
 import type { GraphDirection } from "./roadmap-layout.ts";
 import { isDone, layoutGraph, moduleCounts } from "./roadmap-layout.ts";
 import type { PlacedModule, PlacedNode, RoadmapLayout } from "./roadmap-layout.ts";
@@ -41,7 +36,7 @@ export interface CanvasCallbacks {
 
 export interface RoadmapCanvas {
   render(state: CanvasState): void;
-  /** No roadmap to show: the next roadmap drawn grows in from nothing. */
+  /** No roadmap to show. The canvas keeps no drawing state, so there is nothing to reset. */
   clear(): void;
   dispose(): void;
 }
@@ -104,28 +99,7 @@ export function createRoadmapCanvas(
     directionBar.append(button);
   }
   const legend = el(document, "div", "rm-legend");
-  // Announces how many nodes a save added; the graph itself is not a live region.
-  const growStatus = el(document, "p", "rm-grow-status");
-  growStatus.setAttribute("role", "status");
-  growStatus.setAttribute("aria-live", "polite");
-  // Step replay: off until the user presses play. Buttons carry data-replay for tests and styling.
-  const replayBar = el(document, "div", "rm-replay");
-  const replayButton = (action: string, label: string): HTMLButtonElement => {
-    const button = el(document, "button", "rm-zoom-value", label);
-    button.type = "button";
-    button.dataset.replay = action;
-    replayBar.append(button);
-    return button;
-  };
-  const replayBack = replayButton("back", "");
-  const replayPlay = replayButton("play", "");
-  const replayForward = replayButton("forward", "");
-  const replaySpeedButton = replayButton("speed", "");
-  const replayExit = replayButton("exit", "");
-  const replayCaption = el(document, "p", "rm-replay-caption");
-  replayCaption.setAttribute("role", "status");
-  replayBar.append(replayCaption);
-  root.append(viewport, controls, directionBar, replayBar, legend, growStatus);
+  root.append(viewport, controls, directionBar, legend);
   host.append(root);
 
   let state: CanvasState | null = null;
@@ -134,21 +108,7 @@ export function createRoadmapCanvas(
   let tx = 0;
   let ty = 0;
   let placedViewKey: string | null = null;
-  /** What was drawn last: a snapshot of the same roadmap, "empty" after clear(), or null at mount. */
-  let drawn: { readonly pathId: string; readonly snapshot: GraphSnapshot } | "empty" | null = null;
   let disposed = false;
-  /** The replay: step is 1-based; null means the whole graph is shown. */
-  let replayStep: number | null = null;
-  let replayPlaying = false;
-  let replaySpeed: ReplaySpeed = "normal";
-  let replayTimer: ReturnType<typeof setTimeout> | null = null;
-  let replayData: Replay = { steps: [], base: new Set() };
-  /** Nodes shown from the start of the current replay (a save's replay covers only the new nodes). */
-  let replayBase: ReadonlySet<string> = new Set();
-  /** The roadmap the replay belongs to; another roadmap ends it. */
-  let replayPathId: string | null = null;
-  /** What the replay drew last, so a re-render (a click, a store change) does not grow the same layer again. */
-  let replayShown: GraphSnapshot | null = null;
 
   const applyTransform = (): void => {
     stage.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${scale})`;
@@ -324,7 +284,7 @@ export function createRoadmapCanvas(
     return label;
   };
 
-  const renderEdges = (current: RoadmapLayout, plan: GrowthPlan): SVGSVGElement => {
+  const renderEdges = (current: RoadmapLayout): SVGSVGElement => {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     svg.setAttribute("class", "rm-edges");
@@ -343,13 +303,7 @@ export function createRoadmapCanvas(
         line.setAttribute("x2", String(edge.x2));
         line.setAttribute("y2", String(edge.y2));
       }
-      const key = edgeKey(edge.from, edge.to);
-      const delay = plan.delays.get(key);
-      const grow = delay === undefined ? "" : " rm-grow";
-      const style = delay === undefined ? null : `animation-delay: ${delay}ms`;
-      if (edge.dashed) line.setAttribute("class", `rm-dashed${grow}`);
-      else if (grow) line.setAttribute("class", "rm-grow");
-      if (style) line.setAttribute("style", style);
+      if (edge.dashed) line.setAttribute("class", "rm-dashed");
       svg.append(line);
       // Arrowhead at the dependent end: two wings laid back from the tip along the line.
       const prev = bends.length > 0 ? bends[bends.length - 1]! : { x: edge.x1, y: edge.y1 };
@@ -365,8 +319,7 @@ export function createRoadmapCanvas(
         "d",
         `M${baseX + wingX} ${baseY + wingY} L${edge.x2} ${edge.y2} L${baseX - wingX} ${baseY - wingY}`,
       );
-      head.setAttribute("class", `rm-arrow${grow}`);
-      if (style) head.setAttribute("style", style);
+      head.setAttribute("class", "rm-arrow");
       svg.append(head);
     }
     return svg;
@@ -381,59 +334,13 @@ export function createRoadmapCanvas(
       expandedModuleId: current.expandedModuleId,
     });
     layout = full;
-    if (replayStep !== null && replayPathId !== current.path.id) {
-      replayPlaying = false;
-      stopTimer();
-      replayStep = null;
-      replayShown = null;
-    }
-    // Replays by itself: the first time a roadmap is shown, and for the nodes a save added (not on a plain re-render).
-    const finished = replayStep !== null && !replayPlaying && replayStep >= replayData.steps.length;
-    if (autoReplayOn() && (replayStep === null || finished)) {
-      const seen = replayedOf(current.path.id);
-      const fresh = full.nodes.filter((placed) => !seen?.has(placed.node.id));
-      if (fresh.length > 0) {
-        const base = new Set(full.nodes.filter((placed) => seen?.has(placed.node.id)).map((placed) => placed.node.id));
-        markReplayed(current.path.id, full.nodes.map((placed) => placed.node.id));
-        const planned = replayOf(full, rootNodeId(current.path), base);
-        if (planned.steps.length > 0) {
-          stopTimer();
-          replayBase = base;
-          replayPathId = current.path.id;
-          replayStep = 1;
-          replayShown = snapshotOf(layoutAt(planned, full, 0));
-          replayPlaying = planned.steps.length > 1;
-          if (replayPlaying) replayTimer = setTimeout(tick, REPLAY_STEP_MS[replaySpeed]);
-        }
-      }
-    }
-    replayData = replayOf(full, rootNodeId(current.path), replayStep !== null ? replayBase : new Set());
-    // Nodes a save adds while a replay is on screen join that replay; they must not replay again on the next click.
-    if (replayStep !== null) markReplayed(current.path.id, full.nodes.map((placed) => placed.node.id));
-    if (replayStep !== null) replayStep = Math.min(replayStep, Math.max(1, replayData.steps.length));
-    // During a replay only the revealed layers are drawn; the layer just revealed grows in.
-    const replaying = replayStep !== null;
-    const roadmap = replaying ? layoutAt(replayData, full, replayStep!) : full;
-    stage.style.width = `${roadmap.width}px`;
-    stage.style.height = `${roadmap.height}px`;
-    // Only items new since the last drawing animate; a re-render of the same graph animates nothing.
-    let before = drawn === "empty" ? EMPTY_SNAPSHOT : drawn !== null && drawn.pathId === current.path.id ? drawn.snapshot : null;
-    if (replaying) before = replayShown ?? EMPTY_SNAPSHOT;
-    const plan = growthPlan(before, roadmap);
-    if (replaying) replayShown = snapshotOf(roadmap);
-    else drawn = { pathId: current.path.id, snapshot: snapshotOf(roadmap) };
-    growStatus.textContent = !replaying && plan.addedNodes > 0 ? t("graph.grew", { n: plan.addedNodes }) : "";
+    stage.style.width = `${full.width}px`;
+    stage.style.height = `${full.height}px`;
     const moduleTitles = new Map(current.path.modules.map((module) => [module.id, module.title] as const));
-    const children: Element[] = [renderEdges(roadmap, plan)];
-    for (const placed of roadmap.modules) children.push(renderModule(placed));
-    for (const placed of roadmap.nodes) {
-      const button = nodeButton(placed, placed.node.id === current.selectedNodeId, moduleTitles.get(placed.moduleId) ?? "");
-      const delay = plan.delays.get(placed.node.id);
-      if (delay !== undefined) {
-        button.classList.add("rm-grow");
-        button.style.animationDelay = `${delay}ms`;
-      }
-      children.push(button);
+    const children: Element[] = [renderEdges(full)];
+    for (const placed of full.modules) children.push(renderModule(placed));
+    for (const placed of full.nodes) {
+      children.push(nodeButton(placed, placed.node.id === current.selectedNodeId, moduleTitles.get(placed.moduleId) ?? ""));
     }
     stage.replaceChildren(...children);
     const viewChanged = placedViewKey !== current.path.id;
@@ -450,123 +357,6 @@ export function createRoadmapCanvas(
       applyTransform();
     }
   };
-
-  const replayCaptionText = (): string => {
-    if (replayStep === null) return "";
-    const entry = replayData.steps[replayStep - 1];
-    if (!entry) return "";
-    const items = entry.items
-      .map((item) => (item.after.length > 0 ? t("replay.item", { title: item.node.node.title, from: item.after.join(", ") }) : item.node.node.title))
-      .join("; ");
-    return t(replayStep === 1 && replayData.base.size === 0 ? "replay.rootStep" : "replay.step", { i: replayStep, n: replayData.steps.length, items });
-  };
-
-  const renderReplayBar = (): void => {
-    const total = replayData.steps.length;
-    const active = replayStep !== null;
-    replayBack.textContent = "|◀";
-    replayBack.title = t("replay.back"); replayBack.setAttribute("aria-label", replayBack.title);
-    replayForward.textContent = "▶|";
-    replayForward.title = t("replay.forward"); replayForward.setAttribute("aria-label", replayForward.title);
-    replayPlay.textContent = replayPlaying ? "❚❚" : "▶";
-    replayPlay.title = t(replayPlaying ? "replay.pause" : "replay.play");
-    replayPlay.setAttribute("aria-label", replayPlay.title);
-    replayPlay.setAttribute("aria-pressed", String(replayPlaying));
-    replaySpeedButton.textContent = t("replay.speed", { speed: t(`replay.${replaySpeed}` as MessageKey) });
-    replayExit.textContent = t("replay.exit");
-    replayExit.hidden = !active;
-    replayBack.disabled = !active || replayStep! <= 1;
-    replayForward.disabled = total === 0 || (active && replayStep! >= total);
-    replayPlay.disabled = total === 0;
-    replayCaption.textContent = replayCaptionText();
-    replayCaption.hidden = !active;
-  };
-
-  const stopTimer = (): void => {
-    if (replayTimer !== null) clearTimeout(replayTimer);
-    replayTimer = null;
-  };
-
-  const redraw = (): void => {
-    if (state && !disposed && !signal.aborted) renderGraph(state);
-    renderReplayBar();
-  };
-
-  const tick = (): void => {
-    replayTimer = null;
-    if (disposed || !replayPlaying || replayStep === null) return;
-    if (replayStep >= replayData.steps.length) {
-      replayPlaying = false;
-      redraw();
-      return;
-    }
-    replayStep += 1;
-    redraw();
-    if (replayStep >= replayData.steps.length) replayPlaying = false;
-    else replayTimer = setTimeout(tick, REPLAY_STEP_MS[replaySpeed]);
-    renderReplayBar();
-  };
-
-  const pauseReplay = (): void => {
-    replayPlaying = false;
-    stopTimer();
-  };
-
-  /** Entering the replay from the full graph: it starts empty, so the root grows in. */
-  const enterReplay = (): void => {
-    if (replayStep !== null) return;
-    replayPathId = state?.path.id ?? null;
-    replayShown = null;
-    replayBase = new Set();
-  };
-
-  const stepReplay = (delta: number): void => {
-    if (replayData.steps.length === 0) return;
-    pauseReplay();
-    enterReplay();
-    replayStep = Math.min(replayData.steps.length, Math.max(1, (replayStep ?? 0) + delta));
-    redraw();
-  };
-
-  replayForward.addEventListener("click", () => stepReplay(1), { signal });
-  replayBack.addEventListener("click", () => {
-    if (replayStep !== null) stepReplay(-1);
-  }, { signal });
-  replayPlay.addEventListener("click", () => {
-    if (replayData.steps.length === 0) return;
-    if (replayPlaying) {
-      pauseReplay();
-      renderReplayBar();
-      return;
-    }
-    // Play from the root when the replay is off or already at its end.
-    enterReplay();
-    if (replayStep === null || replayStep >= replayData.steps.length) {
-      replayStep = 1;
-      replayShown = null;
-      replayBase = new Set();
-    }
-    stopTimer();
-    redraw(); // recomputes the replay for the whole graph
-    replayPlaying = replayData.steps.length > 1;
-    if (replayPlaying) replayTimer = setTimeout(tick, REPLAY_STEP_MS[replaySpeed]);
-    renderReplayBar();
-  }, { signal });
-  replaySpeedButton.addEventListener("click", () => {
-    replaySpeed = REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(replaySpeed) + 1) % REPLAY_SPEEDS.length]!;
-    if (replayPlaying) {
-      stopTimer();
-      replayTimer = setTimeout(tick, REPLAY_STEP_MS[replaySpeed]);
-    }
-    renderReplayBar();
-  }, { signal });
-  replayExit.addEventListener("click", () => {
-    pauseReplay();
-    replayStep = null;
-    replayShown = null;
-    redraw();
-  }, { signal });
-  signal.addEventListener("abort", stopTimer, { once: true });
 
   const renderLegend = (): void => {
     const item = (icon: string, key: MessageKey, extraClass = ""): HTMLElement => {
@@ -624,19 +414,13 @@ export function createRoadmapCanvas(
       }
       renderLegend();
       renderGraph(next);
-      renderReplayBar();
     },
     clear() {
-      if (disposed || signal.aborted) return;
-      drawn = "empty";
-      pauseReplay();
-      replayStep = null;
-      replayShown = null;
+      // Nothing to reset: the canvas keeps no per-roadmap drawing state.
     },
     dispose() {
       if (disposed) return;
       disposed = true;
-      stopTimer();
       resize?.disconnect();
       root.remove();
     },

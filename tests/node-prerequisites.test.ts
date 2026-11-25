@@ -15,9 +15,6 @@ import { layoutGraph, buildDependencyGraph } from "../src/view/roadmap-layout.ts
 import { setLocale, t } from "../src/i18n.ts";
 import { makeNode, makePath, rawPath } from "./fixtures.ts";
 import { createHost } from "./host.ts";
-import { setAutoReplay } from "../src/view/graph-replay.ts";
-
-setAutoReplay(false); // these tests look at the plain graph, not the replay
 
 const { parseHTML } = createRequire(import.meta.url)("linkedom") as {
   parseHTML(html: string): { document: Document };

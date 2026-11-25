@@ -330,43 +330,6 @@
   stroke-dasharray: 4 4;
 }
 
-/* Graph growth: nodes and arrows new since the last drawing fade and rise in, in order.
- * The delay is set inline per item (see graph-growth.ts). */
-.rm-node.rm-grow {
-  animation: rm-grow-node 320ms ease-out both;
-}
-
-.rm-edges .rm-grow {
-  animation: rm-grow-arrow 320ms ease-out both;
-}
-
-@keyframes rm-grow-node {
-  from { opacity: 0; transform: translateY(6px) scale(0.96); }
-  to { opacity: 1; transform: none; }
-}
-
-@keyframes rm-grow-arrow {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.rm-grow-status {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rm-node.rm-grow,
-  .rm-edges .rm-grow {
-    animation: none;
-  }
-}
-
 .rm-edges .rm-arrow {
   fill: none;
   stroke: var(--rm-edge);
@@ -2540,35 +2503,3 @@ details.lp-chat-reasoning > summary {
   opacity: 0.5;
 }
 
-/* Graph replay: controls and a one-line caption, above the direction toggle. Off until play is pressed. */
-.rm-replay {
-  position: absolute;
-  left: 14px;
-  bottom: 96px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px;
-  max-width: calc(100% - 28px);
-  padding: 0 2px;
-  border: 1px solid var(--rm-line-2);
-  border-radius: 6px;
-  background: var(--rm-panel);
-}
-
-.rm-replay .rm-replay-caption {
-  flex: 1 0 100%;
-  margin: 0;
-  padding: 2px 8px 6px;
-  font-size: var(--rm-font-sm);
-  color: var(--rm-muted);
-}
-
-.rm-replay button[aria-pressed="true"] {
-  background: var(--rm-panel-2);
-  font-weight: 600;
-}
-
-.rm-replay button:disabled {
-  opacity: 0.4;
-}

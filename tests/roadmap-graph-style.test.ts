@@ -10,9 +10,6 @@ import { createRoadmapCanvas } from "../src/view/roadmap-canvas.ts";
 import type { CanvasState } from "../src/view/roadmap-canvas.ts";
 import { DOT_D, DOT_X, drawnWidth, layoutGraph } from "../src/view/roadmap-layout.ts";
 import { makeNode, makePath } from "./fixtures.ts";
-import { setAutoReplay } from "../src/view/graph-replay.ts";
-
-setAutoReplay(false); // these tests look at the plain graph, not the replay
 
 const { parseHTML } = createRequire(import.meta.url)("linkedom") as {
   parseHTML(html: string): { document: Document };
