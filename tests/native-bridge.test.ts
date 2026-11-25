@@ -13,7 +13,8 @@ import path from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ChatRecord } from "learnharness-plugin-api";
 import { openLearningPathStore } from "../src/store.ts";
-import { makePath, AT } from "./fixtures.ts";
+import { makePath, AT, clone } from "./fixtures.ts";
+import { buildChildSessionBrief } from "../src/framework.ts";
 import { createHost } from "./host.ts";
 import type { TestHost } from "./host.ts";
 import { NATIVE_BRIDGE_INSTRUCTIONS } from "../src/native-bridge.ts";
@@ -258,4 +259,42 @@ test("progress, errors and advisory pivots persist without restructuring the pat
   } finally {
     close(host, directory);
   }
+});
+
+test("the cold-transfer rules sit under one checkpoint condition and the general bullets are unchanged", () => {
+  const lines = NATIVE_BRIDGE_INSTRUCTIONS.split("\n");
+  const condition = lines.findIndex((line) => line.startsWith("- Checkpoint node only ("));
+  assert.ok(condition >= 0, "the checkpoint condition bullet is present");
+  assert.match(lines[condition]!, /the brief's Node line reads "\(checkpoint: …\)"; a checkpoint among the callbacks does not count\)\. Run a cold transfer:$/);
+  const subBullets: string[] = [];
+  for (let i = condition + 1; i < lines.length && lines[i]!.startsWith("  - "); i++) subBullets.push(lines[i]!);
+  assert.equal(subBullets.length, 4);
+  // Every checkpoint rule is a sub-bullet, so no other top-level bullet carries it.
+  const coldRule = /strategy|cold transfer|transfers without cues|warm-up|cue-free/;
+  lines.forEach((line, index) => {
+    if (index === condition || !line.startsWith("- ")) return;
+    assert.doesNotMatch(line, coldRule, `top-level bullet ${index} must not carry a checkpoint rule`);
+  });
+  // The general bullets that existed before this branch are byte-identical.
+  const original = [
+    "- Call roadmap_get_brief before teaching so the node goal, canonical source anchor, micro-priming hook, meso-interleaving callbacks, unresolved watchpoints and artifact configuration shape this session. Stay inside that anchor and notation. The brief sets content, not question format.",
+    "- Call roadmap_update_progress when the learner's status genuinely changes: in_progress while understanding is forming, consolidated only when they can reconstruct, apply and connect the idea. Include an artifactNote only when the artifact was actually produced.",
+    "- Call roadmap_log_error for each diagnosed cognitive root cause (misconception, discrimination_error, prerequisite_gap, procedural_slip, cue_failure). Use upstreamNodeId only when the failure belongs to an interleaved earlier node.",
+    "- Call roadmap_suggest_pivot only when a topic is not sticking for a specific diagnosed reason. It records an advisory pending proposal (bridge, contrast or skill) and never changes, inserts or reorders path content. The learner decides.",
+  ];
+  assert.deepEqual(lines.slice(condition - original.length, condition), original);
+});
+
+test("the Node line of a checkpoint brief carries the marker, and an interleaving non-checkpoint node does not", () => {
+  const path = makePath();
+  const checkpointBrief = buildChildSessionBrief({ path, nodeId: "n-checkpoint", kind: "teaching" }).text;
+  const nodeLineOf = (text: string) => text.split("\n")[text.split("\n").indexOf("## Node") + 1]!;
+  assert.match(nodeLineOf(checkpointBrief), /\(checkpoint: /);
+  // n-bridge interleaves the checkpoint: its callback reads "(checkpoint):" and must not satisfy the marker.
+  const widened = clone(path);
+  const bridge = widened.modules.flatMap((module) => module.nodes).find((node) => node.id === "n-bridge")!;
+  (bridge as unknown as { interleavesNodeIds: string[] }).interleavesNodeIds = ["n-checkpoint"];
+  const bridgeBrief = buildChildSessionBrief({ path: widened, nodeId: "n-bridge", kind: "teaching" }).text;
+  assert.match(bridgeBrief, /^- .* \(checkpoint\): /m);
+  assert.doesNotMatch(nodeLineOf(bridgeBrief), /\(checkpoint: /);
 });

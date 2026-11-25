@@ -65,7 +65,8 @@ in progress, and a group of alternatives counts once.
 2. **Study a node.** *Lesson* or *Practice* creates a native LearnHarness session,
    stages a brief (goal, outcomes, source anchor, earlier nodes to weave in, open
    errors, the artifact) and opens it. Linked sessions get `roadmap_*` tools to
-   read the brief and record progress, errors and suggestions.
+   read the brief and record progress, errors and suggestions. Checkpoint
+   sessions run as a cold transfer: unlabelled mixed problems, no warm-up.
 3. **Mistakes travel forward.** Errors are logged by cognitive root cause
    (misconception, confusing concepts, prerequisite gap, procedural slip, missed
    cue), never as grades. Open errors follow into later sessions until resolved.
