@@ -16,8 +16,6 @@
  * runs, `cleanup` releases handlers, subscriptions, the bridge and the definition,
  * and no tool writes after the signal aborts.
  */
-import { importForkData } from "./fork-import.ts";
-import { importLegacyData } from "./legacy-import.ts";
 import { DEFAULT_ARCHITECT_PREFERENCES, KEY_ENGINES, effectiveResearch } from "./domain.ts";
 import type { ResearchSettings } from "./domain.ts";
 import { findClaudeBinary, runClaudeResearch } from "./research/claude-cli.ts";
@@ -338,19 +336,6 @@ export function modelCallCause(snapshot: PluginAgentSnapshot, from: number): Mod
 export function activate(ctx: PluginBackendContext): void {
   // Keeps secrets and logs out of a Git-versioned data folder. Never throws.
   ensureDataGitignore(ctx.dataDirectory);
-  // Previous fork id first: its files are newer than the Learning Paths ones.
-  try {
-    importForkData(ctx.dataDirectory);
-  } catch (problem) {
-    // An import failure must never block Roadmap itself; the old data stays untouched.
-    console.warn("[roadmap] could not import data from the previous plugin id:", problem instanceof Error ? problem.message : problem);
-  }
-  try {
-    importLegacyData(ctx.dataDirectory);
-  } catch (problem) {
-    // An import failure must never block Roadmap itself; the legacy data stays untouched.
-    console.warn("[roadmap] could not import Learning Paths data:", problem instanceof Error ? problem.message : problem);
-  }
   const store: LearningPathStore = openLearningPathStore(ctx.dataDirectory);
   const disposers: (() => void)[] = [];
   const watchers = new Map<string, () => void>();

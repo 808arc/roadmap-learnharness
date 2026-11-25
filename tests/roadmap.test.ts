@@ -1,15 +1,12 @@
 /** Tests for the Roadmap additions: layout, progress counting, node marks,
- * legacy import, session metrics and translations. */
+ * session metrics and translations. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { parseLearningPath, parsePluginSettings, validatePluginSettings } from "../src/domain.ts";
 import type { LearningPath, PathModule, PathNode } from "../src/domain.ts";
 import { resolveLocale, setLocale, t } from "../src/i18n.ts";
 import type { MessageKey } from "../src/i18n.ts";
-import { IMPORT_MARKER, importLegacyData, legacyDataDirectory } from "../src/legacy-import.ts";
 import { DEFAULT_BREAK_MS, sessionMetrics } from "../src/session-metrics.ts";
 import {
   DOT_X,
@@ -179,54 +176,6 @@ test("display settings default sensibly and reject unknown values", () => {
   assert.deepEqual(parsed.display, { language: "auto", showOptional: true, graphDirection: "bottom-to-top", patternHints: true });
   assert.equal(parsed.contentLanguage, "auto");
   assert.throws(() => parsePluginSettings({ artifactDefaults: {}, display: { language: "klingon" } }));
-});
-
-function temporary(t: { after(fn: () => void): void }): string {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "roadmap-import-"));
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  return directory;
-}
-
-test("legacy Learning Paths data is copied once and never modified", (t) => {
-  const plugins = temporary(t);
-  const legacy = path.join(plugins, "learning-path", "data");
-  const own = path.join(plugins, "roadmap-learnharness", "data");
-  assert.equal(legacyDataDirectory(own), legacy);
-
-  assert.equal(importLegacyData(own).reason, "no-legacy-data");
-  fs.mkdirSync(path.join(legacy, "sources"), { recursive: true });
-  fs.mkdirSync(path.join(legacy, "agents", "conv-1"), { recursive: true });
-  const paths = JSON.stringify({ schemaVersion: 1, revision: 3, paths: [] });
-  fs.writeFileSync(path.join(legacy, "learning-paths.json"), paths);
-  fs.writeFileSync(path.join(legacy, "settings.json"), '{"schemaVersion":1,"revision":1,"settings":{"artifactDefaults":{}}}');
-  fs.writeFileSync(path.join(legacy, "sources", "book.md"), "# Book");
-  fs.writeFileSync(path.join(legacy, "agents", "conv-1", "messages.jsonl"), "{}\n");
-
-  const result = importLegacyData(own, () => new Date("2026-11-16T12:00:00.000Z"));
-  assert.equal(result.reason, "imported");
-  assert.deepEqual([...result.copied].sort(), ["agents/", "learning-paths.json", "settings.json", "sources/"]);
-  assert.equal(fs.readFileSync(path.join(own, "learning-paths.json"), "utf8"), paths);
-  assert.equal(fs.readFileSync(path.join(own, "sources", "book.md"), "utf8"), "# Book");
-  assert.ok(fs.existsSync(path.join(own, "agents", "conv-1", "messages.jsonl")));
-  assert.ok(fs.existsSync(path.join(own, IMPORT_MARKER)));
-  assert.equal(fs.readFileSync(path.join(legacy, "learning-paths.json"), "utf8"), paths, "the legacy file is untouched");
-
-  // Deleting everything on purpose must not bring the old data back.
-  fs.rmSync(path.join(own, "learning-paths.json"));
-  assert.equal(importLegacyData(own).reason, "already-imported");
-  assert.equal(fs.existsSync(path.join(own, "learning-paths.json")), false);
-});
-
-test("legacy import does nothing when Roadmap already has data", (t) => {
-  const plugins = temporary(t);
-  const legacy = path.join(plugins, "learning-path", "data");
-  const own = path.join(plugins, "roadmap-learnharness", "data");
-  fs.mkdirSync(legacy, { recursive: true });
-  fs.mkdirSync(own, { recursive: true });
-  fs.writeFileSync(path.join(legacy, "learning-paths.json"), "legacy");
-  fs.writeFileSync(path.join(own, "learning-paths.json"), "mine");
-  assert.equal(importLegacyData(own).reason, "already-has-data");
-  assert.equal(fs.readFileSync(path.join(own, "learning-paths.json"), "utf8"), "mine");
 });
 
 test("session metrics sum focused time between learner actions and skip breaks", () => {

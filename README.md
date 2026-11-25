@@ -135,10 +135,6 @@ kept as research notes (listed in settings) that the Architect reads.
 4. Press **Refresh**, enable **Roadmap**, and restart LearnHarness.
 
 To update, replace `roadmap-learnharness/dist/` and keep `roadmap-learnharness/data/` (your roadmaps).
-The plugin id changed from `roadmap`; on first start it copies `learning-paths.json` and
-`architect.json` (this fork's format) from `<plugins-directory>/roadmap/data/` if the new data folder
-has no roadmap yet. The old
-folder is never changed.
 
 ### From source
 
@@ -171,13 +167,6 @@ For a rebuild-and-install loop on macOS, run `./plugin-sync.sh` from the repo. I
 (never force-closed) and waits up to 30 seconds; if the app has not closed by then, it stops and
 does not start it again. It finds the app on macOS only; elsewhere set `LEARNHARNESS_APP`.
 `node scripts/restart-learnharness.mjs` without `--restart` only prints its usage.
-
-### Coming from Learning Paths
-
-On first start Roadmap **copies** your Learning Paths data (paths, settings,
-uploaded sources and Architect conversations) into its own folder. The original
-plugin's data is never modified, and the import runs only once. After checking
-that everything is there you can disable Learning Paths.
 
 ## Settings
 
