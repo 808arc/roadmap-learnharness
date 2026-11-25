@@ -36,7 +36,7 @@ The migration moves each roadmap from `learning-paths.json` into `roadmaps/`, re
 
 The plugin never reads or writes the host's own entries: `agents/`, `tasks/` and `usage.jsonl`.
 
-Activation never reads another plugin's data folder. Data from the Learning Paths plugin or from an earlier plugin id is not imported, so nothing is copied into this folder from elsewhere.
+Activation never reads another plugin's data folder. Data from the Learning Paths plugin or from an earlier plugin id is not imported, so nothing is copied into this folder from elsewhere. Older installs may still contain `imported-from-*.json` marker files from earlier versions. Nothing reads them, and they are safe to delete.
 
 ## Git safety
 

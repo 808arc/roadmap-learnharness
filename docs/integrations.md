@@ -5,7 +5,7 @@ The roadmap works alongside four related plugins. Each section says what is buil
 ## Shared rules
 
 - The roadmap only uses what LearnHarness shares with every plugin: native sessions, the Knowledge Graph, and the session tools and instructions.
-- It never reads another plugin's data folder, except in two one-time imports. They read the data folders of the earlier plugin ids `learning-path` (Learning Paths) and `roadmap` (this fork's previous id), copy what they find into this folder, and run once. See [data.md](data.md#import-markers).
+- It never reads another plugin's data folder. Activation does not import from the Learning Paths folder or from this fork's earlier plugin id.
 - It works the same when the other plugin is not installed.
 - No code is copied from these plugins. The links below point to the authors' own repositories, not to vendored code. Each section names the author and the licence.
 - The licences were read from each repository's licence metadata on GitHub.
