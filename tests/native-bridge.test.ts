@@ -259,3 +259,13 @@ test("progress, errors and advisory pivots persist without restructuring the pat
     close(host, directory);
   }
 });
+
+test("the bridge instructions carry the cold-transfer block for checkpoint nodes only", () => {
+  const text = NATIVE_BRIDGE_INSTRUCTIONS;
+  assert.match(text, /Checkpoint node only \(the brief says type checkpoint\): run a cold transfer\./);
+  assert.match(text, /No recap, warm-up or worked example first/);
+  assert.match(text, /Problems are mixed and unlabelled/);
+  assert.match(text, /Name the strategy in feedback only after the attempt\./);
+  assert.match(text, /Mark the node consolidated only when the learner transfers without cues\./);
+  assert.match(text, /Question format still follows the learner or an installed session plugin\./);
+});
